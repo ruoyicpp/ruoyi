@@ -1,5 +1,7 @@
 <div align="center">
 
+[English](README_EN.md) | 中文
+
 # RuoYi-Cpp
 
 **RuoYi 管理框架的 C++ 高性能完整复刻**
@@ -378,6 +380,57 @@ location /ws/ {
 - ✅ JWT Token 格式、`getInfo`、`getRouters` 响应结构完全兼容
 - ✅ 直接克隆[若依官方前端](https://gitee.com/y_project/RuoYi-Vue)，只改后端地址即可运行
 - ➕ 新增：邮件发件箱管理、忘记密码、注册邮箱验证码等功能
+
+---
+
+## 常见问题
+
+**Q：启动报 `cannot connect to database`？**
+> 检查 `config.json` 中 `database.host/port/dbname/user/passwd` 是否正确，确认 PostgreSQL 服务已启动。使用 SQLite 模式时保持 `host` 为空即可。
+
+**Q：登录提示验证码错误？**
+> 确认 `captcha.enabled` 为 `true`，且系统时间正确（验证码有 120 秒有效期）。
+
+**Q：前端跨域报错？**
+> 开发模式下检查 `vue.config.js` 中 `devServer.proxy` 的目标地址是否指向正确的后端端口（默认 `18080`）。生产环境检查 Nginx `/prod-api/` 代理配置。
+
+**Q：JWT secret 为空能启动吗？**
+> 可以启动，但所有 Token 将使用空密钥签发，**存在严重安全风险**，生产环境务必填写强随机密钥。
+
+**Q：角色权限修改后不生效？**
+> 后端会自动刷新在线用户的权限缓存，若仍不生效请检查 `MemCache` / Redis 连接是否正常。
+
+---
+
+## 贡献指南
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库：<https://gitee.com/ruoyicpp/ruoyi>
+2. 新建分支：`git checkout -b feat/your-feature`
+3. 提交代码：`git commit -m "feat: 描述你的改动"`
+4. 推送分支：`git push origin feat/your-feature`
+5. 发起 Pull Request
+
+**代码规范**：
+- C++ 代码遵循项目现有风格（头文件实现、Drogon 异步回调）
+- 新增接口需同时提供权限字符串（如 `system:user:add`）
+- 敏感信息不得硬编码，通过 `config.json` 或数据库配置
+
+---
+
+## 更新日志
+
+### v1.0.0
+- 完整实现 RuoYi-Vue 所有系统管理、系统监控 API
+- SQLite 内嵌模式，无需额外数据库即可运行
+- 支持 PBKDF2-SHA256 密码哈希、JWT 自动续期
+- 内置 Nginx 反向代理启动管理
+- 邮件发件箱管理（OpenSSL Implicit-TLS SMTP）
+- 忘记密码 / 注册邮箱验证码
+- WebSocket 实时通知（一次性 ticket 鉴权）
+- IP 限流、Bot UA 拦截、XSS 过滤、CORS 配置
+- 角色权限修改实时生效，无需重新登录
 
 ---
 
