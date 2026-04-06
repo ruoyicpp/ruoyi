@@ -44,7 +44,7 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 | Runtime dependency | JDK 17+ | None (statically linked) |
 | Deployment | JAR + JVM | **Single executable** |
 | Target environment | Cloud servers | Cloud / NAS / Embedded |
-| Nginx dependency | Required | **Optional** (built-in frontend hosting) |
+| Nginx dependency | Optional  | **Optional** (built-in frontend hosting) |
 
 ---
 
