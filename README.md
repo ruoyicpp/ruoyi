@@ -44,7 +44,7 @@ RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管
 | 运行时依赖 | JDK 17+ | 无（静态链接） |
 | 部署方式 | JAR + JVM | **单个可执行文件** |
 | 适用场景 | 云服务器 | 云服务器 / NAS / 嵌入式 |
-| Nginx 依赖 |  | **可选**（内置前端托管）|
+| Nginx 依赖 | **可选** | **可选**（内置前端托管）|
 
 ---
 
