@@ -1,0 +1,42 @@
+# 编译产物
+build/
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+_CPack_Packages/
+
+# 运行时文件
+ruoyi.db
+ruoyi.db-shm
+ruoyi.db-wal
+logs/
+*.log
+*.jsonl
+
+# 配置（含密码，不上传）
+config.json
+config-*.json
+
+# 上传的文件
+uploads/
+
+# IDE
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Windows
+Thumbs.db
+Desktop.ini
