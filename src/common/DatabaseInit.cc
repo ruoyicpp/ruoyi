@@ -406,6 +406,27 @@ std::vector<std::string> DatabaseInit::getCreateTableSqls() {
             bound_at    TIMESTAMP   NOT NULL DEFAULT NOW(),
             CONSTRAINT single_device CHECK (id = 1)
         ))",
+
+        // -------------------------------------------------------
+        // TOTP 两步验证字段（热升级，旧表无损迁移）
+        // -------------------------------------------------------
+        R"(DO $$ BEGIN
+            ALTER TABLE sys_user ADD COLUMN IF NOT EXISTS totp_secret     VARCHAR(64) NOT NULL DEFAULT '';
+            ALTER TABLE sys_user ADD COLUMN IF NOT EXISTS totp_secret_tmp VARCHAR(64) NOT NULL DEFAULT '';
+            ALTER TABLE sys_user ADD COLUMN IF NOT EXISTS totp_enabled    SMALLINT    NOT NULL DEFAULT 0;
+        EXCEPTION WHEN others THEN NULL; END $$)",
+
+        // -------------------------------------------------------
+        // OAuth2 第三方登录绑定表
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_user_oauth (
+            id          BIGSERIAL    PRIMARY KEY,
+            user_id     BIGINT       NOT NULL,
+            provider    VARCHAR(32)  NOT NULL,
+            open_id     VARCHAR(128) NOT NULL,
+            create_time TIMESTAMP,
+            UNIQUE(provider, open_id)
+        ))",
     };
 }
 
@@ -914,6 +935,19 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         // data patch: 重命名子进程参数显示名称
         "UPDATE sys_config SET config_name='子进程-DDNS动态域名' WHERE config_key='sys.subprocess.ddns' AND config_name LIKE '%DDNS-go%'",
         "UPDATE sys_config SET config_name='子进程-AI引擎' WHERE config_key='sys.subprocess.koboldcpp' AND config_name LIKE '%KoboldCpp%'",
+
+        // =====================================================================
+        // v1.1 新增：系统日志查看器（InnerLink，顶级菜单）
+        // =====================================================================
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (120,'日志查看',0,9,'http://localhost:18080/monitor/logfile/page','InnerLink','','0','0','C','0','0','monitor:logfile:view','log','admin',NOW(),'系统日志文件查看器') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(UPDATE sys_menu SET menu_name='日志查看',parent_id=0,order_num=9,path='http://localhost:18080/monitor/logfile/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='monitor:logfile:view',icon='log' WHERE menu_id=120)",
+
+        // =====================================================================
+        // v1.2 新增：TOTP 两步验证按钮（挂在个人中心下）
+        // =====================================================================
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (121,'两步验证',1,10,'totp','','','1','0','F','1','0','system:totp:bind','lock','admin',NOW(),'TOTP两步验证绑定') ON CONFLICT (menu_id) DO NOTHING)",
     };
 }
 

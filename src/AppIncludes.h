@@ -36,6 +36,14 @@
 #include "common/SignUtils.h"
 #include "common/JsonLogger.h"
 #include "common/SslManager.h"
+#include "common/RequestTracing.h"
+#include "common/DataMaskUtils.h"
+#include "common/HotConfig.h"
+#include "common/FrontendHost.h"
+#include "common/MetricsCollector.h"
+#include "common/TotpUtils.h"
+#include "common/LdapAuth.h"
+#include "common/OAuth2Manager.h"
 
 // ── 服务层 ───────────────────────────────────────────────────────
 #include "services/NginxManager.h"
@@ -44,6 +52,7 @@
 #include "services/KoboldCppService.h"
 #include "services/WhisperService.h"
 #include "services/VaultManager.h"
+#include "services/StorageService.h"
 #include "system/services/SysConfigService.h"
 #include "system/services/SysDictService.h"
 #include "system/services/TokenService.h"
@@ -64,9 +73,12 @@
 #include "system/controllers/SysNoticeCtrl.h"
 #include "system/controllers/SysEmailConfigCtrl.h"
 #include "system/controllers/SysSslConfigCtrl.h"
+#include "system/controllers/SysTotpCtrl.h"
+#include "system/controllers/OAuth2Ctrl.h"
 
 // ── Monitor 控制器 ───────────────────────────────────────────────
 #include "monitor/controllers/SysLogCtrl.h"
+#include "monitor/controllers/SysLogFileCtrl.h"
 #include "monitor/controllers/SysOnlineCtrl.h"
 #include "monitor/controllers/WsNotifyCtrl.h"
 #include "monitor/controllers/SysJobCtrl.h"
