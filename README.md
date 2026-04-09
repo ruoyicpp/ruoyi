@@ -29,6 +29,14 @@
 
 ---
 
+## 在线演示
+
+🌐 **演示地址**：[https://ruoyi.mymq.site](https://ruoyi.mymq.site)
+
+> 默认账号：`admin` / `admin123`
+
+---
+
 ## 项目简介
 
 RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管理框架的 C++ 高性能版本，后端基于 Drogon 异步 HTTP 框架，数据库使用 PostgreSQL，与原版 RuoYi-Vue 前端保持完全 API 兼容。
@@ -44,7 +52,7 @@ RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管
 | 运行时依赖 | JDK 17+ | 无（静态链接） |
 | 部署方式 | JAR + JVM | **单个可执行文件** |
 | 适用场景 | 云服务器 | 云服务器 / NAS / 嵌入式 |
-| Nginx 依赖 | **可选** | **可选**（内置前端托管）|
+| Nginx 依赖 | 必须 | **可选**（内置前端托管）|
 
 ---
 
@@ -80,6 +88,7 @@ RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管
 | 服务监控 | `GET /monitor/server` | CPU、内存、磁盘、系统信息、GPU VRAM |
 | 缓存监控 | `GET /monitor/cache` | 查看缓存分类和键值 |
 | 数据源监控 | `GET /monitor/druid` | DB 连接池状态、查询统计 |
+| 重启服务 | `POST /monitor/restart/confirm` | 管理员确认重启后端进程（内置 HTML 管理页，无需 Vue 组件）|
 
 ### 账号自助
 
@@ -395,6 +404,7 @@ ruoyi-cpp/
 │           ├── SysJobCtrl.h         # 定时任务管理
 │           ├── ServerCtrl.h         # 服务器监控
 │           ├── DruidCtrl.h          # 数据库连接池监控
+│           ├── SysRestartCtrl.h     # 重启后端服务（内置 HTML 管理页，admin 鉴权）
 │           └── ...                  # 操作日志/登录日志/在线用户
 └── ui/                              # 前端源码（Vue 2 + Element UI）
 ```
@@ -501,7 +511,7 @@ location /ws/ {
 - ✅ 所有 `/system/**`、`/monitor/**` API 路由与原版完全一致
 - ✅ JWT Token 格式、`getInfo`、`getRouters` 响应结构完全兼容
 - ✅ 直接克隆[若依官方前端](https://gitee.com/y_project/RuoYi-Vue)，只改后端地址即可运行
-- ➕ 新增：邮件发件箱管理、忘记密码、注册邮箱验证码等功能
+- ➕ 新增：邮件发件箱管理、忘记密码、注册邮箱验证码、消息通知中心、API Key 管理、操作审计增强等功能
 
 ---
 
@@ -559,7 +569,14 @@ location /ws/ {
 
 ## 更新日志
 
-### v1.2.0（当前）
+### v1.2.1（当前）
+- **重启服务管理页**：`GET /monitor/restart` 纯后端渲染 HTML 页面，管理员可查询在线人数后二次确认重启后端进程；token 从同源 iframe 的 `sessionStorage` 自动读取，无需 Vue 组件
+- **修复 HTTP_HIDE 生产 404 Bug**：`SysRestartCtrl` 原 `HTTP_HIDE` 宏在 Release 构建下将重启接口全部返回 404，已移除
+- **消息通知中心**（f15）：钉钉 / 飞书 / 企业微信 Webhook（HMAC-SHA256 签名）+ 站内消息，`/system/notify/channel/**` + `/system/message/**`
+- **API Key 管理**（f16）：`/system/apikey/**` CRUD，48 位随机 Key，`X-API-Key` 请求头或 `?apiKey=` 查询参数鉴权
+- **操作审计增强**（f17）：`sys_oper_log` 新增 `before_data`/`after_data` 字段，`diffJson()` 只记录变更字段，`LOG_AUDIT` / `LOG_AUDIT_TIMED` 宏
+
+### v1.2.0
 - **OAuth2 第三方登录**：GitHub / Google / 企业微信 / 钉钉 / 飞书 / QQ，state CSRF 防护，首次自动建号，已有账号可绑定/解绑（`sys_user_oauth` 表）
 - **TOTP 两步验证**：Google/Microsoft Authenticator，RFC 6238 纯 OpenSSL 实现
 - **LDAP/AD 认证**：企业内网统一登录，支持 `fallback_local`
