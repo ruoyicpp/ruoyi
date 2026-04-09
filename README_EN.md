@@ -29,6 +29,14 @@ Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% 
 
 ---
 
+## Live Demo
+
+🌐 **Demo**: [https://ruoyi.mymq.site](https://ruoyi.mymq.site)
+
+> Default credentials: `admin` / `admin123`
+
+---
+
 ## Overview
 
 RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com/y_project/RuoYi-Vue) management framework. The backend is built on the Drogon asynchronous HTTP framework with PostgreSQL as the primary database, maintaining full API compatibility with the original RuoYi-Vue frontend.
@@ -44,7 +52,7 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 | Runtime dependency | JDK 17+ | None (statically linked) |
 | Deployment | JAR + JVM | **Single executable** |
 | Target environment | Cloud servers | Cloud / NAS / Embedded |
-| Nginx dependency | Optional  | **Optional** (built-in frontend hosting) |
+| Nginx dependency | Required | **Optional** (built-in frontend hosting) |
 
 ---
 
