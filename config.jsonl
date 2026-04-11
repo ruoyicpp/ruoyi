@@ -1,1 +1,200 @@
 
+{
+    // 服务监听端口配置
+    "listeners": [
+        {
+            "address": "0.0.0.0",        // 监听地址，0.0.0.0 表示允许所有IP访问
+            "port": 18080,               // HTTP 服务端口
+            "https": false               // 是否启用 HTTPS
+        }
+    ],
+    // 控制台/启动界面配置
+    "ui": {
+        "animated_banner": true         // 是否显示动态启动横幅
+    },
+    // 应用核心运行配置
+    "app": {
+        "threads_num": 4,               // 工作线程数
+        "enable_session": false,        // 是否启用服务端 Session
+        "session_timeout": 0,           // Session 超时时间（秒）
+        "document_root": "./",          // 静态文件根目录
+        "upload_path": "./upload",      // 文件上传保存目录
+        "enable_server_header": false,  // 是否返回 Server 响应头
+        "enable_date_header": true,     // 是否返回 Date 响应头
+        "reuse_port": false,            // 是否端口复用（多进程绑同一端口）
+        // 日志配置
+        "log": {
+            "log_path": "./logs",               // 日志存放目录
+            "logfile_base_name": "ruoyi",       // 日志文件名前缀
+            "log_size_limit": 104857600,        // 单日志文件大小上限（字节）
+            "log_keep_files": 5,                // 最多保留日志文件数量
+            "log_level": "DEBUG"               // 日志级别 DEBUG/INFO/WARN/ERROR
+        }
+    },
+    // PostgreSQL 数据库连接
+    "database": {
+        "host": "127.0.0.1",           // 数据库地址
+        "port": 5432,                   // 数据库端口
+        "dbname": "ruoyi-pro",          // 数据库名
+        "user": "postgres",             // 用户名
+        "passwd": ""       // 密码
+    },
+    // SQLite 数据库（轻量嵌入式）
+    "sqlite": {
+        "enabled": true,                // 是否启用 SQLite
+        "path": ""                      // SQLite 库文件路径，为空则使用内存或默认
+    },
+    // RuoYi-Cpp 项目自身信息
+    "ruoyi": {
+        "name": "RuoYi-Cpp",            // 项目名称
+        "version": "1.0.0",             // 版本号
+        "demo_enabled": false,          // 是否为演示模式（限制敏感操作）
+        "profile": "./upload",          // 用户头像/附件存储目录
+        "address_enabled": false        // 是否启用地区/地址相关功能
+    },
+    // JWT 登录鉴权配置
+    "jwt": {
+        "secret": "Z$7H5g#&&#uxzv6DyVxS%aJ%P4q*G$7uwM#Z",  // JWT 密钥，生产环境务必修改
+        "issuer": "ruoyi.cpp.issuer",   // 签发者
+        "audience": "ruoyi.cpp.audience",// 受众
+        "expire_minutes": 30,           // Token 有效期（分钟）
+        "jwt_expire_days": 7            // 刷新 Token/记住我 有效期（天）
+    },
+    // 用户账号安全策略
+    "user": {
+        "max_retry_count": 5,           // 密码最大错误次数
+        "lock_time_minutes": 15,        // 锁定时长（分钟）
+        "password_min_length": 5,       // 密码最小长度
+        "password_max_length": 20,      // 密码最大长度
+        "username_min_length": 2,       // 用户名最小长度
+        "username_max_length": 20       // 用户名最大长度
+    },
+    // 验证码配置
+    "captcha": {
+        "enabled": true,                // 是否启用验证码
+        "expire_seconds": 120           // 验证码过期时间（秒）
+    },
+    // Redis 缓存配置
+    "redis": {
+        "enabled": true,                // 是否启用 Redis
+        "host": "127.0.0.1",            // Redis 地址
+        "port": 6379,                   // Redis 端口
+        "password": "",                 // Redis 密码
+        "db": 0,                        // 使用的数据库编号
+        "key_prefix": ""                // Key 前缀，用于多项目隔离
+    },
+    // Windows 下内置 Nginx 代理配置（Linux 无需开启）
+    "nginx": {
+        "enabled": true,                // 是否启用内置 Nginx
+        "port": 18081,                  // Nginx 对外端口
+        "exe_path": "nginx/nginx.exe",   // Nginx 可执行文件路径
+        "prefix": "nginx/"              // Nginx 工作目录
+    },
+    // AI 大模型 koboldcpp 集成配置
+    "koboldcpp": {
+        "enabled": true,                        // 是否启用 AI 模型
+        "launch_cmd": "",                       // 自定义启动命令（为空则自动生成）
+        "python": "python",                     // Python 解释器路径
+        "work_dir": "L:/net/c+++/WEb/koboldcpp-concedo",  // 工作目录
+        "script": "koboldcpp.py",               // 启动脚本
+        "model_path": "L:/net/c+++/WEb/models/qwen2.5-0.5b-instruct-q4_0.gguf",  // 大模型路径
+        "whisper_model": "L:/net/c+++/WEb/models/ggml-base.bin",                 // 语音识别模型
+        "port": 5001,                           // AI 服务端口
+        "threads": 4,                           // AI 推理线程数
+        "context_size": 2048,                   // 上下文窗口大小
+        "blas_batch": 512,                      // 矩阵计算批大小
+        "use_gpu": true,                        // 是否使用 GPU 加速
+        "gpu_layers": 99,                       // 卸载到 GPU 的模型层数
+        "show_window": false                    // 是否显示模型窗口
+    },
+    // 文件上传大小限制
+    "upload": {
+        "max_file_mb": 10,              // 普通文件最大 MB
+        "max_avatar_mb": 2              // 头像最大 MB
+    },
+    // 跨域 CORS 配置
+    "cors": {
+        "allow_origins": [              // 允许的前端域名
+            "http://localhost:18081",
+            "http://localhost:20206",
+            "http://localhost:3000"
+        ],
+        "allow_methods": ["GET","POST","PUT","DELETE","OPTIONS"],  // 允许的请求方法
+        "allow_headers": ["Authorization","Content-Type","X-App-Id","X-Challenge-Token","X-Requested-With"],  // 允许请求头
+        "expose_headers": ["access-token","x-access-token"],       // 允许前端读取的响应头
+        "allow_credentials": true                                  // 是否允许携带 Cookie
+    },
+    // 安全相关配置
+    "security": {
+        // 硬件绑定解锁密钥
+        "hardware_bind": {
+            "admin_unlock_key": "RuoYi@Unlock#2026!ChangeMe"  // 管理员硬件绑定解锁码，生产必须修改
+        },
+        // 证书/授权校验
+        "license": {
+            "expiry_check": false       // 是否校验授权过期
+        },
+        // 请求限流（防刷、防 CC）
+        "rate_limit": {
+            "enabled": true,            // 是否启用限流
+            "max_requests": 200,        // 时间窗口内最大请求数
+            "window_seconds": 60,       // 时间窗口（秒）
+            "ban_seconds": 300,         // 触发限流后封禁时长
+            "whitelist": ["127.0.0.1", "::1", "0.0.0.0"]  // IP 白名单不限流
+        },
+        // Token 绑定校验
+        "token_binding": {
+            "check_ip": false,          // 是否校验 Token 与 IP 绑定
+            "check_ua": true            // 是否校验 Token 与浏览器标识绑定
+        },
+        // 接口签名验证（微服务/网关调用时用）
+        "sign_verify": {
+            "enabled": true,            // 是否启用签名校验
+            "timestamp_tolerance": 300,  // 时间戳允许误差（秒）
+            "apps": [                   // 接入应用列表
+                {
+                    "app_id": "ruoyi-app",          // 应用 ID
+                    "secret": "qnNLPXUDalDc0K33VfAEU5n8lIdegEXbcNlIWHRASg91aCJ8BKdtEkxMOvJaJS6d"  // 应用密钥
+                }
+            ]
+        },
+        // XSS 与 SQL 注入过滤
+        "xss_filter": {
+            "enabled": true,            // 是否启用 XSS 过滤
+            "log_sql_injection": true   // 是否记录疑似 SQL 注入行为
+        }
+    },
+    // 显存缓存（GPU 加速缓存）
+    "vram": {
+        "enabled": true,                // 是否启用 GPU 显存缓存
+        "comment": "GPU VRAM cache tier (Redis > VRAM > RAM). Set enabled=false to skip CUDA detection."
+    },
+    // Vault 敏感配置加密存储（数据库密码、支付密钥等）
+    "vault": {
+        "enabled": true,                        // 是否启用 Vault
+        "exe_path": "L:\\net\\c+++\\ruoyi-cpp\\vault-main\\vault-with-ui.exe",  // Vault 程序路径
+        "config_file": "L:\\net\\c+++\\ruoyi-cpp\\vault-main\\vault-postgresql-simple.hcl",  // 配置文件
+        "addr": "http://127.0.0.1:8200",        // Vault 访问地址
+        "token": "",                             // Vault 访问令牌
+        "unseal_key": "",                        // 解封密钥
+        "secret_path": "secret/ruoyi-cpp",       // 密钥存储路径
+        "auto_start": true,                      // 是否随服务自动启动
+        "start_timeout": 60,                     // 启动超时时间
+        "psql_exe": "H:\\msys64\\msys64\\mingw64\\bin\\psql.exe"  // PostgreSQL 客户端路径
+    },
+    // 设备绑定（机器码授权）
+    "device_binding": {
+        "enabled": false,                       // 是否启用设备绑定
+        "local_key_file": "device_key.pem",     // 本地密钥文件
+        "vault_secret_path": "secret/ruoyi-cpp",// Vault 中存储设备密钥的路径
+        "vault_key_field": "device_private_key" // Vault 中密钥字段名
+    },
+    // 内置前端托管（直接托管 Vue 打包后的 dist）
+    "frontend": {
+        "enabled": true,                // 是否启用内置前端托管
+        "dist_path": "./web",           // 前端 dist 目录
+        "spa_mode": true,               // SPA 单页应用模式（刷新自动指向 index.html）
+        "api_prefix": "/prod-api",      // 前端接口前缀，需与前端 .env.production 一致
+        "cache_seconds": 3600           // 静态文件缓存时间（秒）
+    }
+}
