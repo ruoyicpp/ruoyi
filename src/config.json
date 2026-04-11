@@ -193,7 +193,7 @@
         "enabled": true,                // 是否启用内置前端托管
         "dist_path": "./web",           // 前端 dist 目录
         "spa_mode": true,               // SPA 单页应用模式（刷新自动指向 index.html）
-        "api_prefix": "/prod-api",      // 前端接口前缀，需与前端 .env 一致
+        "api_prefix": "/prod-api",      // 前端接口前缀，需与前端 .env.production 一致
         "cache_seconds": 3600           // 静态文件缓存时间（秒）
     }
 }
