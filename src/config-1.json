@@ -1,0 +1,173 @@
+{
+    "listeners": [
+        {
+            "address": "0.0.0.0",
+            "port": 18080,
+            "https": false
+        }
+    ],
+    "ui": {
+        "animated_banner": true
+    },
+    "app": {
+        "threads_num": 4,
+        "enable_session": false,
+        "session_timeout": 0,
+        "document_root": "./",
+        "upload_path": "./upload",
+        "enable_server_header": false,
+        "enable_date_header": true,
+        "reuse_port": false,
+        "log": {
+            "log_path": "./logs",
+            "logfile_base_name": "ruoyi",
+            "log_size_limit": 104857600,
+            "log_keep_files": 5,
+            "log_level": "DEBUG"
+        }
+    },
+    "database": {
+        "host": "127.0.0.1",
+        "port": 5432,
+        "dbname": "ruoyi-pro",
+        "user": "postgres",
+        "passwd": ""
+    },
+    "sqlite": {
+        "enabled": true,
+        "path": ""
+    },
+    "ruoyi": {
+        "name": "RuoYi-Cpp",
+        "version": "1.0.0",
+        "demo_enabled": false,
+        "profile": "./upload",
+        "address_enabled": false
+    },
+    "jwt": {
+        "secret": "Z$7H5g#&&#uxzv6DyVxS%aJ%P4q*G$7uwM#Z",
+        "issuer": "ruoyi.cpp.issuer",
+        "audience": "ruoyi.cpp.audience",
+        "expire_minutes": 30,
+        "jwt_expire_days": 7
+    },
+    "user": {
+        "max_retry_count": 5,
+        "lock_time_minutes": 15,
+        "password_min_length": 5,
+        "password_max_length": 20,
+        "username_min_length": 2,
+        "username_max_length": 20
+    },
+    "captcha": {
+        "enabled": true,
+        "expire_seconds": 120
+    },
+    "redis": {
+        "enabled": true,
+        "host": "127.0.0.1",
+        "port": 6379,
+        "password": "",
+        "db": 0,
+        "key_prefix": ""
+    },
+    "nginx": {
+        "enabled": true,
+        "port": 18081,
+        "exe_path": "nginx/nginx.exe",
+        "prefix": "nginx/"
+    },
+    "koboldcpp": {
+        "enabled": true,
+        "launch_cmd": "",
+        "python": "python",
+        "work_dir": "L:/net/c+++/WEb/koboldcpp-concedo",
+        "script": "koboldcpp.py",
+        "model_path": "L:/net/c+++/WEb/models/qwen2.5-0.5b-instruct-q4_0.gguf",
+        "whisper_model": "L:/net/c+++/WEb/models/ggml-base.bin",
+        "port": 5001,
+        "threads": 4,
+        "context_size": 2048,
+        "blas_batch": 512,
+        "use_gpu": true,
+        "gpu_layers": 99,
+        "show_window": false
+    },
+    "upload": {
+        "max_file_mb": 10,
+        "max_avatar_mb": 2
+    },
+    "cors": {
+        "allow_origins": [
+            "http://localhost:18081",
+            "http://localhost:20206",
+            "http://localhost:3000"
+        ],
+        "allow_methods": ["GET","POST","PUT","DELETE","OPTIONS"],
+        "allow_headers": ["Authorization","Content-Type","X-App-Id","X-Challenge-Token","X-Requested-With"],
+        "expose_headers": ["access-token","x-access-token"],
+        "allow_credentials": true
+    },
+    "security": {
+        "hardware_bind": {
+            "admin_unlock_key": "RuoYi@Unlock#2026!ChangeMe"
+        },
+        "license": {
+            "expiry_check": false
+        },
+        "rate_limit": {
+            "enabled": true,
+            "max_requests": 200,
+            "window_seconds": 60,
+            "ban_seconds": 300,
+            "whitelist": ["127.0.0.1", "::1", "0.0.0.0"]
+        },
+        "token_binding": {
+            "check_ip": false,
+            "check_ua": true
+        },
+        "sign_verify": {
+            "enabled": true,
+            "timestamp_tolerance": 300,
+            "apps": [
+                {
+                    "app_id": "ruoyi-app",
+                    "secret": "qnNLPXUDalDc0K33VfAEU5n8lIdegEXbcNlIWHRASg91aCJ8BKdtEkxMOvJaJS6d"
+                }
+            ]
+        },
+        "xss_filter": {
+            "enabled": true,
+            "log_sql_injection": true
+        }
+    },
+    "vram": {
+        "enabled": true,
+        "comment": "GPU VRAM cache tier (Redis > VRAM > RAM). Set enabled=false to skip CUDA detection."
+    },
+    "vault": {
+        "enabled": true,
+        "exe_path": "L:\\net\\c+++\\ruoyi-cpp\\vault-main\\vault-with-ui.exe",
+        "config_file": "L:\\net\\c+++\\ruoyi-cpp\\vault-main\\vault-postgresql-simple.hcl",
+        "addr": "http://127.0.0.1:8200",
+        "token": "",
+        "unseal_key": "",
+        "secret_path": "secret/ruoyi-cpp",
+        "auto_start": true,
+        "start_timeout": 60,
+        "psql_exe": "H:\\msys64\\msys64\\mingw64\\bin\\psql.exe"
+    },
+    "device_binding": {
+        "enabled": false,
+        "local_key_file": "device_key.pem",
+        "vault_secret_path": "secret/ruoyi-cpp",
+        "vault_key_field": "device_private_key"
+    },
+    "frontend": {
+        "enabled": true,
+        "dist_path": "./web",
+        "spa_mode": true,
+        "api_prefix": "/prod-api",
+        "cache_seconds": 3600
+    }
+}
