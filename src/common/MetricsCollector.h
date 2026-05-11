@@ -3,6 +3,7 @@
 #include <json/json.h>
 #include <atomic>
 #include <chrono>
+#include <thread>
 #include <sstream>
 #include <iomanip>
 #include <array>
@@ -252,6 +253,31 @@ struct MetricsCollector {
                 }
                 Json::Value r = AjaxResult::success();
                 cb(drogon::HttpResponse::newHttpJsonResponse(r));
+            }, {drogon::Post});
+
+        // POST /actuator/shutdown — 仅 loopback 可触发的优雅停机入口
+        // 返回 200 后异步调用 drogon::app().quit()，确保响应能完整发出
+        // 主要用途：自动化测试 / 运维脚本（替代 SIGINT，规避 Windows console 信号难题）
+        drogon::app().registerHandler("/actuator/shutdown",
+            [](const drogon::HttpRequestPtr& req,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                auto ip = req->getPeerAddr().toIp();
+                if (ip != "127.0.0.1" && ip != "::1" && ip != "localhost") {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k403Forbidden);
+                    resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                    resp->setBody(R"({"code":403,"msg":"loopback only"})");
+                    cb(resp);
+                    return;
+                }
+                Json::Value r = AjaxResult::success();
+                r["msg"] = "shutdown initiated";
+                cb(drogon::HttpResponse::newHttpJsonResponse(r));
+                // 异步 200ms 后退出，给响应留排空时间
+                std::thread([]{
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    drogon::app().quit();
+                }).detach();
             }, {drogon::Post});
     }
 };
