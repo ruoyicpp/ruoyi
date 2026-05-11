@@ -1,0 +1,39 @@
+# ── 构建产物 ─────────────────────────────────────────────────────────────────
+build/
+build-*/
+out/
+.vs/
+.vscode/
+*.exe
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.pdb
+
+# ── 第三方大体积源码（用 scripts/download_sqlite3mc.ps1 按需下载，不入库）─────
+src/third_party/sqlite3mc/sqlite3mc_amalgamation.c
+src/third_party/sqlite3mc/sqlite3mc_amalgamation.h
+src/third_party/sqlite3mc/_extracted/
+src/third_party/sqlite3mc/*.zip
+
+# ── 运行时数据 / 日志 / 测试残留 ─────────────────────────────────────────────
+logs/
+*.log
+upload/
+ruoyi.db
+ruoyi.db-*
+ruoyi.db.enc
+*.db-wal
+*.db-shm
+
+# ── 临时测试目录 ────────────────────────────────────────────────────────────
+test-cipher/
+_selftest_*
+
+# ── 系统 / IDE ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*~
+*.swp
