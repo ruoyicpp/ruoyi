@@ -73,6 +73,8 @@
 #include "system/controllers/SysDictCtrl.h"
 #include "system/controllers/SysPostCtrl.h"
 #include "system/controllers/SysNoticeCtrl.h"
+#include "system/controllers/ApiKeyCtrl.h"
+#include "system/controllers/NotifyCtrl.h"
 #include "system/controllers/SysEmailConfigCtrl.h"
 #include "system/controllers/SysSslConfigCtrl.h"
 #include "system/controllers/SysTotpCtrl.h"
@@ -91,6 +93,7 @@
 #include "monitor/controllers/CacheCtrl.h"
 #include "monitor/controllers/DruidCtrl.h"
 #include "monitor/controllers/SysIpCtrl.h"
+#include "monitor/controllers/SysRestartCtrl.h"
 
 // ── Common 控制器 ────────────────────────────────────────────────
 #include "common/controllers/CommonCtrl.h"

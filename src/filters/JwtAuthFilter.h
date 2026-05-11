@@ -8,6 +8,7 @@
 #include "../common/SecurityUtils.h"
 #include "../common/AjaxResult.h"
 #include "../common/UaUtils.h"
+#include "../common/ApiKeyService.h"
 #include "../system/services/TokenService.h"
 
 // ── 防滥用配置（启动时从 config.json 加载一次）──────────────────────────────
@@ -75,6 +76,27 @@ public:
         // 2. Token 提取
         auto token = SecurityUtils::getToken(req);
         if (token.empty()) {
+            // ── f16 API Key fallback：X-API-Key / ?apiKey= ──────────────
+            std::string apiKey = req->getHeader("X-API-Key");
+            if (apiKey.empty()) apiKey = req->getParameter("apiKey");
+            if (!apiKey.empty()) {
+                std::string err;
+                auto u = ApiKeyService::instance().verifyKey(apiKey, &err);
+                if (!u) {
+                    LOG_WARN << "[ApiKey] verify failed: " << err << " path=" << req->path();
+                    mcb(drogon::HttpResponse::newHttpJsonResponse(
+                        AjaxResult::error(401, err.empty() ? "API Key 无效" : err)));
+                    return;
+                }
+                // 注入虚拟登录用户；ApiKey 不做 IP/UA 绑定（设计上是无状态访问）
+                req->getAttributes()->insert("userId",   u->userId);
+                req->getAttributes()->insert("deptId",   u->deptId);
+                req->getAttributes()->insert("userName", u->userName);
+                req->getAttributes()->insert("uuid",     u->token);
+                req->getAttributes()->insert("loginUser", *u);
+                nextCb(std::move(mcb));
+                return;
+            }
             mcb(drogon::HttpResponse::newHttpJsonResponse(
                 AjaxResult::error(401, "请求未携带token，无法访问系统资源")));
             return;

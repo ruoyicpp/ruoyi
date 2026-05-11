@@ -235,8 +235,69 @@ std::vector<std::string> DatabaseInit::getCreateTableSqls() {
             status         INT          NOT NULL DEFAULT 0,
             error_msg      VARCHAR(2000)NOT NULL DEFAULT '',
             oper_time      TIMESTAMP,
-            cost_time      BIGINT       NOT NULL DEFAULT 0
+            cost_time      BIGINT       NOT NULL DEFAULT 0,
+            before_data    TEXT         NOT NULL DEFAULT '',
+            after_data     TEXT         NOT NULL DEFAULT ''
         ))",
+        // 旧库无损迁移：补 before_data / after_data 列（PG only；SQLite 直接重建表得到新列）
+        R"(DO $$ BEGIN
+            ALTER TABLE sys_oper_log ADD COLUMN IF NOT EXISTS before_data TEXT NOT NULL DEFAULT '';
+            ALTER TABLE sys_oper_log ADD COLUMN IF NOT EXISTS after_data  TEXT NOT NULL DEFAULT '';
+        EXCEPTION WHEN others THEN NULL; END $$)",
+
+        // -------------------------------------------------------
+        // sys_apikey API 密钥管理表（f16）
+        // - api_key: 48 位随机字符（仅生成时返回，DB 存储 sha256(key) 防泄漏）
+        // - user_id: 该 key 关联的虚拟登录用户（继承其权限）
+        // - 鉴权方式：HTTP 请求头 X-API-Key 或 ?apiKey= 查询参数
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_apikey (
+            id            BIGSERIAL    PRIMARY KEY,
+            name          VARCHAR(64)  NOT NULL DEFAULT '',
+            key_hash      VARCHAR(64)  NOT NULL,
+            key_prefix    VARCHAR(12)  NOT NULL DEFAULT '',
+            user_id       BIGINT       NOT NULL DEFAULT 0,
+            expire_time   TIMESTAMP,
+            enabled       SMALLINT     NOT NULL DEFAULT 1,
+            last_used_at  TIMESTAMP,
+            create_by     VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            remark        VARCHAR(255) NOT NULL DEFAULT ''
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_sys_apikey_hash ON sys_apikey(key_hash))",
+        R"(CREATE INDEX IF NOT EXISTS idx_sys_apikey_user_id ON sys_apikey(user_id))",
+
+        // -------------------------------------------------------
+        // sys_notify_channel 通知渠道配置（f15）
+        // - channel_type: 'dingtalk' | 'feishu' | 'wxwork' | 'webhook'
+        // - webhook_url + secret 用于 HMAC-SHA256 签名
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_notify_channel (
+            id            BIGSERIAL    PRIMARY KEY,
+            name          VARCHAR(64)  NOT NULL DEFAULT '',
+            channel_type  VARCHAR(20)  NOT NULL DEFAULT 'webhook',
+            webhook_url   VARCHAR(512) NOT NULL DEFAULT '',
+            secret        VARCHAR(255) NOT NULL DEFAULT '',
+            enabled       SMALLINT     NOT NULL DEFAULT 1,
+            create_by     VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            remark        VARCHAR(255) NOT NULL DEFAULT ''
+        ))",
+
+        // -------------------------------------------------------
+        // sys_message 站内消息收件箱（f15）
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_message (
+            id            BIGSERIAL    PRIMARY KEY,
+            user_id       BIGINT       NOT NULL DEFAULT 0,
+            title         VARCHAR(128) NOT NULL DEFAULT '',
+            content       TEXT         NOT NULL DEFAULT '',
+            level         VARCHAR(10)  NOT NULL DEFAULT 'info',
+            is_read       SMALLINT     NOT NULL DEFAULT 0,
+            create_time   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            read_time     TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_sys_message_user ON sys_message(user_id, is_read, create_time DESC))",
 
         // -------------------------------------------------------
         // sys_notice 通知公告表

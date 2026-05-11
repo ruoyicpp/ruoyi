@@ -24,13 +24,14 @@ enum class BusinessType : int {
     CLEAN   = 9,
 };
 
-// 操作日志工具（对应 C# [Log] AOP 属性）
+// 操作日志工具（对应 [Log] AOP 属性）
 // write() 立即返回，DB 写入在后台单线程队列中异步执行
 namespace OperLogUtils {
 
-    // ── 日志条目（纯数据，不持有 HttpRequest 引用）──────────────────────────
+    // ── 日志条目（纯数据，不持有 HttpRequest 引用）──────────────────────
     struct LogEntry {
         std::string title, requestMethod, operName, url, ip, location, param, result, errorMsg;
+        std::string beforeData, afterData;       // f17 审计增强：变更前/后快照
         int businessType = 0;
         int status       = 0;
         long long costTime = 0;
@@ -67,8 +68,9 @@ namespace OperLogUtils {
                     DatabaseService::instance().execParams(
                         "INSERT INTO sys_oper_log"
                         "(title,business_type,method,request_method,operator_type,oper_name,dept_name,"
-                        " oper_url,oper_ip,oper_location,oper_param,json_result,status,error_msg,oper_time,cost_time) "
-                        "VALUES($1,$2,$3,$4,0,$5,'',$6,$7,$8,$9,$10,$11,$12,NOW(),$13)",
+                        " oper_url,oper_ip,oper_location,oper_param,json_result,status,error_msg,oper_time,cost_time,"
+                        " before_data,after_data) "
+                        "VALUES($1,$2,$3,$4,0,$5,'',$6,$7,$8,$9,$10,$11,$12,NOW(),$13,$14,$15)",
                         {e.title,
                          std::to_string(e.businessType),
                          e.title,
@@ -81,7 +83,9 @@ namespace OperLogUtils {
                          e.result,
                          std::to_string(e.status),
                          e.errorMsg,
-                         std::to_string(e.costTime)});
+                         std::to_string(e.costTime),
+                         e.beforeData,
+                         e.afterData});
                 } catch (...) {}
             }
         }
@@ -117,7 +121,7 @@ namespace OperLogUtils {
             std::chrono::system_clock::now().time_since_epoch()).count();
     }
 
-    // ── write()：提取数据后立即返回，DB 写由后台线程完成 ───────────────────
+    // ── write()：提取数据后立即返回，DB 写由后台线程完成 ───────────
     inline void write(const drogon::HttpRequestPtr &req,
                       const std::string &title,
                       BusinessType businessType,
@@ -142,6 +146,63 @@ namespace OperLogUtils {
         AsyncQueue::instance().push(std::move(e));
     }
 
+    //  审计增强：依靠 diffJson() 计算的 before/after 只记变更字段 ────
+    inline void writeAudit(const drogon::HttpRequestPtr &req,
+                           const std::string &title,
+                           BusinessType businessType,
+                           const std::string &beforeData,
+                           const std::string &afterData,
+                           long long costTime = 0) {
+        LogEntry e;
+        e.title         = title;
+        e.businessType  = static_cast<int>(businessType);
+        e.requestMethod = req->getMethodString();
+        e.operName      = PermissionChecker::getUserName(req);
+        e.url           = std::string(req->getPath());
+        e.ip            = IpUtils::getIpAddr(req);
+        e.location      = IpUtils::getIpLocation(e.ip);
+        e.param         = getOperParam(req);
+        e.beforeData    = truncate(beforeData, 4000);
+        e.afterData     = truncate(afterData,  4000);
+        e.costTime      = costTime;
+        AsyncQueue::instance().push(std::move(e));
+    }
+
+    // ── diffJson()：计算两个 JSON 对象的差异，返回 {field: [old, new]} 格式 ──
+    // - 只记录 "发生变化" 的字段（减少价值低的全量复制）
+    // - 新增/删除字段也会被记录。顺序不稳定，仅供审计。
+    inline std::string diffJson(const Json::Value &before, const Json::Value &after) {
+        Json::Value diff(Json::objectValue);
+        // 扫 before 中有但 after 改动/删除的字段
+        if (before.isObject()) {
+            for (const auto &k : before.getMemberNames()) {
+                if (!after.isMember(k)) {
+                    Json::Value pair(Json::arrayValue);
+                    pair.append(before[k]); pair.append(Json::nullValue);
+                    diff[k] = pair;
+                } else if (before[k] != after[k]) {
+                    Json::Value pair(Json::arrayValue);
+                    pair.append(before[k]); pair.append(after[k]);
+                    diff[k] = pair;
+                }
+            }
+        }
+        // 扫 after 中新增的字段
+        if (after.isObject()) {
+            for (const auto &k : after.getMemberNames()) {
+                if (!before.isMember(k)) {
+                    Json::Value pair(Json::arrayValue);
+                    pair.append(Json::nullValue); pair.append(after[k]);
+                    diff[k] = pair;
+                }
+            }
+        }
+        if (diff.empty()) return "";
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        return Json::writeString(wb, diff);
+    }
+
 }
 
 // 快捷宏，在控制器函数体内使用
@@ -158,4 +219,14 @@ namespace OperLogUtils {
 
 #define LOG_OPER_PARAM_TIMED(req, title, btype, param, startMs) \
     OperLogUtils::write((req), (title), (btype), (param), 0, "", "", \
+        OperLogUtils::nowMs() - (startMs))
+
+// ── f17 审计宏：传入 before/after 两个 Json::Value，自动 diff 后入库 ─────
+#define LOG_AUDIT(req, title, btype, before, after) \
+    OperLogUtils::writeAudit((req), (title), (btype), \
+        OperLogUtils::diffJson((before), (after)), "")
+
+#define LOG_AUDIT_TIMED(req, title, btype, before, after, startMs) \
+    OperLogUtils::writeAudit((req), (title), (btype), \
+        OperLogUtils::diffJson((before), (after)), "", \
         OperLogUtils::nowMs() - (startMs))

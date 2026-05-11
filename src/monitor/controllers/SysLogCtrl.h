@@ -21,7 +21,7 @@ public:
         CHECK_PERM(req, cb, "monitor:operlog:list");
         auto page = PageParam::fromRequest(req);
         auto& db = DatabaseService::instance();
-        std::string sql = "SELECT oper_id,title,business_type,method,request_method,operator_type,oper_name,dept_name,oper_url,oper_ip,oper_location,oper_param,json_result,status,error_msg,oper_time,cost_time FROM sys_oper_log WHERE 1=1";
+        std::string sql = "SELECT oper_id,title,business_type,method,request_method,operator_type,oper_name,dept_name,oper_url,oper_ip,oper_location,oper_param,json_result,status,error_msg,oper_time,cost_time,before_data,after_data FROM sys_oper_log WHERE 1=1";
         std::vector<std::string> params;
         int idx = 1;
         auto title     = req->getParameter("title");
@@ -65,6 +65,8 @@ public:
             j["errorMsg"]      = res.str(i, 14);
             j["operTime"]      = fmtTs(res.str(i, 15));
             j["costTime"]      = (Json::Int64)res.longVal(i, 16);
+            j["beforeData"]    = res.str(i, 17);   // f17 审计：变更前 JSON 快照
+            j["afterData"]     = res.str(i, 18);   // f17 审计：变更后 JSON 快照（或 diff）
             rows.append(j);
         }
         PageResult pr; pr.total = total; pr.rows = rows;

@@ -9,6 +9,7 @@
 #include "../../common/SecurityUtils.h"
 #include "../../common/IpUtils.h"
 #include "../../common/UaUtils.h"
+#include "../../common/ApiKeyService.h"
 #include "../../services/DatabaseService.h"
 
 // 多终端策略：是否在新登录时踢掉同 userId 的其它在线会话
@@ -127,15 +128,22 @@ public:
     }
 
     // 更新缓存中的登录用户
+    // 鉴权优先级：JWT (Authorization: Bearer ...) > X-API-Key header > ?apiKey= query
     std::optional<LoginUser> getLoginUser(const drogon::HttpRequestPtr &req) {
         auto token = SecurityUtils::getToken(req);
-        if (token.empty()) return std::nullopt;
-        try {
-            auto uuid = JwtUtils::parseUuid(token);
-            return TokenCache::instance().get(SecurityUtils::getTokenKey(uuid));
-        } catch (...) {
-            return std::nullopt;
+        if (!token.empty()) {
+            try {
+                auto uuid = JwtUtils::parseUuid(token);
+                return TokenCache::instance().get(SecurityUtils::getTokenKey(uuid));
+            } catch (...) {}
         }
+        // ── f16 API Key 鉴权 fallback ─────────────────────────────────────
+        std::string apiKey = req->getHeader("X-API-Key");
+        if (apiKey.empty()) apiKey = req->getParameter("apiKey");
+        if (!apiKey.empty()) {
+            return ApiKeyService::instance().verifyKey(apiKey);
+        }
+        return std::nullopt;
     }
 
 private:
