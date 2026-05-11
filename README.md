@@ -595,6 +595,15 @@ location /ws/ {
 - **消息通知中心**（f15）：钉钉 / 飞书 / 企业微信 Webhook（HMAC-SHA256 签名）+ 站内消息，`/system/notify/channel/**` + `/system/message/**`
 - **API Key 管理**（f16）：`/system/apikey/**` CRUD，48 位随机 Key，`X-API-Key` 请求头或 `?apiKey=` 查询参数鉴权
 - **操作审计增强**（f17）：`sys_oper_log` 新增 `before_data`/`after_data` 字段，`diffJson()` 只记录变更字段，`LOG_AUDIT` / `LOG_AUDIT_TIMED` 宏
+- **SQLite 双层加密**：
+  - **页级加密**（[sqlite3mc](https://github.com/utelle/SQLite3MultipleCiphers) 集成）：磁盘文件每页 AES 加密，无明文窗口；通过 `scripts/download_sqlite3mc.ps1` 拉取 12 MB amalgamation 后启用，CMake 自动检测
+  - **文件级加密**（RYENC1 自研封装）作为兜底：AES-256-GCM + HMAC-SHA256 + Magic+Version+KDF_iter 头，仅依赖 OpenSSL；启动解密 `.enc → .db`、关闭加密回写并删明文
+  - 共用 `sqlite.encrypt_key` 极简配置或 `security.sqlite.encryption.*`（5 种密钥来源：config/env/hwid/vault/hwid+vault）
+  - 详见 [`docs/SQLITE_ENCRYPTION.md`](docs/SQLITE_ENCRYPTION.md)
+- **SQLite 加密 CLI 工具** `sqlite_cipher_tool`：encrypt / decrypt / rekey / check / selftest 子命令；用 `VACUUM INTO + sqlite3_rekey` 两段式跨 codec 拷贝（规避 sqlite3mc 默认 cipher 与 backup API 的不兼容）
+- **顶栏未读通知徽标 API**：新增 `sys_notice_read(user_id, notice_id, read_at)` 表 + `GET /system/notice/unreadCount` 返回 `{count}` + `listTop` 增加 `isRead` 字段
+- **优雅停机端点** `POST /actuator/shutdown`（仅 loopback 可触发）：200 响应后异步 `drogon::app().quit()`，避免 Windows console 信号难题，用于自动化测试 / 运维脚本
+- **可观测性 + 单元测试上 CI**：`tests/test_sqlite_file_cipher.cc` 10 用例 / 57 断言（含 HMAC 篡改/降级检测）；GitHub Actions 三平台跑测试 + 新 `sqlite3mc-fetch` job 验证下载脚本可用性（包含 SHA256 校验 + 独立 gcc 编译）
 
 ### v1.2.0
 - **OAuth2 第三方登录**：GitHub / Google / 企业微信 / 钉钉 / 飞书 / QQ，state CSRF 防护，首次自动建号，已有账号可绑定/解绑（`sys_user_oauth` 表）
