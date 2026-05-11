@@ -19,7 +19,148 @@ public:
         ADD_METHOD_TO(ApiKeyCtrl::list,   "/system/apikey/list",  drogon::Get,    "JwtAuthFilter");
         ADD_METHOD_TO(ApiKeyCtrl::update, "/system/apikey/{id}",  drogon::Put,    "JwtAuthFilter");
         ADD_METHOD_TO(ApiKeyCtrl::remove, "/system/apikey/{id}",  drogon::Delete, "JwtAuthFilter");
+        ADD_METHOD_TO(ApiKeyCtrl::page,   "/system/apikey/page",  drogon::Get);   // InnerLink iframe 内嵌 HTML
     METHOD_LIST_END
+
+    // ── GET /system/apikey/page — 自包含 HTML 管理页（无前端依赖）─────────
+    void page(const drogon::HttpRequestPtr &req,
+              std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        (void)req;
+        std::string html = R"HTML(<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>API Key 管理</title>
+<style>
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f9;color:#333;margin:0;padding:20px}
+  h1{margin:0 0 16px;font-size:20px}
+  .toolbar{margin-bottom:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input,select,button{padding:6px 12px;border-radius:4px;border:1px solid #d9d9d9;font-size:14px}
+  button{background:#1890ff;color:#fff;cursor:pointer;border:none}
+  button:hover{background:#40a9ff}
+  button.danger{background:#cf1322}button.danger:hover{background:#ff4d4f}
+  button.muted{background:#8c8c8c}
+  table{width:100%;background:#fff;border-collapse:collapse;border-radius:6px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid #f0f0f0}
+  th{background:#fafafa;font-weight:600}
+  tr:hover{background:#f9fbfd}
+  .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px}
+  .on{background:#f6ffed;color:#52c41a}.off{background:#fff1f0;color:#cf1322}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;z-index:99}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;padding:24px;border-radius:8px;width:480px;max-width:90vw}
+  .modal h2{margin:0 0 16px;font-size:18px}
+  .modal label{display:block;margin-top:12px;font-size:13px;color:#666}
+  .modal input{width:100%;box-sizing:border-box;margin-top:4px}
+  .modal .row{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
+  .keyshow{background:#fffbe6;border-left:4px solid #faad14;padding:14px;margin:12px 0;border-radius:4px;word-break:break-all;font-family:monospace}
+  .keyshow strong{color:#cf1322}
+</style></head>
+<body>
+<h1>🔑 API Key 管理</h1>
+<div class="toolbar">
+  <input id="qName" placeholder="按名称搜索" style="width:200px">
+  <button onclick="load()">查询</button>
+  <button onclick="openCreate()">+ 创建 Key</button>
+  <button class="muted" onclick="load()">刷新</button>
+</div>
+<table>
+  <thead><tr><th>ID</th><th>名称</th><th>前缀</th><th>用户ID</th><th>启用</th><th>过期</th><th>最近使用</th><th>创建人</th><th>操作</th></tr></thead>
+  <tbody id="tb"><tr><td colspan="9" style="text-align:center;padding:30px">加载中…</td></tr></tbody>
+</table>
+
+<!-- 创建弹窗 -->
+<div class="modal-bg" id="mCreate"><div class="modal">
+  <h2>创建 API Key</h2>
+  <label>名称 *<input id="fName"></label>
+  <label>绑定用户 ID *（继承其权限） <input id="fUserId" type="number"></label>
+  <label>过期时间（可选，YYYY-MM-DD HH:MM:SS）<input id="fExpire" placeholder="留空=永不过期"></label>
+  <label>备注 <input id="fRemark"></label>
+  <div class="row"><button class="muted" onclick="close_('mCreate')">取消</button><button onclick="doCreate()">创建</button></div>
+</div></div>
+
+<!-- key 显示 -->
+<div class="modal-bg" id="mKey"><div class="modal">
+  <h2>⚠️ 仅本次显示</h2>
+  <div class="keyshow"><strong>请立即复制保存：</strong><br><span id="newKey"></span></div>
+  <p style="font-size:13px;color:#666">关闭后将无法再次查看此 Key（DB 仅存哈希）。</p>
+  <div class="row"><button onclick="copyKey()">复制</button><button onclick="close_('mKey')">已保存</button></div>
+</div></div>
+
+<script>
+let token = '';
+try {
+  const u = new URL(location.href);
+  token = u.searchParams.get('token') || '';
+  if (!token && parent !== window) { try { token = parent.sessionStorage.getItem('Admin-Token') || ''; } catch(e){} }
+  if (!token) token = sessionStorage.getItem('Admin-Token') || '';
+} catch(e){}
+const H = { 'Authorization': 'Bearer '+token, 'Content-Type': 'application/json' };
+const API = location.pathname.replace(/\/[^/]*$/, '');   // 去掉末尾 /page
+
+async function load() {
+  const name = document.getElementById('qName').value;
+  const r = await fetch(API + '/list?pageNum=1&pageSize=50&name=' + encodeURIComponent(name), { headers: H });
+  const d = await r.json();
+  const tb = document.getElementById('tb');
+  if (d.code !== 200 || !d.rows) { tb.innerHTML = '<tr><td colspan="9">'+(d.msg||'加载失败')+'</td></tr>'; return; }
+  if (d.rows.length === 0) { tb.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px">无数据</td></tr>'; return; }
+  tb.innerHTML = d.rows.map(it => `<tr>
+    <td>${it.id}</td><td>${esc(it.name)}</td>
+    <td><code>${esc(it.keyPrefix)}***</code></td>
+    <td>${it.userId}</td>
+    <td><span class="pill ${it.enabled?'on':'off'}">${it.enabled?'启用':'禁用'}</span></td>
+    <td>${it.expireTime||'永不过期'}</td>
+    <td>${it.lastUsedAt||'-'}</td>
+    <td>${esc(it.createBy)}</td>
+    <td>
+      <button class="muted" onclick="toggle(${it.id}, '${esc(it.name)}', ${it.enabled?0:1})">${it.enabled?'禁用':'启用'}</button>
+      <button class="danger" onclick="del(${it.id})">删</button>
+    </td></tr>`).join('');
+}
+
+function openCreate(){ document.getElementById('mCreate').classList.add('show'); }
+function close_(id){ document.getElementById(id).classList.remove('show'); }
+function esc(s){ return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function doCreate() {
+  const body = {
+    name: document.getElementById('fName').value.trim(),
+    userId: parseInt(document.getElementById('fUserId').value),
+    expireTime: document.getElementById('fExpire').value.trim(),
+    remark: document.getElementById('fRemark').value.trim()
+  };
+  if (!body.name || !body.userId) { alert('名称和用户ID必填'); return; }
+  const r = await fetch(API, { method:'POST', headers:H, body:JSON.stringify(body) });
+  const d = await r.json();
+  if (d.code !== 200) { alert(d.msg||'失败'); return; }
+  close_('mCreate');
+  document.getElementById('newKey').textContent = d.data.key;
+  document.getElementById('mKey').classList.add('show');
+  load();
+}
+
+function copyKey() { navigator.clipboard.writeText(document.getElementById('newKey').textContent); }
+
+async function toggle(id, name, enabled) {
+  if (!confirm((enabled?'启用':'禁用')+' Key "'+name+'"？')) return;
+  const r = await fetch(API + '/' + id, { method:'PUT', headers:H, body: JSON.stringify({enabled, name}) });
+  const d = await r.json(); if (d.code !== 200) alert(d.msg||'失败'); else load();
+}
+
+async function del(id) {
+  if (!confirm('删除此 Key？关联的脚本/CI 将无法继续访问')) return;
+  const r = await fetch(API + '/' + id, { method:'DELETE', headers:H });
+  const d = await r.json(); if (d.code !== 200) alert(d.msg||'失败'); else load();
+}
+
+if (!token) document.getElementById('tb').innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:#cf1322">未获取到 Token，请通过菜单打开或加 ?token=xxx</td></tr>';
+else load();
+</script>
+</body></html>)HTML";
+        auto resp = drogon::HttpResponse::newHttpResponse();
+        resp->setContentTypeCode(drogon::CT_TEXT_HTML);
+        resp->setBody(html);
+        cb(resp);
+    }
 
     // ── POST /system/apikey ───────────────────────────────────────
     void create(const drogon::HttpRequestPtr &req,

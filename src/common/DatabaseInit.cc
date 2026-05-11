@@ -1029,6 +1029,27 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         R"(UPDATE sys_menu SET menu_name='日志查看',parent_id=0,order_num=9,path='http://localhost:3000/dev-api/monitor/logfile/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='monitor:logfile:view',icon='log' WHERE menu_id=120)",
 
         // =====================================================================
+        // v1.2.1 新增：3 个内嵌管理页（重启服务 / API Key / 通知渠道）
+        // 全部走 /dev-api → 后端 HTML，与父窗口同源以读取 sessionStorage.Admin-Token
+        // =====================================================================
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (130,'重启服务',0,10,'http://localhost:3000/dev-api/monitor/restart/page','InnerLink','','0','0','C','0','0','monitor:restart:view','refresh','admin',NOW(),'优雅停机管理页（依赖外部 watchdog 自动拉起）') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(UPDATE sys_menu SET menu_name='重启服务',parent_id=0,order_num=10,path='http://localhost:3000/dev-api/monitor/restart/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='monitor:restart:view',icon='refresh' WHERE menu_id=130)",
+
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (131,'API密钥',0,11,'http://localhost:3000/dev-api/system/apikey/page','InnerLink','','0','0','C','0','0','system:apikey:list','key','admin',NOW(),'API Key 管理（脚本/CI 鉴权）') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(UPDATE sys_menu SET menu_name='API密钥',parent_id=0,order_num=11,path='http://localhost:3000/dev-api/system/apikey/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='system:apikey:list',icon='key' WHERE menu_id=131)",
+
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (132,'通知渠道',0,12,'http://localhost:3000/dev-api/system/notify/channel/page','InnerLink','','0','0','C','0','0','system:notify:list','message','admin',NOW(),'钉钉/飞书/企业微信 webhook 渠道配置') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(UPDATE sys_menu SET menu_name='通知渠道',parent_id=0,order_num=12,path='http://localhost:3000/dev-api/system/notify/channel/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='system:notify:list',icon='message' WHERE menu_id=132)",
+
+        // 给 admin 角色（role_id=1）授权这 3 个新菜单（幂等，避免重复）
+        R"(INSERT INTO sys_role_menu(role_id,menu_id) VALUES (1,130) ON CONFLICT DO NOTHING)",
+        R"(INSERT INTO sys_role_menu(role_id,menu_id) VALUES (1,131) ON CONFLICT DO NOTHING)",
+        R"(INSERT INTO sys_role_menu(role_id,menu_id) VALUES (1,132) ON CONFLICT DO NOTHING)",
+
+        // =====================================================================
         // v1.2 新增：TOTP 两步验证按钮（挂在个人中心下）
         // =====================================================================
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES

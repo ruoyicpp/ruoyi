@@ -23,7 +23,173 @@ public:
         ADD_METHOD_TO(NotifyChannelCtrl::remove, "/system/notify/channel/{id}",       drogon::Delete, "JwtAuthFilter");
         ADD_METHOD_TO(NotifyChannelCtrl::test,   "/system/notify/channel/{id}/test",  drogon::Post,   "JwtAuthFilter");
         ADD_METHOD_TO(NotifyChannelCtrl::send,   "/system/notify/send",               drogon::Post,   "JwtAuthFilter");
+        ADD_METHOD_TO(NotifyChannelCtrl::page,   "/system/notify/channel/page",       drogon::Get);   // InnerLink HTML
     METHOD_LIST_END
+
+    // ── GET /system/notify/channel/page — 渠道管理内嵌 HTML ──────────────
+    void page(const drogon::HttpRequestPtr &req,
+              std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        (void)req;
+        std::string html = R"HTML(<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>通知渠道</title>
+<style>
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f9;color:#333;margin:0;padding:20px}
+  h1{margin:0 0 16px;font-size:20px}
+  .toolbar{margin-bottom:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input,select,button,textarea{padding:6px 12px;border-radius:4px;border:1px solid #d9d9d9;font-size:14px}
+  button{background:#1890ff;color:#fff;cursor:pointer;border:none}
+  button:hover{background:#40a9ff}
+  button.danger{background:#cf1322}button.danger:hover{background:#ff4d4f}
+  button.muted{background:#8c8c8c}
+  button.test{background:#52c41a}button.test:hover{background:#73d13d}
+  table{width:100%;background:#fff;border-collapse:collapse;border-radius:6px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid #f0f0f0}
+  th{background:#fafafa;font-weight:600}
+  .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px}
+  .on{background:#f6ffed;color:#52c41a}.off{background:#fff1f0;color:#cf1322}
+  .badge{font-size:11px;padding:2px 6px;border-radius:3px;background:#e6f4ff;color:#1890ff}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;z-index:99}
+  .modal-bg.show{display:flex}
+  .modal{background:#fff;padding:24px;border-radius:8px;width:520px;max-width:90vw}
+  .modal h2{margin:0 0 16px;font-size:18px}
+  .modal label{display:block;margin-top:12px;font-size:13px;color:#666}
+  .modal input,.modal select,.modal textarea{width:100%;box-sizing:border-box;margin-top:4px}
+  .modal textarea{font-family:monospace;height:60px}
+  .modal .row{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
+</style></head>
+<body>
+<h1>📢 通知渠道管理</h1>
+<div class="toolbar">
+  <input id="qName" placeholder="按名称搜索" style="width:200px">
+  <button onclick="load()">查询</button>
+  <button onclick="openEdit(null)">+ 创建渠道</button>
+</div>
+<table>
+  <thead><tr><th>ID</th><th>名称</th><th>类型</th><th>Webhook</th><th>启用</th><th>创建人</th><th>操作</th></tr></thead>
+  <tbody id="tb"><tr><td colspan="7" style="text-align:center;padding:30px">加载中…</td></tr></tbody>
+</table>
+
+<div class="modal-bg" id="mEdit"><div class="modal">
+  <h2 id="mTitle">创建渠道</h2>
+  <input id="fId" type="hidden">
+  <label>名称 *<input id="fName"></label>
+  <label>类型 *
+    <select id="fType">
+      <option value="dingtalk">dingtalk（钉钉，HMAC-SHA256 加签）</option>
+      <option value="feishu">feishu（飞书，HMAC-SHA256 加签）</option>
+      <option value="wxwork">wxwork（企业微信，URL key 即凭证）</option>
+      <option value="webhook">webhook（通用 Webhook，X-Signature 头）</option>
+    </select>
+  </label>
+  <label>Webhook URL *<input id="fUrl" placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."></label>
+  <label>Secret（加签密钥；wxwork 可留空）<input id="fSecret"></label>
+  <label>启用 <select id="fEnabled"><option value="1">是</option><option value="0">否</option></select></label>
+  <label>备注 <input id="fRemark"></label>
+  <div class="row"><button class="muted" onclick="close_('mEdit')">取消</button><button onclick="save()">保存</button></div>
+</div></div>
+
+<div class="modal-bg" id="mTest"><div class="modal">
+  <h2>测试发送</h2>
+  <label>标题 <input id="tTitle" value="RuoYi-Cpp 测试通知"></label>
+  <label>内容 <textarea id="tContent">这是一条测试消息，验证渠道签名与连通性</textarea></label>
+  <div class="row"><button class="muted" onclick="close_('mTest')">取消</button><button class="test" onclick="doTest()">发送</button></div>
+</div></div>
+
+<script>
+let token = '';
+try {
+  const u = new URL(location.href);
+  token = u.searchParams.get('token') || '';
+  if (!token && parent !== window) { try { token = parent.sessionStorage.getItem('Admin-Token') || ''; } catch(e){} }
+  if (!token) token = sessionStorage.getItem('Admin-Token') || '';
+} catch(e){}
+const H = { 'Authorization': 'Bearer '+token, 'Content-Type': 'application/json' };
+const API = location.pathname.replace(/\/[^/]*$/, '');    // 去 /page
+let testTargetId = 0;
+
+async function load() {
+  const name = document.getElementById('qName').value;
+  const r = await fetch(API + '/list?pageNum=1&pageSize=100&name=' + encodeURIComponent(name), { headers: H });
+  const d = await r.json();
+  const tb = document.getElementById('tb');
+  if (d.code !== 200 || !d.rows) { tb.innerHTML='<tr><td colspan="7">'+(d.msg||'加载失败')+'</td></tr>'; return; }
+  if (d.rows.length === 0) { tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:30px">无渠道</td></tr>'; return; }
+  tb.innerHTML = d.rows.map(it => `<tr>
+    <td>${it.id}</td><td>${esc(it.name)}</td>
+    <td><span class="badge">${it.channelType}</span></td>
+    <td><code style="font-size:12px">${esc(it.webhookUrl)}</code></td>
+    <td><span class="pill ${it.enabled?'on':'off'}">${it.enabled?'启用':'禁用'}</span></td>
+    <td>${esc(it.createBy)}</td>
+    <td>
+      <button class="test" onclick="openTest(${it.id})">测试</button>
+      <button class="muted" onclick="openEdit(${it.id}, ${JSON.stringify(it).replace(/"/g,'&quot;')})">编辑</button>
+      <button class="danger" onclick="del(${it.id})">删</button>
+    </td></tr>`).join('');
+}
+
+function esc(s){ return String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function close_(id){ document.getElementById(id).classList.remove('show'); }
+
+function openEdit(id, row) {
+  document.getElementById('mTitle').textContent = id ? '编辑渠道' : '创建渠道';
+  document.getElementById('fId').value = id || '';
+  document.getElementById('fName').value = row ? row.name : '';
+  document.getElementById('fType').value = row ? row.channelType : 'dingtalk';
+  document.getElementById('fUrl').value = '';   // 编辑时不回显（避免误改），需重新输入
+  document.getElementById('fSecret').value = '';
+  document.getElementById('fEnabled').value = row ? (row.enabled?'1':'0') : '1';
+  document.getElementById('fRemark').value = row ? (row.remark||'') : '';
+  document.getElementById('mEdit').classList.add('show');
+}
+
+async function save() {
+  const id = document.getElementById('fId').value;
+  const body = {
+    name: document.getElementById('fName').value.trim(),
+    channelType: document.getElementById('fType').value,
+    webhookUrl: document.getElementById('fUrl').value.trim(),
+    secret: document.getElementById('fSecret').value.trim(),
+    enabled: parseInt(document.getElementById('fEnabled').value),
+    remark: document.getElementById('fRemark').value.trim()
+  };
+  if (!body.name || !body.webhookUrl) { alert('名称和 webhookUrl 必填'); return; }
+  const url = id ? (API + '/' + id) : API;
+  const method = id ? 'PUT' : 'POST';
+  const r = await fetch(url, { method, headers:H, body: JSON.stringify(body) });
+  const d = await r.json();
+  if (d.code !== 200) { alert(d.msg||'失败'); return; }
+  close_('mEdit'); load();
+}
+
+function openTest(id) { testTargetId = id; document.getElementById('mTest').classList.add('show'); }
+
+async function doTest() {
+  const body = {
+    title: document.getElementById('tTitle').value,
+    content: document.getElementById('tContent').value
+  };
+  const r = await fetch(API + '/' + testTargetId + '/test', { method:'POST', headers:H, body:JSON.stringify(body) });
+  const d = await r.json();
+  alert(d.code === 200 ? '✅ ' + d.msg : '❌ ' + (d.msg||'失败'));
+  if (d.code === 200) close_('mTest');
+}
+
+async function del(id) {
+  if (!confirm('删除此渠道？业务调用 sendToChannel('+id+') 将失败')) return;
+  const r = await fetch(API + '/' + id, { method:'DELETE', headers:H });
+  const d = await r.json(); if (d.code !== 200) alert(d.msg||'失败'); else load();
+}
+
+if (!token) document.getElementById('tb').innerHTML='<tr><td colspan="7" style="text-align:center;padding:30px;color:#cf1322">未获取到 Token</td></tr>';
+else load();
+</script>
+</body></html>)HTML";
+        auto resp = drogon::HttpResponse::newHttpResponse();
+        resp->setContentTypeCode(drogon::CT_TEXT_HTML);
+        resp->setBody(html);
+        cb(resp);
+    }
 
     void create(const drogon::HttpRequestPtr &req,
                 std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
