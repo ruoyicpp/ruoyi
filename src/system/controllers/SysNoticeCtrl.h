@@ -16,8 +16,10 @@ public:
         ADD_METHOD_TO(SysNoticeCtrl::edit,    "/system/notice",         drogon::Put,    "JwtAuthFilter");
         ADD_METHOD_TO(SysNoticeCtrl::remove,  "/system/notice/{ids}",   drogon::Delete, "JwtAuthFilter");
         // 顶栏通知：标记单条 / 批量已读（沿用 sys_notice_read(user_id, notice_id, read_at)）
-        ADD_METHOD_TO(SysNoticeCtrl::markRead,    "/system/notice/markRead",    drogon::Post,   "JwtAuthFilter");
-        ADD_METHOD_TO(SysNoticeCtrl::markReadAll, "/system/notice/markReadAll", drogon::Post,   "JwtAuthFilter");
+        ADD_METHOD_TO(SysNoticeCtrl::markRead,     "/system/notice/markRead",     drogon::Post, "JwtAuthFilter");
+        ADD_METHOD_TO(SysNoticeCtrl::markReadAll,  "/system/notice/markReadAll",  drogon::Post, "JwtAuthFilter");
+        // 顶栏红色徽标：当前登录用户的未读公告数
+        ADD_METHOD_TO(SysNoticeCtrl::unreadCount,  "/system/notice/unreadCount",  drogon::Get,  "JwtAuthFilter");
     METHOD_LIST_END
 
     void list(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
@@ -57,12 +59,19 @@ public:
         RESP_JSON(cb, pr.toJson());
     }
 
-    // 前端多通知菜单，显示最新5条公告
+    // 前端多通知菜单，显示最新5条公告 + 标识当前用户已读/未读
     void listTop(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        long userId = GET_USER_ID(req);
         auto& db = DatabaseService::instance();
-        auto res = db.query(
-            "SELECT notice_id,notice_title,notice_type,status,create_by,create_time "
-            "FROM sys_notice WHERE status='0' ORDER BY notice_id DESC LIMIT 5");
+        // LEFT JOIN sys_notice_read 用 read_at IS NOT NULL 判定 isRead
+        auto res = db.queryParams(
+            "SELECT n.notice_id, n.notice_title, n.notice_type, n.status, n.create_by, n.create_time, "
+            "       CASE WHEN r.read_at IS NULL THEN 0 ELSE 1 END AS is_read "
+            "FROM sys_notice n "
+            "LEFT JOIN sys_notice_read r "
+            "       ON r.notice_id = n.notice_id AND r.user_id = $1 "
+            "WHERE n.status='0' ORDER BY n.notice_id DESC LIMIT 5",
+            {std::to_string(userId)});
         Json::Value rows(Json::arrayValue);
         if (res.ok()) for (int i = 0; i < res.rows(); ++i) {
             Json::Value j;
@@ -72,9 +81,28 @@ public:
             j["status"]      = res.str(i, 3);
             j["createBy"]    = res.str(i, 4);
             j["createTime"]  = fmtTs(res.str(i, 5));
+            j["isRead"]      = res.intVal(i, 6) == 1;
             rows.append(j);
         }
         RESP_OK(cb, rows);
+    }
+
+    // 顶栏红色徽标：当前登录用户的未读公告数
+    void unreadCount(const drogon::HttpRequestPtr &req,
+                    std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        long userId = GET_USER_ID(req);
+        if (userId <= 0) { RESP_401(cb); return; }
+        // 启用的公告中，当前用户尚未读的数量
+        auto res = DatabaseService::instance().queryParams(
+            "SELECT COUNT(*) FROM sys_notice n "
+            "LEFT JOIN sys_notice_read r "
+            "       ON r.notice_id = n.notice_id AND r.user_id = $1 "
+            "WHERE n.status='0' AND r.read_at IS NULL",
+            {std::to_string(userId)});
+        long count = (res.ok() && res.rows() > 0) ? res.longVal(0, 0) : 0;
+        Json::Value j;
+        j["count"] = (Json::Int64)count;
+        RESP_OK(cb, j);
     }
 
     void getById(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb, int id) {

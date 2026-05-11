@@ -255,6 +255,16 @@ std::vector<std::string> DatabaseInit::getCreateTableSqls() {
         ))",
 
         // -------------------------------------------------------
+        // sys_notice_read 用户-公告 已读关系表（顶栏未读徽标 + 全部已读）
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_notice_read (
+            user_id    BIGINT    NOT NULL,
+            notice_id  BIGINT    NOT NULL,
+            read_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, notice_id)
+        ))",
+
+        // -------------------------------------------------------
         // sys_job 定时任务表
         // -------------------------------------------------------
         R"(CREATE TABLE IF NOT EXISTS sys_job (
