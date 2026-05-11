@@ -22,6 +22,7 @@
 #include <libpq-fe.h>
 #include <sqlite3.h>
 #include "common/SqliteCipher.h"
+#include "common/SqliteFileCipher.h"
 
 // 全局 DB 指标钩子（避免循环依赖：DatabaseService 不直接 include MetricsCollector）
 // main.cc 启动时绑定到 MetricsCollector::onDbQuery
@@ -197,7 +198,27 @@ public:
         if (pgPool_) { pqLite_.pool_destroy(pgPool_); pgPool_ = nullptr; }
         pqLite_.unload();
         if (conn_) { PQfinish(conn_); conn_ = nullptr; }
-        if (lite_) { sqlite3_close(lite_); lite_ = nullptr; }
+        if (lite_) {
+            // 文件级加密回写：先 WAL checkpoint，再加密落盘，最后清明文
+            if (useFileCipher_ && !cipherKey_.empty()) {
+                sqlite3_wal_checkpoint_v2(lite_, nullptr,
+                                          SQLITE_CHECKPOINT_FULL, nullptr, nullptr);
+            }
+            sqlite3_close(lite_); lite_ = nullptr;
+            if (useFileCipher_ && !cipherKey_.empty()) {
+                const std::string encPath = sqlitePath_ + ".enc";
+                if (SqliteFileCipher::encryptFile(sqlitePath_, encPath, cipherKey_)) {
+                    std::error_code ec;
+                    std::filesystem::remove(sqlitePath_, ec);                      // 删明文
+                    std::filesystem::remove(sqlitePath_ + "-wal", ec);             // WAL
+                    std::filesystem::remove(sqlitePath_ + "-shm", ec);             // SHM
+                    std::cout << "[DB][FileCipher] 已加密回写 " << encPath << std::endl;
+                } else {
+                    std::cout << "[DB][FileCipher][ERR] 加密失败，保留明文以防数据丢失: "
+                              << sqlitePath_ << std::endl;
+                }
+            }
+        }
     }
 
     // --------------------------------------------------------
@@ -240,6 +261,25 @@ public:
 
     bool connectSqlite(const std::string& path = "ruoyi.db") {
         sqlitePath_ = path;
+
+        // ── 文件级加密回退路径（未编 sqlite3mc 时启用）──
+        // 若已设置 cipherKey_ + path.enc 存在 → 先解密到明文 path
+        // 仅在 HAVE_SQLCIPHER 未定义时启用（页级加密优先）
+#ifndef HAVE_SQLCIPHER
+        if (!cipherKey_.empty()) {
+            const std::string encPath = path + ".enc";
+            if (std::filesystem::exists(encPath)) {
+                if (!SqliteFileCipher::decryptFile(encPath, path, cipherKey_)) {
+                    std::cout << "[DB][FileCipher] 解密失败：密钥错误或文件损坏: "
+                              << encPath << std::endl;
+                    return false;
+                }
+                std::cout << "[DB][FileCipher] 已解密 " << encPath << " → " << path << std::endl;
+            }
+            useFileCipher_ = true;
+        }
+#endif
+
         if (sqlite3_open(path.c_str(), &lite_) != SQLITE_OK) {
             std::cout << "[DB] SQLite 打开失败: " << sqlite3_errmsg(lite_) << std::endl;
             lite_ = nullptr;
@@ -476,6 +516,7 @@ private:
     std::string sqlitePath_ = "ruoyi.db";
     std::string cipherKey_;                       // 加密主密钥（为空则未加密）
     SqliteCipher::KeyConfig cipherCfg_;           // 加密参数（pageSize / kdfIter）
+    bool        useFileCipher_ = false;           // 文件级 AES 加密回退（无 sqlite3mc 时启用）
     std::mutex  mutex_;
     bool        useSqlite_  = false;
     std::chrono::steady_clock::time_point pgRetryAt_{};
