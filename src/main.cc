@@ -1288,6 +1288,7 @@ load();
             int    listenPort    = 18080;
             std::string listenAddr = "0.0.0.0";
             SqliteCipher::KeyConfig sqliteCipherCfg;
+            std::string simpleEncryptKey;   // 顶级 sqlite.encrypt_key 简化配置（wepay 风格）
             {
                 std::ifstream cfgFile(configFile);
                 if (cfgFile.is_open()) {
@@ -1304,6 +1305,8 @@ load();
                         }
                         // SQLite 加密配置（默认 enabled=false）
                         sqliteCipherCfg = SqliteCipher::loadConfig(root);
+                        // 简化配置（wepay 风格）：顶级 sqlite.encrypt_key 非空即启用
+                        simpleEncryptKey = root["sqlite"].get("encrypt_key", "").asString();
                     }
                 }
             }
@@ -1338,6 +1341,16 @@ load();
 #endif
                 }
                 LOG_INFO << "[SQLite] path=" << sqlitePath;
+                // ── 简化加密配置（wepay 风格）：sqlite.encrypt_key 非空 → 直接当 passphrase
+                //    复杂派生 security.sqlite.encryption.* 优先级更高，未启用时才用简化
+                if (!simpleEncryptKey.empty() && !sqliteCipherCfg.enabled) {
+                    SqliteCipher::KeyConfig simpleCfg;
+                    simpleCfg.enabled = true;
+                    simpleCfg.source  = "config-simple";
+                    DatabaseService::instance().setCipherKey(simpleEncryptKey, simpleCfg);
+                    LOG_INFO << "[SQLite] 加密已启用（简化配置 sqlite.encrypt_key, "
+                             << simpleEncryptKey.size() << " 字节）";
+                }
                 // 如启用加密，先派生密钥并设置到 DatabaseService
                 if (sqliteCipherCfg.enabled) {
                     std::string kerr;
