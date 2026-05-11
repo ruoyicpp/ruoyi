@@ -28,8 +28,9 @@ public:
         auto &file = files[0];
         std::string ext = std::filesystem::path(file.getFileName()).extension().string();
         for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
+        // 注意：.svg 已移除——SVG 可嵌入 <script>，被浏览器以 image/svg+xml 直接渲染时执行
         static const std::set<std::string> allowed = {
-            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg",
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",
             ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
             ".txt", ".csv", ".zip", ".rar", ".7z", ".mp4", ".mp3"
         };
@@ -47,12 +48,13 @@ public:
                 return;
             }
         }
-        // 保存uploads 目录
+        // 保存到 uploads 目录；文件名 = ms + 4 位随机后缀，避免同毫秒并发冲突
         std::string uploadDir = "uploads/";
         std::filesystem::create_directories(uploadDir);
         auto now = std::chrono::system_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-        std::string newName = std::to_string(ms) + ext;
+        char rnd[5]; for (int i = 0; i < 4; ++i) rnd[i] = (char)('a' + (std::rand() % 26)); rnd[4] = 0;
+        std::string newName = std::to_string(ms) + "_" + rnd + ext;
         std::string filePath = uploadDir + newName;
         file.saveAs(filePath);
 

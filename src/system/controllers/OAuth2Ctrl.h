@@ -2,6 +2,7 @@
 #include <drogon/drogon.h>
 #include "../../common/AjaxResult.h"
 #include "../../common/OAuth2Manager.h"
+#include "../../common/OperLogUtils.h"
 #include "../../common/TokenCache.h"
 #include "../../services/DatabaseService.h"
 #include "../services/TokenService.h"
@@ -124,6 +125,8 @@ public:
             "INSERT INTO sys_user_oauth(user_id,provider,open_id,create_time) "
             "VALUES($1,$2,$3,NOW()) ON CONFLICT DO NOTHING",
             std::vector<std::string>{std::to_string(user->userId), provider, openId});
+        OperLogUtils::write(req, "OAuth2绑定", BusinessType::INSERT,
+                            "provider=" + provider);
         RESP_MSG(cb, "操作成功");
     }
 
@@ -136,6 +139,8 @@ public:
         DatabaseService::instance().execParams(
             "DELETE FROM sys_user_oauth WHERE user_id=$1 AND provider=$2",
             std::vector<std::string>{std::to_string(user->userId), provider});
+        OperLogUtils::write(req, "OAuth2解绑", BusinessType::REMOVE,
+                            "provider=" + provider);
         RESP_MSG(cb, "操作成功");
     }
 

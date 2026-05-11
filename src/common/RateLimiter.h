@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <deque>
+#include <functional>
 #include <mutex>
 #include <chrono>
 #include <vector>
@@ -10,6 +11,11 @@
 
 // IP 滑动窗口限流 + 自动封禁
 // 算法：固定时间窗口内超过 maxRequests 次则封禁 banSeconds 秒
+//
+// 后端策略：
+//   - 默认内存实现（单进程内一致）
+//   - 通过 setRedisBackend() 注入 Redis 后端：INCR+EXPIRE 跨进程共享
+//   - Redis 不可用时自动降级到内存（不阻断业务）
 class RateLimiter {
 public:
     static RateLimiter& instance() {
@@ -25,6 +31,27 @@ public:
         std::vector<std::string> whitelist; // 白名单 IP 永不限流
     };
 
+    // Redis 后端接口（由外部注入，避免头文件依赖 hiredis）
+    // - incrAndExpire(key, windowSec): 返回累计计数（首次调用同时设 EXPIRE）；<0 表示后端不可用
+    // - setBan(key, banSec): 记录封禁状态
+    // - isBanned(key): 是否处于封禁
+    // - delKey(key): 删除 key（解封/重置计数用）
+    struct RedisBackend {
+        std::function<long(const std::string&, int)> incrAndExpire;
+        std::function<bool(const std::string&, int)> setBan;
+        std::function<bool(const std::string&)>      isBanned;
+        std::function<void(const std::string&)>      delKey;
+    };
+
+    void setRedisBackend(RedisBackend be) {
+        std::lock_guard<std::mutex> lk(mu_);
+        backend_ = std::move(be);
+        useRedis_ = (backend_.incrAndExpire && backend_.setBan
+                  && backend_.isBanned && backend_.delKey);
+        if (useRedis_)
+            LOG_INFO << "[RateLimit] Redis backend attached (cross-process counter)";
+    }
+
     void configure(const Config& cfg) {
         std::lock_guard<std::mutex> lk(mu_);
         cfg_ = cfg;
@@ -36,18 +63,40 @@ public:
         std::lock_guard<std::mutex> lk(mu_);
         if (!cfg_.enabled) return true;
         if (whitelist_.count(ip)) return true;
+
+        // === Redis 路径：INCR + EXPIRE 原子计数 ===
+        if (useRedis_) {
+            const std::string banKey = "ratelimit:ban:" + ip;
+            try {
+                if (backend_.isBanned(banKey)) return false;
+                const std::string cntKey = "ratelimit:cnt:" + ip;
+                long n = backend_.incrAndExpire(cntKey, cfg_.windowSeconds);
+                if (n < 0) {
+                    // Redis 不可用 → 降级内存路径
+                } else if (n > cfg_.maxRequests) {
+                    backend_.setBan(banKey, cfg_.banSeconds);
+                    backend_.delKey(cntKey);
+                    LOG_WARN << "[RateLimit][redis] IP banned: " << ip
+                             << " cnt=" << n << " ban=" << cfg_.banSeconds << "s";
+                    return false;
+                } else {
+                    return true;
+                }
+            } catch (...) {
+                // 走下面内存路径
+            }
+        }
+
+        // === 内存路径（默认 / Redis 降级） ===
         auto now = std::chrono::steady_clock::now();
         auto& info = ips_[ip];
 
-        // ── 封禁检查 ──────────────────────────────────────────────────────
         if (info.bannedUntil > now) return false;
 
-        // ── 清除窗口外的时间戳 ────────────────────────────────────────────
         auto cutoff = now - std::chrono::seconds(cfg_.windowSeconds);
         while (!info.timestamps.empty() && info.timestamps.front() < cutoff)
             info.timestamps.pop_front();
 
-        // ── 检查是否超出限制 ──────────────────────────────────────────────
         if ((int)info.timestamps.size() >= cfg_.maxRequests) {
             info.bannedUntil = now + std::chrono::seconds(cfg_.banSeconds);
             info.timestamps.clear();
@@ -70,9 +119,47 @@ public:
         return (int)it->second.timestamps.size();
     }
 
+    // ── 通用 key 限流（按用户名/路径/任意维度）─────────────────────────────
+    // 不会触发 ban，仅返回是否允许，调用方自行决定如何处理（如返回 429）
+    // 例如：allowKey("login:" + ip + ":" + username, 5, 60)
+    bool allowKey(const std::string& key, int maxReq, int windowSec) {
+        if (maxReq <= 0 || windowSec <= 0) return true;
+        std::lock_guard<std::mutex> lk(mu_);
+
+        if (useRedis_) {
+            try {
+                long n = backend_.incrAndExpire("ratelimit:key:" + key, windowSec);
+                if (n >= 0) return n <= maxReq;
+            } catch (...) {}
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        auto& dq = keyTimestamps_[key];
+        auto cutoff = now - std::chrono::seconds(windowSec);
+        while (!dq.empty() && dq.front() < cutoff) dq.pop_front();
+        if ((int)dq.size() >= maxReq) return false;
+        dq.push_back(now);
+        return true;
+    }
+
+    // 重置某个 key（成功登录后清除该用户名的失败计数等）
+    void resetKey(const std::string& key) {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (useRedis_) {
+            try { backend_.delKey("ratelimit:key:" + key); } catch (...) {}
+        }
+        keyTimestamps_.erase(key);
+    }
+
     // 手动解封
     void unban(const std::string& ip) {
         std::lock_guard<std::mutex> lk(mu_);
+        if (useRedis_) {
+            try {
+                backend_.delKey("ratelimit:ban:" + ip);
+                backend_.delKey("ratelimit:cnt:" + ip);
+            } catch (...) {}
+        }
         if (ips_.count(ip))
             ips_[ip].bannedUntil = std::chrono::steady_clock::time_point{};
         LOG_INFO << "[RateLimit] IP manually unbanned: " << ip;
@@ -89,6 +176,14 @@ public:
                 info.timestamps.back() < now - std::chrono::seconds(cfg_.windowSeconds);
             if (banExpired && windowEmpty)
                 it = ips_.erase(it);
+            else
+                ++it;
+        }
+        // 通用 key 限流：超过 1 小时未访问的 key 清理掉，避免内存泄漏
+        auto keyCutoff = now - std::chrono::hours(1);
+        for (auto it = keyTimestamps_.begin(); it != keyTimestamps_.end(); ) {
+            if (it->second.empty() || it->second.back() < keyCutoff)
+                it = keyTimestamps_.erase(it);
             else
                 ++it;
         }
@@ -124,9 +219,14 @@ private:
     };
 
     std::unordered_map<std::string, IpInfo>  ips_;
+    std::unordered_map<std::string, std::deque<std::chrono::steady_clock::time_point>> keyTimestamps_;
     std::unordered_set<std::string>          whitelist_;
     std::mutex  mu_;
     Config      cfg_;
+
+    // Redis 后端（可选）
+    bool         useRedis_ = false;
+    RedisBackend backend_;
 
     RateLimiter() {
         // 默认白名单

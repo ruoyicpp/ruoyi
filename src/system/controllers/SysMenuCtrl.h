@@ -3,6 +3,7 @@
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"
 #include "../../common/SecurityUtils.h"
+#include "../../common/TokenCache.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
 #include "../services/SysMenuService.h"
@@ -16,6 +17,7 @@ public:
         ADD_METHOD_TO(SysMenuCtrl::roleMenuTreeselect, "/system/menu/roleMenuTreeselect/{roleId}", drogon::Get, "JwtAuthFilter");
         ADD_METHOD_TO(SysMenuCtrl::add,                "/system/menu",                         drogon::Post,   "JwtAuthFilter");
         ADD_METHOD_TO(SysMenuCtrl::edit,               "/system/menu",                         drogon::Put,    "JwtAuthFilter");
+        ADD_METHOD_TO(SysMenuCtrl::updateSort,         "/system/menu/updateSort",              drogon::Put,    "JwtAuthFilter");
         ADD_METHOD_TO(SysMenuCtrl::remove,             "/system/menu/{menuId}",                drogon::Delete, "JwtAuthFilter");
     METHOD_LIST_END
 
@@ -99,6 +101,8 @@ public:
              (*body).get("visible","0").asString(), (*body).get("status","0").asString(),
              (*body).get("perms","").asString(), (*body).get("icon","#").asString(),
              (*body).get("remark","").asString(), GET_USER_NAME(req)});
+        // 菜单变更，清除所有用户的路由缓存
+        MemCache::instance().removeByPrefix("routers:");
         LOG_OPER(req, "菜单管理", BusinessType::INSERT);
         RESP_MSG(cb, "操作成功");
     }
@@ -133,6 +137,7 @@ public:
              (*body).get("visible","0").asString(), (*body).get("status","0").asString(),
              (*body).get("perms","").asString(), (*body).get("icon","#").asString(),
              (*body).get("remark","").asString(), GET_USER_NAME(req), std::to_string(menuId)});
+        MemCache::instance().removeByPrefix("routers:");
         LOG_OPER(req, "菜单管理", BusinessType::UPDATE);
         RESP_MSG(cb, "操作成功");
     }
@@ -142,7 +147,45 @@ public:
         if (SysMenuService::instance().hasChildByMenuId(menuId)) { RESP_ERR(cb, "存在子菜单,不允许删除"); return; }
         if (SysMenuService::instance().checkMenuExistRole(menuId)) { RESP_ERR(cb, "菜单已分配给角色,不允许删除"); return; }
         DatabaseService::instance().execParams("DELETE FROM sys_menu WHERE menu_id=$1", {std::to_string(menuId)});
+        MemCache::instance().removeByPrefix("routers:");
         LOG_OPER_PARAM(req, "菜单管理", BusinessType::REMOVE, std::to_string(menuId));
+        RESP_MSG(cb, "操作成功");
+    }
+
+    // PUT /system/menu/updateSort  body: { menuIds:"1,2,3", orderNums:"10,20,30" }
+    void updateSort(const drogon::HttpRequestPtr &req,
+                    std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        CHECK_PERM(req, cb, "system:menu:edit");
+        auto body = req->getJsonObject();
+        if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
+        std::string menuIdsStr   = (*body).get("menuIds",   "").asString();
+        std::string orderNumsStr = (*body).get("orderNums", "").asString();
+        if (menuIdsStr.empty() || orderNumsStr.empty()) { RESP_ERR(cb, "参数不能为空"); return; }
+
+        auto split = [](const std::string& s) {
+            std::vector<std::string> v;
+            std::string t;
+            for (char c : s) {
+                if (c == ',') { if (!t.empty()) v.push_back(t); t.clear(); }
+                else t += c;
+            }
+            if (!t.empty()) v.push_back(t);
+            return v;
+        };
+        auto ids = split(menuIdsStr);
+        auto ons = split(orderNumsStr);
+        if (ids.size() != ons.size()) { RESP_ERR(cb, "ID 与排序值数量不匹配"); return; }
+
+        auto& db = DatabaseService::instance();
+        for (size_t i = 0; i < ids.size(); ++i) {
+            for (char c : ids[i]) if (c < '0' || c > '9') { RESP_ERR(cb, "非法的菜单ID"); return; }
+            for (char c : ons[i]) if (c < '0' || c > '9') { RESP_ERR(cb, "非法的排序值"); return; }
+            db.execParams("UPDATE sys_menu SET order_num=$1,update_time=NOW() WHERE menu_id=$2",
+                          {ons[i], ids[i]});
+        }
+        // 顺序变了，路由可能改顺序，清缓存
+        MemCache::instance().removeByPrefix("routers:");
+        LOG_OPER(req, "菜单管理", BusinessType::UPDATE);
         RESP_MSG(cb, "操作成功");
     }
 };

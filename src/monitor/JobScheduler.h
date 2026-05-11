@@ -26,6 +26,8 @@ public:
         std::string invokeTarget;
         bool        concurrent;  // false = 串行（上次未完成则跳过）
         std::atomic<bool> running{false};
+        // 记录上次触发的"年月日时分"标识 (YYYYMMDDHHmm)，去重整分钟内多次触发
+        long long   lastFireMin = 0;
     };
 
     static JobScheduler& instance() {
@@ -111,7 +113,8 @@ private:
         });
         // 日志清理任务
         registerTask("cleanLogTask.clean", [](const std::string& p) {
-            int days = p.empty() ? 90 : std::stoi(p);
+            int days = 90;
+            if (!p.empty()) try { days = std::stoi(p); } catch (...) { days = 90; }
             auto& db = DatabaseService::instance();
             std::string d = std::to_string(days);
             db.execParams("DELETE FROM sys_oper_log   WHERE create_time < NOW() - ($1 || ' days')::INTERVAL", {d});
@@ -120,7 +123,8 @@ private:
             return "日志清理完成 (>" + d + "天)";
         });
         registerTask("sysJobLog.clean", [](const std::string& p) {
-            int days = p.empty() ? 30 : std::stoi(p);
+            int days = 30;
+            if (!p.empty()) try { days = std::stoi(p); } catch (...) { days = 30; }
             std::string d = std::to_string(days);
             DatabaseService::instance().execParams(
                 "DELETE FROM sys_job_log WHERE create_time < NOW() - ($1 || ' days')::INTERVAL", {d});
@@ -156,11 +160,19 @@ private:
 #else
             localtime_r(&now, &t);
 #endif
+            // 当前"年月日时分"指纹，用于按分钟去重
+            long long curMin = (long long)(t.tm_year + 1900) * 100000000LL
+                             + (long long)(t.tm_mon  + 1) * 1000000LL
+                             + (long long)t.tm_mday * 10000LL
+                             + (long long)t.tm_hour * 100LL
+                             + (long long)t.tm_min;
             {
                 std::lock_guard<std::mutex> lk(mu_);
                 for (auto& [id, job] : jobs_) {
                     if (!CronUtils::matches(job.cronExpr, t)) continue;
+                    if (job.lastFireMin == curMin) continue; // 同一分钟已触发过
                     if (!job.concurrent && job.running) continue; // 串行模式跳过
+                    job.lastFireMin = curMin;
                     // 异步执行
                     long jid = job.jobId;
                     std::string tgt = job.invokeTarget;

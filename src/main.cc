@@ -1,4 +1,14 @@
 #include "AppIncludes.h"
+#ifdef RUOYI_USE_EMBEDDED_FRONTEND
+#  include "common/EmbeddedFrontend.h"
+#endif
+#include "common/NginxLikeFeatures.h"
+#include "common/NginxEmbedded.h"
+#include "services/WorkerOrchestrator.h"
+#include "services/AcmeManager.h"
+#ifdef _WIN32
+#  include <io.h>      // _isatty / _fileno
+#endif
 
 // 从 config.json 的 database 节构造 libpq 连接串（兼容旧调用）
 static std::string buildDbConnStr(const std::string& cfgFile, int timeout = 5) {
@@ -27,9 +37,39 @@ static std::string buildDbConnStr(const ConfigLoader& loader, int timeout = 5) {
          + " connect_timeout=" + std::to_string(timeout);
 }
 
+// SecurityUtils.cc 暴露的 OpenSSL 3.x default provider 早期初始化函数
+extern "C" void ruoyi_init_openssl_provider();
+
 int main(int argc, char* argv[]) {
     // 最先安装崩溃日志捕获，确保任何时刻崩溃都有记录
     CrashHandler::install("./logs");
+
+    // ── 主线程单线程下完成 OpenSSL 全局 init ─────────────────────
+    // 不能延迟到 drogon worker 线程 lazy 加载，否则与 libpq.dll 间接依赖的
+    // system OpenSSL DLL 在多线程并发时引发 RtlReAllocateHeap 堆损坏崩溃
+    ruoyi_init_openssl_provider();
+
+#ifdef _WIN32
+    // ── 单实例锁：防止多个 ruoyi-cpp 主进程同时启动导致堆损坏 ─────
+    // 多进程 worker 模式（RUOYI_WORKER_INDEX 已设）时跳过，让 Orchestrator
+    // 主进程持锁、各子进程仍能正常初始化各自的资源
+    if (std::getenv("RUOYI_WORKER_INDEX") == nullptr) {
+        // Local namespace 锁，避免污染 Global 命名空间需要管理员权限
+        static HANDLE s_singleInstance =
+            CreateMutexA(nullptr, FALSE, "Local\\ruoyi-cpp-singleton");
+        if (s_singleInstance && GetLastError() == ERROR_ALREADY_EXISTS) {
+            std::cerr << "[FATAL] 已有一个 ruoyi-cpp 主进程在运行（互斥锁 "
+                         "Local\\ruoyi-cpp-singleton 已被占用），"
+                         "请先关闭旧实例再启动" << std::endl;
+            // 仅当从控制台交互运行时才等回车；服务/脚本场景直接退出
+            if (std::getenv("RUOYI_NO_PAUSE") == nullptr && _isatty(_fileno(stdin))) {
+                std::cout << "按回车键退出..." << std::endl;
+                std::cin.get();
+            }
+            return 2;
+        }
+    }
+#endif
 
     try {
 #ifdef _WIN32
@@ -37,7 +77,11 @@ int main(int argc, char* argv[]) {
         SetConsoleOutputCP(CP_UTF8);
         SetConsoleCP(CP_UTF8);
 #endif
+        // 提前安装彩色输出（启用 VT，替换 std::cout streambuf），
+        // 这样下面的 RUOYI 横幅的 ANSI 转义可以被 Windows 控制台正确解释为蓝色
+        ColorLogger::install();
         std::cout <<
+            "\x1b[1;34m"  // B_BLUE：RUOYI-CPP 横幅
             "\n"
             "  \xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97 \xe2\x96\x88\xe2\x96\x88\xe2\x95\x97   \xe2\x96\x88\xe2\x96\x88\xe2\x95\x97 \xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97 \xe2\x96\x88\xe2\x96\x88\xe2\x95\x97   \xe2\x96\x88\xe2\x96\x88\xe2\x95\x97\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97      \xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97 \xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97 \n"
             "  \xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97\xe2\x96\x88\xe2\x96\x88\xe2\x95\x91   \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91\xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97\xe2\x95\x9a\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97 \xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x9d\xe2\x96\x88\xe2\x96\x88\xe2\x95\x91     \xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x9d\xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97\xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97\n"
@@ -45,7 +89,7 @@ int main(int argc, char* argv[]) {
             "  \xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97\xe2\x96\x88\xe2\x96\x88\xe2\x95\x91   \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91\xe2\x96\x88\xe2\x96\x88\xe2\x95\x91   \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91  \xe2\x95\x9a\xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x9d  \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91     \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91     \xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x9d \xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x9d \n"
             "  \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91  \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91\xe2\x95\x9a\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x9d\xe2\x95\x9a\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x95\x94\xe2\x95\x9d   \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91   \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91     \xe2\x95\x9a\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x96\x88\xe2\x95\x97\xe2\x96\x88\xe2\x96\x88\xe2\x95\x91     \xe2\x96\x88\xe2\x96\x88\xe2\x95\x91     \n"
             "  \xe2\x95\x9a\xe2\x95\x90\xe2\x95\x9d  \xe2\x95\x9a\xe2\x95\x90\xe2\x95\x9d \xe2\x95\x9a\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x9d  \xe2\x95\x9a\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x9d    \xe2\x95\x9a\xe2\x95\x90\xe2\x95\x9d   \xe2\x95\x9a\xe2\x95\x90\xe2\x95\x9d      \xe2\x95\x9a\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x9d\xe2\x95\x9a\xe2\x95\x90\xe2\x95\x9d     \xe2\x95\x9a\xe2\x95\x90\xe2\x95\x9d     \n"
-            "\n";
+            "\x1b[0m\n";  // 重置颜色
         // 将工作目录切换到 exe 所在目录，确保双击运行时能找到 config.json
         std::filesystem::path exePath;
 #ifdef _WIN32
@@ -63,6 +107,50 @@ int main(int argc, char* argv[]) {
         if (!exePath.empty()) {
             std::filesystem::current_path(exePath);
         }
+
+        // ── 多进程编排器分支 ──────────────────────────────────────────────────
+        // 1) 子进程（env 中已带 RUOYI_WORKER_INDEX）：直接走单进程流程
+        // 2) 主进程 + app.worker_processes>1：进入 orchestrator，spawn 子进程并监控
+        // 3) 主进程 + worker_processes<=1：正常单进程模式
+        {
+            int wkIdx = WorkerOrchestrator::currentWorkerIndex();
+            if (wkIdx < 0) {
+                // 这里是主进程，先读 config 判断是否进编排器
+                int workerCount = 1;
+                std::string preCfg = "config.json";
+                for (int i = 1; i < argc - 1; ++i) {
+                    if (std::string(argv[i]) == "--config") { preCfg = argv[i+1]; break; }
+                }
+                std::ifstream cf(preCfg);
+                if (cf.is_open()) {
+                    Json::Value pre; Json::CharReaderBuilder rb; std::string er;
+                    if (Json::parseFromStream(rb, cf, &pre, &er) && pre.isMember("app")) {
+                        workerCount = pre["app"].get("worker_processes", 1).asInt();
+                    }
+                }
+                if (workerCount > 1) {
+                    WorkerOrchestrator::Config oc;
+                    oc.enabled     = true;
+                    oc.workerCount = workerCount;
+                    oc.exePath     = (exePath / "ruoyi-cpp.exe").string();
+                    // 透传原始命令行（去掉 argv[0]）
+                    for (int i = 1; i < argc; ++i) oc.extraArgs.emplace_back(argv[i]);
+                    return WorkerOrchestrator::instance().run(oc);
+                }
+            } else {
+                std::cout << "[Worker] index=" << wkIdx << " pid=" <<
+#ifdef _WIN32
+                    GetCurrentProcessId()
+#else
+                    getpid()
+#endif
+                    << std::endl;
+            }
+        }
+
+        // ── 许可证校验（必须在加载配置前完成，工作目录已切换到 exe 目录）──────
+        LicenseManager::checkAndPrint();
+        LicenseWatcher::instance().start(LicenseManager::_licPath());
 
         // ── 解析命令行参数 --config <file> ─────────────────────────────────────
         std::string configFile = "config.json";
@@ -181,6 +269,9 @@ int main(int argc, char* argv[]) {
                     logBase = lg.get("logfile_base_name",  "ruoyi").asString();
                 }
             }
+            // log_path 留空表示禁用 drogon AsyncFileLogger；
+            // JsonLogger 仍需一个有效目录，回退到默认 ./logs
+            if (logDir.empty()) logDir = "./logs";
             size_t maxSizeBytes = 100ULL * 1024 * 1024; // 默认 100MB
             int keepFiles = 5;
             {
@@ -194,7 +285,14 @@ int main(int argc, char* argv[]) {
                     keepFiles = lg.get("log_keep_files", 5).asInt();
                 }
             }
-            std::filesystem::create_directories(logDir);
+            std::error_code ec;
+            std::filesystem::create_directories(logDir, ec);
+            if (ec) {
+                std::cerr << "[警告] 无法创建日志目录 '" << logDir
+                          << "': " << ec.message() << "，将使用 ./logs" << std::endl;
+                logDir = "./logs";
+                std::filesystem::create_directories(logDir, ec);
+            }
             JsonLogger::instance().init(logDir, logBase, maxSizeBytes, keepFiles);
         }
 
@@ -215,6 +313,11 @@ int main(int argc, char* argv[]) {
                     vmc.addr          = vt.get("addr",         "http://127.0.0.1:8200").asString();
                     vmc.token         = vt.get("token",        "").asString();
                     vmc.unsealKey     = vt.get("unseal_key",   "").asString();
+                    // 多 key 模式：unseal_keys 数组（Shamir threshold>1）
+                    if (vt.isMember("unseal_keys") && vt["unseal_keys"].isArray()) {
+                        for (auto& k : vt["unseal_keys"])
+                            vmc.unsealKeys.push_back(k.asString());
+                    }
                     vmc.autoStart     = vt.get("auto_start",   true).asBool();
                     vmc.startTimeoutS = vt.get("start_timeout",60).asInt();
                     vmc.psqlExe       = vt.get("psql_exe",      "").asString();
@@ -288,9 +391,46 @@ int main(int argc, char* argv[]) {
                             for (auto& ip : rl["whitelist"])
                                 cfg.whitelist.push_back(ip.asString());
                         RateLimiter::instance().configure(cfg);
+
+                        // ── P3-12: 注入 Redis 后端，实现跨进程限流计数 ─────
+                        // Redis 不可用时 RateLimiter 自动降级到内存
+                        RateLimiter::RedisBackend rb;
+                        rb.incrAndExpire = [](const std::string& key, int sec) -> long {
+                            auto& rc = RedisConn::instance();
+                            auto* c = rc.ctx();
+                            if (!c) return -1;
+                            const auto k = rc.prefixKey(key);
+                            auto* r = (redisReply*)redisCommand(c, "INCR %s", k.c_str());
+                            if (!r) { rc.markBad(); return -1; }
+                            long n = (r->type == REDIS_REPLY_INTEGER) ? r->integer : -1;
+                            freeReplyObject(r);
+                            // 首次设 EXPIRE（n==1 时）
+                            if (n == 1 && sec > 0) {
+                                auto* r2 = (redisReply*)redisCommand(c, "EXPIRE %s %d",
+                                                                     k.c_str(), sec);
+                                if (r2) freeReplyObject(r2);
+                            }
+                            return n;
+                        };
+                        rb.setBan = [](const std::string& key, int sec) -> bool {
+                            return redisSetEx(key, "1", sec);
+                        };
+                        rb.isBanned = [](const std::string& key) -> bool {
+                            return redisGet(key).has_value();
+                        };
+                        rb.delKey = [](const std::string& key) {
+                            redisDel(key);
+                        };
+                        if (RedisConn::instance().enabledByConfig()) {
+                            RateLimiter::instance().setRedisBackend(rb);
+                        }
+
                         LOG_INFO << "[RateLimit] enabled=" << cfg.enabled
                                  << " max=" << cfg.maxRequests
-                                 << "/" << cfg.windowSeconds << "s";
+                                 << "/" << cfg.windowSeconds << "s"
+                                 << " backend=" << (RedisConn::instance().enabledByConfig()
+                                                    ? "redis(+memory fallback)"
+                                                    : "memory");
                     }
                     // 签名验签配置
                     if (sec.isMember("sign_verify")) {
@@ -399,13 +539,170 @@ int main(int argc, char* argv[]) {
                 });
         }
 
+        // ── 前端托管（参考 wepay-cpp 设计；两种模式二选一）────────────────────
+        //   模式 A: "frontend"           — 外部 ./web 目录（方便热更新）
+        //   模式 B: "embedded_frontend"  — 编译进 exe（单文件分发，需 cmake -DRUOYI_EMBED_FRONTEND=ON）
+        // 共享状态供后续错误处理器/限流器使用：
+        //   feHosted=true  → 启用 SPA 404 回退 + 限流跳过静态资源
+        //   feApiPrefix    → 用于区分 API 与静态资源
+        //   feIndexPath    → 外部模式下的 index.html 绝对路径
+        static bool        feHosted    = false;
+        static bool        feSpaMode   = false;
+        static bool        feEmbedded  = false;
+        static std::string feApiPrefix;
+        static std::string feIndexPath;
+        try {
+            const auto& cfgRoot = drogon::app().getCustomConfig();
+            bool extEnabled = cfgRoot.isMember("frontend") &&
+                              cfgRoot["frontend"].get("enabled", false).asBool();
+            bool embEnabled = cfgRoot.isMember("embedded_frontend") &&
+                              cfgRoot["embedded_frontend"].get("enabled", false).asBool();
+
+            if (extEnabled && embEnabled) {
+                std::cerr << "\n[错误] frontend 与 embedded_frontend 不能同时启用，"
+                             "请在 config.json 中只启用其中一个。\n" << std::endl;
+                return 1;
+            }
+
+            // 模式 A: 外部目录托管
+            if (extEnabled) {
+                const auto& fc       = cfgRoot["frontend"];
+                std::string distPath = fc.get("dist_path", "./web").asString();
+                bool        spaMode  = fc.get("spa_mode", true).asBool();
+                std::string apiPrefix= fc.get("api_prefix", "/prod-api").asString();
+                int         cacheSec = fc.get("cache_seconds", 3600).asInt();
+
+                if (std::filesystem::exists(distPath)
+                    && std::filesystem::exists(distPath + "/index.html")) {
+
+                    drogon::app().setDocumentRoot(distPath);
+                    drogon::app().setStaticFilesCacheTime(cacheSec);
+                    // 内置压缩支持（drogon 默认即开启，此处显式声明语义）：
+                    //   enableGzip       — 实时压缩响应（非二进制 + >1KB）
+                    //   setGzipStatic    — 客户端 Accept-Encoding: gzip 时，
+                    //                       优先发同目录 .gz 预压缩文件（Vue dist
+                    //                       的 compression-webpack-plugin 输出已带 .gz）
+                    //   setBrStatic      — 同理优先发 .br Brotli 预压缩
+                    drogon::app().enableGzip(true);
+                    drogon::app().setGzipStatic(true);
+                    drogon::app().setBrStatic(true);
+                    LOG_INFO << "[Frontend] external dir: "
+                             << std::filesystem::absolute(distPath).string()
+                             << " | SPA=" << spaMode
+                             << " | API=" << apiPrefix
+                             << " | cache=" << cacheSec << "s";
+                    std::cout << "[Frontend] 外部前端: "
+                              << std::filesystem::absolute(distPath).string()
+                              << "  api_prefix=" << apiPrefix << std::endl;
+
+                    // API 路径剥离前缀（前端一般经 /prod-api/* 调用）
+                    if (!apiPrefix.empty() && apiPrefix != "/") {
+                        drogon::app().registerPreRoutingAdvice(
+                            [apiPrefix](const drogon::HttpRequestPtr& req,
+                                        drogon::AdviceCallback&&,
+                                        drogon::AdviceChainCallback&& ccb) {
+                                std::string p = req->path();
+                                if (p.rfind(apiPrefix, 0) == 0) {
+                                    std::string np = p.substr(apiPrefix.size());
+                                    if (np.empty()) np = "/";
+                                    req->setPath(np);
+                                }
+                                ccb();
+                            });
+                    }
+
+                    // 注意：不在此处 setCustom404Page。统一由后面的 setCustomErrorHandler
+                    // 智能判断：API 路径返 JSON 404；SPA 路径才回退到 index.html。
+                    // 这样可以避免 API 调用 typo 路径时被误回 HTML 导致前端 axios JSON 解析失败。
+                    feHosted    = true;
+                    feSpaMode   = spaMode;
+                    feApiPrefix = apiPrefix;
+                    feIndexPath = std::filesystem::absolute(distPath + "/index.html").string();
+                } else {
+                    LOG_WARN << "[Frontend] dist_path 不存在或缺少 index.html: "
+                             << distPath << "（已跳过托管）";
+                    std::cout << "[Frontend] 警告: " << distPath
+                              << " 不存在或缺少 index.html，已跳过托管" << std::endl;
+                }
+            }
+
+            // 模式 B: 嵌入式（需在编译期 -DRUOYI_EMBED_FRONTEND=ON）
+            if (embEnabled) {
+#ifdef RUOYI_USE_EMBEDDED_FRONTEND
+                const auto& ec = cfgRoot["embedded_frontend"];
+                bool        spaMode  = ec.get("spa_mode", true).asBool();
+                std::string apiPrefix= ec.get("api_prefix", "/prod-api").asString();
+                EmbeddedFrontend::registerHandlers(apiPrefix, spaMode);
+                feHosted    = true;
+                feEmbedded  = true;
+                feSpaMode   = spaMode;
+                feApiPrefix = apiPrefix;
+#else
+                std::cerr << "\n[错误] embedded_frontend 已启用，但本次编译未嵌入前端！\n"
+                          << "  请用 cmake -DRUOYI_EMBED_FRONTEND=ON -DRUOYI_EMBED_FRONTEND_DIR=./web 重新编译。\n"
+                          << std::endl;
+                return 1;
+#endif
+            }
+        } catch (const std::exception& e) {
+            LOG_WARN << "[Frontend] 加载配置失败: " << e.what();
+        }
+
+        // ── 可观测性：/actuator/* 端点 + HTTP 自动打点 advice ─────────────
+        // /actuator/health  /actuator/info  /actuator/metrics  /actuator/db
+        // POST /actuator/reload（仅 loopback）
+        try {
+            MetricsCollector::instance().registerActuator();
+            MetricsCollector::instance().attachAdvice();
+            // 把 DB 查询打点钩到 Metrics（DatabaseService 不直接依赖 MetricsCollector）
+            DbMetricsHook::hook = [](long ms, bool ok, bool isWrite) {
+                MetricsCollector::instance().onDbQuery(ms, ok, isWrite);
+            };
+            LOG_INFO << "[Metrics] /actuator/* endpoints registered, "
+                        "HTTP duration histogram + DB hook attached";
+            std::cout << "[Metrics] /actuator/metrics 已启用 (含 DB 慢查询计数)" << std::endl;
+        } catch (const std::exception& e) {
+            LOG_WARN << "[Metrics] 启用失败: " << e.what();
+        }
+
+        // ── HotConfig 文件监视器（5s 间隔检查 config.json mtime） ─────────
+        try {
+            HotConfig::instance().start(configFile, []{
+                LOG_INFO << "[HotConfig] config.json reloaded";
+                std::cout << "[HotConfig] config.json reloaded" << std::endl;
+            });
+        } catch (const std::exception& e) {
+            LOG_WARN << "[HotConfig] 启动失败: " << e.what();
+        }
+
+        // ── nginx 风格功能集成（proxy_pass / allow-deny / limit_conn / access_log）──
+        // 优先于通用限流：proxy 命中后直接转发上游，不会进入 drogon 路由
+        try {
+            ruoyi::nginx_like::registerAll(drogon::app().getCustomConfig());
+        } catch (const std::exception& e) {
+            LOG_WARN << "[NginxLike] 加载失败: " << e.what();
+        }
+
         // ── IP 限流 (DDoS 防御) ─────────────────────────────────────────────────
+        // 当合并部署托管前端时，跳过静态资源（带扩展名且非 API 前缀），
+        // 避免单个用户加载几十个 JS/CSS 触发 200/min 限流误封。
         drogon::app().registerPreRoutingAdvice(
             [](const drogon::HttpRequestPtr &req,
                drogon::AdviceCallback &&acb,
                drogon::AdviceChainCallback &&accb) {
+                if (feHosted) {
+                    std::string p = req->path();
+                    bool isApi = !feApiPrefix.empty() && feApiPrefix != "/" &&
+                                 p.rfind(feApiPrefix, 0) == 0;
+                    // 静态资源：路径含扩展名且非 API
+                    auto slash = p.find_last_of('/');
+                    auto seg   = (slash == std::string::npos) ? p : p.substr(slash + 1);
+                    bool hasExt = seg.find('.') != std::string::npos;
+                    if (!isApi && hasExt) { accb(); return; }
+                }
                 std::string ip = IpUtils::getIpAddr(req);
                 if (!RateLimiter::instance().allow(ip)) {
+                    MetricsCollector::instance().onRateLimited();
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     resp->setStatusCode((drogon::HttpStatusCode)429);
                     resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
@@ -437,6 +734,51 @@ int main(int argc, char* argv[]) {
                     return;
                 }
                 accb();
+            });
+
+        // ── 自定义默认错误响应：404/405/500 等也走 AjaxResult JSON 格式 ──
+        // 否则 drogon 默认返回 HTML，前端 axios 解析失败后报"未知错误"
+        // 同时支持 SPA fallback：托管前端时，非 API 且无扩展名路径回退到 index.html
+        drogon::app().setCustomErrorHandler(
+            [](drogon::HttpStatusCode code,
+               const drogon::HttpRequestPtr &req) -> drogon::HttpResponsePtr {
+                // 404 SPA 回退：仅对前端路由路径生效，避免误伤 API typo
+                if (code == drogon::k404NotFound && feHosted && feSpaMode) {
+                    std::string p = req->path();
+                    bool isApi = !feApiPrefix.empty() && feApiPrefix != "/" &&
+                                 p.rfind(feApiPrefix, 0) == 0;
+                    auto slash = p.find_last_of('/');
+                    auto seg   = (slash == std::string::npos) ? p : p.substr(slash + 1);
+                    bool hasExt = seg.find('.') != std::string::npos;
+                    // 非 API + 无扩展名 → 视作 vue-router 前端路径，回退 index.html
+                    if (!isApi && !hasExt) {
+                        if (!feEmbedded && !feIndexPath.empty()) {
+                            return drogon::HttpResponse::newFileResponse(feIndexPath);
+                        }
+                        // 嵌入式：EmbeddedFrontend 的 advice 已处理，几乎不会到这里；
+                        // 兜底返回简单 200 让前端继续加载（极少触发）
+                    }
+                }
+                std::string msg;
+                int bodyCode = (int)code;
+                switch (code) {
+                    case drogon::k400BadRequest:          msg = "请求参数错误";   break;
+                    case drogon::k401Unauthorized:        msg = "认证失败";       break;
+                    case drogon::k403Forbidden:           msg = "无权限访问";     break;
+                    case drogon::k404NotFound:            msg = "资源不存在";     break;
+                    case drogon::k405MethodNotAllowed:    msg = "方法不允许";     break;
+                    case drogon::k413RequestEntityTooLarge: msg = "请求体过大"; break;
+                    case drogon::k500InternalServerError: msg = "服务器内部错误"; break;
+                    case drogon::k502BadGateway:          msg = "网关错误";       break;
+                    case drogon::k503ServiceUnavailable:  msg = "服务不可用";     break;
+                    default:                               msg = "请求失败";      break;
+                }
+                Json::Value j;
+                j["code"] = bodyCode;
+                j["msg"]  = msg;
+                auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                resp->setStatusCode(code);
+                return resp;
             });
 
         // ── 安全响应头（XSS/点击劫持/内容嗅探防御）────────────────────────────
@@ -495,6 +837,13 @@ int main(int argc, char* argv[]) {
                 // 引导接口、重置接口、健康检查、版本接口完全放行
                 if (path == "/challenge" || path == "/resetPassword" || path == "/forgotPassword"
                     || path == "/health" || path == "/version" || path == "/ssl-config") {
+                    accb(); return;
+                }
+                // AI 内置助手页 + AI 健康检查 + AI 聊天后端：放行
+                // /ai/page 是 InnerLink iframe 嵌入的内置 HTML 页面
+                // /ai/chat 由该页面 fetch 调用，已通过 fallback 集成讯飞星火外部 API
+                if (path == "/ai/page" || path == "/ai/chat"
+                    || path == "/ai/health" || path == "/ai/generate") {
                     accb(); return;
                 }
 
@@ -938,6 +1287,7 @@ load();
             Json::Value dbCfg;
             int    listenPort    = 18080;
             std::string listenAddr = "0.0.0.0";
+            SqliteCipher::KeyConfig sqliteCipherCfg;
             {
                 std::ifstream cfgFile(configFile);
                 if (cfgFile.is_open()) {
@@ -952,6 +1302,8 @@ load();
                             listenPort = l.get("port", 18080).asInt();
                             listenAddr = l.get("address", "0.0.0.0").asString();
                         }
+                        // SQLite 加密配置（默认 enabled=false）
+                        sqliteCipherCfg = SqliteCipher::loadConfig(root);
                     }
                 }
             }
@@ -962,6 +1314,12 @@ load();
                          << "/" << dbCfg.get("dbname","ruoyi").asString();
                 (void)connStr;
                 bool pgOk = DatabaseService::instance().connect(buildDbConnStr(*cfgLoader, 5));
+                // 慢查询阈值（默认 200ms WARN, 1000ms ERROR；可在 config.database.slow_query_warn_ms / err_ms 调整）
+                {
+                    int warnMs = dbCfg.get("slow_query_warn_ms", 200).asInt();
+                    int errMs  = dbCfg.get("slow_query_err_ms",  1000).asInt();
+                    DatabaseService::instance().setSlowQueryThreshold(warnMs, errMs);
+                }
                 // 始终打开 SQLite（PG 可用时用于双写，PG 不可用时用作主库）
                 // 优先用 config 里的 sqlite_path，否则用本地 Temp 目录（避免网络盘 disk I/O error）
                 std::string sqlitePath = dbCfg.get("sqlite_path", "").asString();
@@ -980,6 +1338,25 @@ load();
 #endif
                 }
                 LOG_INFO << "[SQLite] path=" << sqlitePath;
+                // 如启用加密，先派生密钥并设置到 DatabaseService
+                if (sqliteCipherCfg.enabled) {
+                    std::string kerr;
+                    std::string key = SqliteCipher::deriveKey(sqliteCipherCfg, &kerr);
+                    // kerr 在成功时也可能携带 "[WARN] ..." 降级提示
+                    if (!kerr.empty() && !key.empty()) {
+                        LOG_WARN << "[SQLite] " << kerr;
+                    }
+                    if (key.empty()) {
+                        LOG_ERROR << "[SQLite] 加密密钥派生失败（source="
+                                  << sqliteCipherCfg.source << "）: " << kerr;
+                        std::cerr << "[致命错误] SQLite 加密已启用但密钥派生失败: " << kerr << std::endl;
+                        std::exit(1);
+                    }
+                    DatabaseService::instance().setCipherKey(key, sqliteCipherCfg);
+                    LOG_INFO << "[SQLite] 加密已启用（source=" << sqliteCipherCfg.source
+                             << " pageSize=" << sqliteCipherCfg.cipherPageSize
+                             << " kdfIter=" << sqliteCipherCfg.cipherKdfIter << "）";
+                }
                 DatabaseService::instance().connectSqlite(sqlitePath);
                 if (!pgOk) {
                     LOG_ERROR << "数据库连接失败，已切换到 SQLite 回退!";
@@ -993,6 +1370,103 @@ load();
 
             LOG_INFO << "正在初始化数据库表...";
             DatabaseInit::run();
+
+            // ── 启动时清菜单缓存：DatabaseInit 可能新增/修改了 sys_menu，
+            // ── 而 /getRouters 有 30min MemCache（含 Redis），不清的话新菜单不显示
+            try {
+                MemCache::instance().removeByPrefix("routers:");
+                LOG_INFO << "[Menu] routers cache cleared after DatabaseInit";
+            } catch (const std::exception& e) {
+                LOG_WARN << "[Menu] clear routers cache failed: " << e.what();
+            }
+
+            // ── 启动时校正"日志查看"菜单 URL（适配多种部署模式）──────────────
+            //   优先级：menu.logfile_external_url 显式覆盖
+            //         > 合并部署（frontend.enabled / embedded_frontend.enabled）
+            //         > 默认 dev 分离 (localhost:3000 + /dev-api)
+            try {
+                std::ifstream mf(configFile);
+                Json::Value mroot;
+                if (mf.is_open()) {
+                    Json::CharReaderBuilder rb; std::string err;
+                    Json::parseFromStream(rb, mf, &mroot, &err);
+                }
+                std::string logfileUrl;
+                if (mroot.isMember("menu")
+                    && mroot["menu"].isMember("logfile_external_url")
+                    && !mroot["menu"]["logfile_external_url"].asString().empty()) {
+                    logfileUrl = mroot["menu"]["logfile_external_url"].asString();
+                } else {
+                    bool extEn = mroot.isMember("frontend")
+                                 && mroot["frontend"].get("enabled", false).asBool();
+                    bool embEn = mroot.isMember("embedded_frontend")
+                                 && mroot["embedded_frontend"].get("enabled", false).asBool();
+                    if (extEn || embEn) {
+                        // 合并部署：与后端同 host:port
+                        // listener 是 0.0.0.0 时浏览器无法访问，回退用 localhost
+                        std::string host = "localhost";
+                        int         port = 18080;
+                        if (mroot.isMember("listeners") && mroot["listeners"].isArray()
+                            && mroot["listeners"].size() > 0) {
+                            auto& L = mroot["listeners"][0];
+                            std::string a = L.get("address", "0.0.0.0").asString();
+                            if (!a.empty() && a != "0.0.0.0" && a != "::") host = a;
+                            port = L.get("port", 18080).asInt();
+                        }
+                        std::string apiPrefix = extEn
+                            ? mroot["frontend"].get("api_prefix", "/prod-api").asString()
+                            : mroot["embedded_frontend"].get("api_prefix", "/prod-api").asString();
+                        if (apiPrefix == "/") apiPrefix.clear();
+                        logfileUrl = "http://" + host + ":" + std::to_string(port)
+                                   + apiPrefix + "/monitor/logfile/page";
+                    } else {
+                        logfileUrl = "http://localhost:3000/dev-api/monitor/logfile/page";
+                    }
+                }
+                auto upd = DatabaseService::instance().execParams(
+                    "UPDATE sys_menu SET path=$1 WHERE menu_id=120", {logfileUrl});
+                LOG_INFO << "[Menu] 日志查看菜单 URL 已校正: " << logfileUrl;
+                std::cout << "[Menu] 日志查看 -> " << logfileUrl << std::endl;
+
+                // ── 同样校正 "AI会话" (menu_id=2100) ──
+                // 显式覆盖 > 合并部署(后端同源) > dev 分离(localhost:3000/dev-api)
+                std::string aiPageUrl;
+                if (mroot.isMember("menu")
+                    && mroot["menu"].isMember("ai_page_url")
+                    && !mroot["menu"]["ai_page_url"].asString().empty()) {
+                    aiPageUrl = mroot["menu"]["ai_page_url"].asString();
+                } else {
+                    bool extEn = mroot.isMember("frontend")
+                                 && mroot["frontend"].get("enabled", false).asBool();
+                    bool embEn = mroot.isMember("embedded_frontend")
+                                 && mroot["embedded_frontend"].get("enabled", false).asBool();
+                    if (extEn || embEn) {
+                        std::string host = "localhost";
+                        int         port = 18080;
+                        if (mroot.isMember("listeners") && mroot["listeners"].isArray()
+                            && mroot["listeners"].size() > 0) {
+                            auto& L = mroot["listeners"][0];
+                            std::string a = L.get("address", "0.0.0.0").asString();
+                            if (!a.empty() && a != "0.0.0.0" && a != "::") host = a;
+                            port = L.get("port", 18080).asInt();
+                        }
+                        std::string apiPrefix = extEn
+                            ? mroot["frontend"].get("api_prefix", "/prod-api").asString()
+                            : mroot["embedded_frontend"].get("api_prefix", "/prod-api").asString();
+                        if (apiPrefix == "/") apiPrefix.clear();
+                        aiPageUrl = "http://" + host + ":" + std::to_string(port)
+                                  + apiPrefix + "/ai/page";
+                    } else {
+                        aiPageUrl = "http://localhost:3000/dev-api/ai/page";
+                    }
+                }
+                DatabaseService::instance().execParams(
+                    "UPDATE sys_menu SET path=$1 WHERE menu_id=2100", {aiPageUrl});
+                LOG_INFO << "[Menu] AI会话菜单 URL 已校正: " << aiPageUrl;
+                std::cout << "[Menu] AI会话 -> " << aiPageUrl << std::endl;
+            } catch (const std::exception& e) {
+                LOG_WARN << "[Menu] 校正菜单 URL 失败: " << e.what();
+            }
 
             // ── 设备绑定检查 ─────────────────────────────────────────────────
             {
@@ -1145,6 +1619,7 @@ load();
 
             LOG_INFO << "RuoYi-Cpp 启动完成，监听 " << listenAddr << ":" << listenPort;
             std::cout <<
+                "\x1b[38;2;255;215;0m"  // GOLD：佛祖保佑横幅
                 "\n"
                 "////////////////////////////////////////////////////////////////////\n"
                 "//                          _ooOoo_                               //\n"
@@ -1168,6 +1643,7 @@ load();
                 "//      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^        //\n"
                 "//             佛祖保佑       永不宕机      永无BUG               //\n"
                 "////////////////////////////////////////////////////////////////////\n"
+                "\x1b[0m"  // 关闭金黄色
                 "\n"
                 "  RuoYi-Cpp started  |  " << listenAddr << ":" << listenPort << "\n"
                 "\n";
@@ -1206,6 +1682,34 @@ load();
             }
             LOG_INFO << "[TokenRestore] 已恢复 " << recovered << " 个在线会话";
             std::cout << "[TokenRestore] 恢复 " << recovered << " 个在线会话" << std::endl;
+        }
+
+        // ── 启动时归档过期日志（防止 sys_oper_log / sys_logininfor 表无限膨胀）
+        // 默认保留 90 天；可通过 config.json 中 retention.oper_log_days / login_log_days 调整
+        {
+            auto& db = DatabaseService::instance();
+            int operDays  = 90;
+            int loginDays = 180;
+            try {
+                auto& cfg = drogon::app().getCustomConfig();
+                if (cfg.isMember("retention")) {
+                    operDays  = cfg["retention"].get("oper_log_days",  90).asInt();
+                    loginDays = cfg["retention"].get("login_log_days", 180).asInt();
+                }
+            } catch (...) {}
+            if (operDays > 0) {
+                std::string d = std::to_string(operDays);
+                db.execParams(
+                    "DELETE FROM sys_oper_log WHERE oper_time < NOW() - ($1 || ' days')::INTERVAL",
+                    {d});
+            }
+            if (loginDays > 0) {
+                std::string d = std::to_string(loginDays);
+                db.execParams(
+                    "DELETE FROM sys_logininfor WHERE login_time < NOW() - ($1 || ' days')::INTERVAL",
+                    {d});
+            }
+            LOG_INFO << "[Retention] sys_oper_log >" << operDays << "d, sys_logininfor >" << loginDays << "d cleaned";
         }
 
         // ── HTTPS 启动（读取 ./ssl/config.json，重启后生效）──────────────────
@@ -1250,10 +1754,10 @@ load();
                         if (!dbEnabled.empty()) {
                             SslManager::Config c;
                             c.enabled    = (dbEnabled == "1");
-                            c.httpsPort  = std::stoi(syncCfgVal("ssl_https_port").empty()
-                                            ? "18443" : syncCfgVal("ssl_https_port"));
-                            c.httpPort   = std::stoi(syncCfgVal("ssl_http_port").empty()
-                                            ? "18080" : syncCfgVal("ssl_http_port"));
+                            c.httpsPort  = SecurityUtils::parseInt(
+                                              syncCfgVal("ssl_https_port"), 18443);
+                            c.httpPort   = SecurityUtils::parseInt(
+                                              syncCfgVal("ssl_http_port"),  18080);
                             c.forceHttps = (syncCfgVal("ssl_force_https") == "1");
                             SslManager::saveConfig(c);
                         }
@@ -1265,6 +1769,8 @@ load();
             // Step 2: 从磁盘读取最终 SSL 配置
             auto sslCfg = SslManager::loadConfig();
             if (sslCfg.enabled && SslManager::certExists()) {
+                // 启动时检查证书有效期（30 天内 WARN，7 天内 ERROR）
+                SslManager::checkCertOnStartup(30, 7);
                 drogon::app().addListener("0.0.0.0", (uint16_t)sslCfg.httpsPort,
                                           true,
                                           SslManager::CERT_PATH,
@@ -1312,7 +1818,64 @@ load();
             }
         }
 
+        // ── 进程内 nginx 集成（静态链接 libnginx.a）─────────────────────────────
+        // 仅 RUOYI_USE_NGINX=ON 编译时真实启动，否则空壳直接返回 false
+        // 配置段：config.json 顶层 "nginx_embedded"
+        // 直接读 config.json 文件，避免 drogon getCustomConfig 仅返回 custom_config 子段
+        // 与 services/NginxManager（外部 nginx.exe 子进程版）共存互不干扰
+        try {
+            std::ifstream nf(configFile);
+            if (nf.is_open()) {
+                Json::Value nroot;
+                Json::CharReaderBuilder nrb;
+                std::string nerrs;
+                if (Json::parseFromStream(nrb, nf, &nroot, &nerrs)
+                    && nroot.isMember("nginx_embedded")) {
+                    auto nc = NginxEmbedded::Config::fromJson(nroot["nginx_embedded"]);
+                    LOG_INFO << "[NginxEmbedded] enabled=" << nc.enabled
+                             << " prefix=" << nc.prefix
+                             << " conf=" << nc.confFile;
+                    std::cout << "[NginxEmbedded] enabled=" << nc.enabled
+                              << " prefix=" << nc.prefix
+                              << " conf=" << nc.confFile << std::endl;
+                    if (nc.enabled) {
+                        // drogon 事件循环启动后再起 nginx（reverse_proxy 依赖后端可达）
+                        drogon::app().getLoop()->queueInLoop([nc]() {
+                            NginxEmbedded::instance().start(nc);
+                        });
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            LOG_WARN << "[NginxEmbedded] 初始化失败: " << e.what();
+        }
+
+        // ── ACME 证书自动续期（仅 worker[0] 或单进程时启动）────────────────
+        // 多 worker 进程下只在 index=0 的 worker 启 ACME，避免并行续期
+        try {
+            int wkIdx = WorkerOrchestrator::currentWorkerIndex();
+            if (wkIdx == -1 || wkIdx == 0) {
+                std::ifstream af(configFile);
+                if (af.is_open()) {
+                    Json::Value aroot;
+                    Json::CharReaderBuilder arb;
+                    std::string aerrs;
+                    if (Json::parseFromStream(arb, af, &aroot, &aerrs)
+                        && aroot.isMember("acme")) {
+                        auto ac = AcmeManager::Config::fromJson(aroot["acme"]);
+                        if (ac.enabled) AcmeManager::instance().start(ac);
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            LOG_WARN << "[ACME] 初始化失败: " << e.what();
+        }
+
         drogon::app().run();
+
+        // ── 退出清理：先停反向代理（停止接收新连接，让 drogon 排空）─────
+        try { AcmeManager::instance().stop(); } catch (...) {}
+        try { NginxEmbedded::instance().stop(); } catch (...) {}
     } catch (const std::exception &e) {
         std::cerr << "[致命错误] " << e.what() << std::endl;
         std::cout << "按回车键退出..." << std::endl;

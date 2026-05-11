@@ -13,10 +13,16 @@ struct PageParam {
 
     static PageParam fromRequest(const drogon::HttpRequestPtr &req) {
         PageParam p;
-        auto pn = req->getParameter("pageNum");
-        auto ps = req->getParameter("pageSize");
-        if (!pn.empty()) p.pageNum  = std::stoi(pn);
-        if (!ps.empty()) p.pageSize = std::stoi(ps);
+        auto safeStoi = [](const std::string &s, int defaultVal) {
+            if (s.empty()) return defaultVal;
+            try { return std::stoi(s); } catch (...) { return defaultVal; }
+        };
+        p.pageNum  = safeStoi(req->getParameter("pageNum"),  1);
+        p.pageSize = safeStoi(req->getParameter("pageSize"), 10);
+        // 防御：限制 pageNum/pageSize 合理范围，避免恶意大值或负数
+        if (p.pageNum  < 1)    p.pageNum  = 1;
+        if (p.pageSize < 1)    p.pageSize = 10;
+        if (p.pageSize > 1000) p.pageSize = 1000;
         p.orderByColumn = req->getParameter("orderByColumn");
         auto asc = req->getParameter("isAsc");
         if (!asc.empty()) p.isAsc = asc;

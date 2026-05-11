@@ -45,6 +45,26 @@ namespace CsvUtils {
         return ss.str();
     }
 
+    // 从 headers + 二维字符串数据生成 CSV（带 UTF-8 BOM）
+    inline std::string generate(const std::vector<std::string> &headers,
+                                const std::vector<std::vector<std::string>> &rows) {
+        std::ostringstream ss;
+        ss << "\xEF\xBB\xBF";
+        for (size_t i = 0; i < headers.size(); ++i) {
+            if (i) ss << ",";
+            ss << escapeCell(headers[i]);
+        }
+        ss << "\r\n";
+        for (const auto &row : rows) {
+            for (size_t i = 0; i < row.size(); ++i) {
+                if (i) ss << ",";
+                ss << escapeCell(row[i]);
+            }
+            ss << "\r\n";
+        }
+        return ss.str();
+    }
+
     // 直接返回 CSV 响应
     inline drogon::HttpResponsePtr makeCsvResponse(const std::string &csv,
                                                     const std::string &filename = "export.csv") {

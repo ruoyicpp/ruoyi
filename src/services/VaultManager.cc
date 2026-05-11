@@ -9,6 +9,7 @@
 #include "VaultManager.h"
 #include <trantor/utils/Logger.h>
 #include <json/json.h>
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <chrono>
@@ -195,13 +196,36 @@ bool VaultManager::spawnProcess() {
 #endif
 }
 
-// 从 HCL 文件提取指定 key 的字符串值
-static std::string parseHcl(const std::string& content, const std::string& key) {
-    auto pos = content.find(key + " = \"");
-    if (pos == std::string::npos) return "";
-    pos += key.size() + 4;
-    auto end = content.find('"', pos);
-    return end == std::string::npos ? "" : content.substr(pos, end - pos);
+// 从 vault 配置文件提取指定 key 的字符串值
+// 同时支持 HCL（key = "value"）和 JSON（"key": "value"）两种格式
+static std::string parseVaultConfig(const std::string& content, const std::string& key) {
+    // 1) HCL 形式：foo = "bar"
+    {
+        auto pos = content.find(key + " = \"");
+        if (pos != std::string::npos) {
+            pos += key.size() + 4;
+            auto end = content.find('"', pos);
+            if (end != std::string::npos) return content.substr(pos, end - pos);
+        }
+    }
+    // 2) JSON 形式："foo": "bar" / "foo" : "bar"
+    {
+        std::string needle = "\"" + key + "\"";
+        auto pos = content.find(needle);
+        if (pos != std::string::npos) {
+            pos += needle.size();
+            // 跳过空白和冒号
+            while (pos < content.size() && (content[pos] == ' '
+                || content[pos] == '\t' || content[pos] == ':' || content[pos] == '\n'))
+                ++pos;
+            if (pos < content.size() && content[pos] == '"') {
+                ++pos;
+                auto end = content.find('"', pos);
+                if (end != std::string::npos) return content.substr(pos, end - pos);
+            }
+        }
+    }
+    return "";
 }
 
 // 探测可用的 psql 可执行文件
@@ -226,12 +250,18 @@ bool VaultManager::prepareStorage() {
     if (!hclF.is_open()) { LOG_WARN << "[Vault] 找不到 HCL: " << cfg_.configFile; return false; }
     std::string hcl((std::istreambuf_iterator<char>(hclF)), {});
 
-    std::string connUrl = parseHcl(hcl, "connection_url");
-    if (connUrl.empty()) { LOG_WARN << "[Vault] HCL 中未找到 connection_url"; return false; }
+    std::string connUrl = parseVaultConfig(hcl, "connection_url");
+    if (connUrl.empty()) { LOG_WARN << "[Vault] 配置文件中未找到 connection_url"; return false; }
+    // ha_enabled 字段：HCL 是 ha_enabled = "true"，JSON 也是 "ha_enabled": "true"
+    std::string haEnabled = parseVaultConfig(hcl, "ha_enabled");
+    bool useHa = (haEnabled == "true" || haEnabled == "1");
+    std::string haTable = parseVaultConfig(hcl, "ha_table");
+    if (haTable.empty()) haTable = "vault_ha_locks";
 
     std::string psql = findPsql(cfg_.psqlExe);
-    // vault_kv_store 表定义（来自 Vault PostgreSQL storage 文档）
-    const char* sql =
+    // vault_kv_store + vault_ha_locks 表定义（来自 Vault PostgreSQL storage 文档）
+    // 注意：SQL 含双引号 COLLATE "C"，必须用 -f file 而非 -c "..." 以避免 cmd 转义破坏
+    std::string sqlStr =
         "CREATE TABLE IF NOT EXISTS vault_kv_store ("
         "parent_path TEXT COLLATE \"C\" NOT NULL,"
         "path TEXT COLLATE \"C\","
@@ -240,27 +270,97 @@ bool VaultManager::prepareStorage() {
         "CONSTRAINT pkey PRIMARY KEY (path, key));"
         "CREATE INDEX IF NOT EXISTS parent_path_idx "
         "ON vault_kv_store (parent_path);";
+    if (useHa) {
+        // HA 锁表：列名照搬 Vault postgresql.go 源码定义
+        sqlStr +=
+            "CREATE TABLE IF NOT EXISTS " + haTable + " ("
+            "ha_key TEXT COLLATE \"C\" NOT NULL,"
+            "ha_identity TEXT COLLATE \"C\" NOT NULL,"
+            "ha_value TEXT COLLATE \"C\","
+            "valid_until TIMESTAMP WITH TIME ZONE NOT NULL,"
+            "CONSTRAINT ha_key PRIMARY KEY (ha_key));";
+    }
+    const char* sql = sqlStr.c_str();
 
+    // 写入临时 SQL 文件
+    std::string tmpSql;
 #ifdef _WIN32
-    std::string cmd = "\"" + psql + "\" \"" + connUrl + "\" -c \"" + sql + "\" 2>&1";
+    char tbuf[MAX_PATH]; GetTempPathA(MAX_PATH, tbuf);
+    tmpSql = std::string(tbuf) + "vault_init.sql";
+#else
+    tmpSql = "/tmp/vault_init.sql";
+#endif
+    {
+        std::ofstream sf(tmpSql);
+        if (!sf.is_open()) {
+            LOG_WARN << "[Vault] 无法写临时 SQL 文件: " << tmpSql;
+            return false;
+        }
+        sf << sql;
+    }
+
+    // 用 -f 执行，避免 cmd 转义双引号
+    // Windows _popen 用 cmd /c 跑，cmd 会"去掉首尾引号配对"——
+    // 所以需在外层再包一对 " " 让 cmd 把外层的去掉，里面的引号才得以保留
+    std::string innerCmd =
+        "\"" + psql + "\" \"" + connUrl + "\" -v ON_ERROR_STOP=1 -f \"" + tmpSql + "\" 2>&1";
+#ifdef _WIN32
+    std::string cmd = "\"" + innerCmd + "\"";
     FILE* p = _popen(cmd.c_str(), "r");
 #else
-    std::string cmd = "\"" + psql + "\" \"" + connUrl + "\" -c '" + sql + "' 2>&1";
-    FILE* p = popen(cmd.c_str(), "r");
+    FILE* p = popen(innerCmd.c_str(), "r");
 #endif
-    if (!p) { LOG_WARN << "[Vault] 无法调用 psql"; return false; }
+    if (!p) {
+        std::remove(tmpSql.c_str());
+        LOG_WARN << "[Vault] 无法调用 psql";
+        return false;
+    }
     std::string out; char buf[256];
     while (fgets(buf, sizeof(buf), p)) out += buf;
 #ifdef _WIN32
-    _pclose(p);
+    int rc = _pclose(p);
 #else
-    pclose(p);
+    int rc = pclose(p);
 #endif
-    if (out.find("ERROR") != std::string::npos && out.find("already exists") == std::string::npos) {
-        LOG_WARN << "[Vault] 建表失败: " << out.substr(0, 200);
+    std::remove(tmpSql.c_str());
+
+    if (rc != 0 || (out.find("ERROR") != std::string::npos
+                    && out.find("already exists") == std::string::npos)) {
+        LOG_ERROR << "[Vault] 建表失败 rc=" << rc << " out=" << out.substr(0, 300);
+        std::cout << "[Vault] 建表失败: " << out.substr(0, 200) << std::endl;
         return false;
     }
-    std::cout << "[Vault] vault_kv_store 已就绪" << std::endl;
+
+    // 验证表真的存在（防止 prepareStorage 误报成功）
+    // 注意：同样需要外层引号包裹避免 Windows cmd /c 去掉首尾引号
+    std::string verifyInner =
+        "\"" + psql + "\" \"" + connUrl
+        + "\" -tA -c \"SELECT 1 FROM information_schema.tables WHERE table_name='vault_kv_store'\" 2>&1";
+#ifdef _WIN32
+    std::string verifyCmd = "\"" + verifyInner + "\"";
+    FILE* vp = _popen(verifyCmd.c_str(), "r");
+#else
+    FILE* vp = popen(verifyInner.c_str(), "r");
+#endif
+    std::string vout;
+    if (vp) {
+        char vb[64];
+        while (fgets(vb, sizeof(vb), vp)) vout += vb;
+#ifdef _WIN32
+        _pclose(vp);
+#else
+        pclose(vp);
+#endif
+    }
+    if (vout.find("1") == std::string::npos) {
+        LOG_ERROR << "[Vault] 建表后验证失败：vault_kv_store 仍不存在 (psql 输出: "
+                  << vout.substr(0, 200) << ")";
+        std::cout << "[Vault] 建表后验证失败，vault 将无法启动" << std::endl;
+        return false;
+    }
+
+    std::cout << "[Vault] vault_kv_store 已就绪 (verified)" << std::endl;
+    LOG_INFO << "[Vault] vault_kv_store table verified";
     return true;
 }
 
@@ -378,20 +478,50 @@ bool VaultManager::isSealed() {
     return out.find("Sealed             true") != std::string::npos;
 }
 
-bool VaultManager::doUnseal() {
-    auto out = runVaultCmd(cfg_.exePath, cfg_.addr, cfg_.token,
-                           "operator unseal " + cfg_.unsealKey);
-    // 已解封或成功解封
+// 判断 vault unseal/status 输出文本里 Sealed 是否为 false
+static bool unsealedFromOutput(const std::string& out) {
     if (out.find("already unsealed") != std::string::npos) return true;
     if (out.find("Sealed             false") != std::string::npos) return true;
     if (out.find("Sealed: false")     != std::string::npos) return true;
-    // 通用：在 Sealed 这一行里找 false
     auto pos = out.find("Sealed");
     if (pos != std::string::npos) {
         auto eol = out.find('\n', pos);
         auto line = out.substr(pos, eol == std::string::npos ? std::string::npos : eol - pos);
         if (line.find("false") != std::string::npos) return true;
     }
+    return false;
+}
+
+bool VaultManager::doUnseal() {
+    // 组装候选 key 列表：unsealKeys[] 优先，unsealKey（兼容）放最后
+    std::vector<std::string> keys = cfg_.unsealKeys;
+    if (!cfg_.unsealKey.empty()) {
+        // 仅当未在 keys 中时追加（避免重复）
+        if (std::find(keys.begin(), keys.end(), cfg_.unsealKey) == keys.end())
+            keys.push_back(cfg_.unsealKey);
+    }
+    if (keys.empty()) {
+        LOG_WARN << "[Vault] doUnseal: 未配置任何 unseal_key";
+        return false;
+    }
+
+    // 依次喂入每个 key：Vault 累计达到 threshold 后 Sealed 变 false 即可返回
+    int progress = 0;
+    for (auto& k : keys) {
+        auto out = runVaultCmd(cfg_.exePath, cfg_.addr, cfg_.token,
+                               "operator unseal " + k);
+        progress++;
+        if (unsealedFromOutput(out)) {
+            std::cout << "[Vault] 已用 " << progress << " 个 unseal key 完成解封"
+                      << std::endl;
+            LOG_INFO << "[Vault] unseal done after " << progress << " keys";
+            return true;
+        }
+    }
+    // 全部喂完仍未解封：再 status 一次确认（极端边界情况）
+    auto st = runVaultCmd(cfg_.exePath, cfg_.addr, cfg_.token, "status");
+    if (unsealedFromOutput(st)) return true;
+    LOG_WARN << "[Vault] 用了 " << keys.size() << " 个 key 仍未解封，请检查 key 是否正确";
     return false;
 }
 

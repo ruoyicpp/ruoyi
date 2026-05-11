@@ -24,7 +24,31 @@
 #ifdef _WIN32
 #  include <winsock2.h>
 #  include <ws2tcpip.h>
+#  include <wincrypt.h>
 #  pragma comment(lib,"ws2_32.lib")
+#  pragma comment(lib,"crypt32.lib")
+// 避免与 OpenSSL 冲突：wincrypt.h 定义了 X509_NAME 等同名宏
+#  ifdef X509_NAME
+#    undef X509_NAME
+#  endif
+#  ifdef X509_EXTENSIONS
+#    undef X509_EXTENSIONS
+#  endif
+#  ifdef X509_CERT_PAIR
+#    undef X509_CERT_PAIR
+#  endif
+#  ifdef PKCS7_ISSUER_AND_SERIAL
+#    undef PKCS7_ISSUER_AND_SERIAL
+#  endif
+#  ifdef PKCS7_SIGNER_INFO
+#    undef PKCS7_SIGNER_INFO
+#  endif
+#  ifdef OCSP_REQUEST
+#    undef OCSP_REQUEST
+#  endif
+#  ifdef OCSP_RESPONSE
+#    undef OCSP_RESPONSE
+#  endif
 #else
 #  include <sys/socket.h>
 #  include <netdb.h>
@@ -95,6 +119,43 @@ private:
     std::vector<Sender> senders_;
     std::atomic<size_t> counter_{0};
 
+    // ── Windows 系统证书仓库 → OpenSSL X509_STORE（C# / SChannel 行为对齐）───
+    //   读取 "ROOT"（受信任的根证书颁发机构）和 "CA"（中间 CA），
+    //   逐个 d2i_X509 转换后塞进 OpenSSL 的 trust store。
+    //   返回成功导入的证书数。
+#ifdef _WIN32
+    static int loadWindowsCertStore(SSL_CTX* ctx) {
+        X509_STORE* store = SSL_CTX_get_cert_store(ctx);
+        if (!store) return 0;
+        int total = 0;
+        const wchar_t* names[] = { L"ROOT", L"CA" };
+        for (auto* name : names) {
+            HCERTSTORE hStore = ::CertOpenSystemStoreW(0, name);
+            if (!hStore) continue;
+            PCCERT_CONTEXT pCtx = nullptr;
+            while ((pCtx = ::CertEnumCertificatesInStore(hStore, pCtx)) != nullptr) {
+                const unsigned char* enc = pCtx->pbCertEncoded;
+                X509* x = d2i_X509(nullptr, &enc, (long)pCtx->cbCertEncoded);
+                if (x) {
+                    if (X509_STORE_add_cert(store, x) == 1) ++total;
+                    X509_free(x);
+                }
+            }
+            ::CertCloseStore(hStore, 0);
+        }
+        return total;
+    }
+#endif
+
+    // ── 拉取最近一条 OpenSSL 错误，附加到异常文案 ──────────────────────────
+    static std::string opensslLastError() {
+        unsigned long e = ERR_get_error();
+        if (!e) return "(no error queue)";
+        char buf[256] = {};
+        ERR_error_string_n(e, buf, sizeof(buf));
+        return buf;
+    }
+
     // ── Base64 编码（不依赖 BIO，避免换行符问题）────────────────────────────
     static std::string b64(const std::string& s) {
         static const char* t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -139,17 +200,34 @@ private:
         freeaddrinfo(res);
         if (sock < 0) throw std::runtime_error("TCP 连接失败: " + host);
 
-        // 2. SSL wrap（Implicit TLS）
+        // 2. SSL wrap（Implicit TLS）—— C# / SChannel 行为：信任 Windows 系统证书仓库
         SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
-        if (!ctx) { closesocket(sock); throw std::runtime_error("SSL_CTX_new 失败"); }
+        if (!ctx) { closesocket(sock); throw std::runtime_error("SSL_CTX_new 失败: " + opensslLastError()); }
+        SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
         SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
-        SSL_CTX_set_default_verify_paths(ctx);  // 加载系统根证书
+#ifdef _WIN32
+        int loaded = loadWindowsCertStore(ctx);
+        if (loaded == 0) {
+            // Windows 仓库取不到时退而求其次走 OpenSSL 默认路径
+            SSL_CTX_set_default_verify_paths(ctx);
+        }
+#else
+        SSL_CTX_set_default_verify_paths(ctx);
+#endif
         SSL* ssl = SSL_new(ctx);
         SSL_set_fd(ssl, sock);
         SSL_set_tlsext_host_name(ssl, host.c_str());
+        // 启用主机名验证（避免拿到一张合法 CA 签发但域名对不上的证书）
+        SSL_set1_host(ssl, host.c_str());
         if (SSL_connect(ssl) <= 0) {
+            long vr = SSL_get_verify_result(ssl);
+            std::string detail = opensslLastError();
+            if (vr != X509_V_OK) {
+                detail += " (verify_result=" + std::to_string(vr)
+                       + " "  + std::string(X509_verify_cert_error_string(vr)) + ")";
+            }
             SSL_free(ssl); SSL_CTX_free(ctx); closesocket(sock);
-            throw std::runtime_error("SSL 握手失败");
+            throw std::runtime_error("SSL 握手失败: " + detail);
         }
 
         auto W = [&](const std::string& s) {

@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include "../../common/AjaxResult.h"
+#include "../../common/OperLogUtils.h"
 #include "../../common/PageUtils.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
@@ -16,6 +17,7 @@ public:
         ADD_METHOD_TO(GenCtrl::dbList,       "/tool/gen/db/list",          drogon::Get,    "JwtAuthFilter");
         ADD_METHOD_TO(GenCtrl::columnList,   "/tool/gen/column/{tableId}", drogon::Get,    "JwtAuthFilter");
         ADD_METHOD_TO(GenCtrl::importTable,  "/tool/gen/importTable",      drogon::Post,   "JwtAuthFilter");
+        ADD_METHOD_TO(GenCtrl::createTable,  "/tool/gen/createTable",      drogon::Post,   "JwtAuthFilter");
         ADD_METHOD_TO(GenCtrl::edit,         "/tool/gen",                  drogon::Put,    "JwtAuthFilter");
         ADD_METHOD_TO(GenCtrl::remove,       "/tool/gen/{tableIds}",       drogon::Delete, "JwtAuthFilter");
         ADD_METHOD_TO(GenCtrl::preview,      "/tool/gen/preview/{tableId}",drogon::Get,    "JwtAuthFilter");
@@ -119,6 +121,136 @@ public:
         RESP_JSON(cb, pr.toJson());
     }
 
+    // POST /tool/gen/createTable  params: { sql: "CREATE TABLE ...; ...", tplWebType: "element-ui" }
+    // 1) 执行 DDL；2) 用正则提取 CREATE TABLE 表名；3) 自动调用 importTable 流程
+    void createTable(const drogon::HttpRequestPtr &req,
+                     std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        CHECK_PERM(req, cb, "tool:gen:edit");
+        // 前端用 params: data，意味着 sql 走 query string
+        std::string sqlStr = req->getParameter("sql");
+        if (sqlStr.empty()) {
+            auto body = req->getJsonObject();
+            if (body && (*body).isMember("sql")) sqlStr = (*body)["sql"].asString();
+        }
+        if (sqlStr.empty()) { RESP_ERR(cb, "请输入建表语句"); return; }
+
+        auto& db = DatabaseService::instance();
+
+        // 执行 DDL（按分号切分，逐条执行；忽略空白和注释行）
+        std::vector<std::string> stmts;
+        {
+            std::string cur;
+            for (char c : sqlStr) {
+                if (c == ';') { if (!cur.empty()) stmts.push_back(cur); cur.clear(); }
+                else cur += c;
+            }
+            if (!cur.empty()) stmts.push_back(cur);
+        }
+        std::vector<std::string> tableNames;
+        std::string lastErr;
+        for (auto& s : stmts) {
+            // 去前导/尾部空白
+            size_t a = s.find_first_not_of(" \t\r\n");
+            size_t b = s.find_last_not_of(" \t\r\n");
+            if (a == std::string::npos) continue;
+            std::string trimmed = s.substr(a, b - a + 1);
+
+            // 仅允许 CREATE TABLE / CREATE INDEX / COMMENT ON 等安全 DDL，禁止 DROP/TRUNCATE
+            std::string upper = trimmed;
+            for (auto& c : upper) c = (char)std::toupper((unsigned char)c);
+            if (upper.rfind("DROP", 0) == 0 || upper.rfind("TRUNCATE", 0) == 0) {
+                lastErr = "不允许执行 DROP/TRUNCATE 语句";
+                continue;
+            }
+
+            try { db.exec(trimmed + ";"); }
+            catch (const std::exception& e) { lastErr = e.what(); continue; }
+
+            // 提取 CREATE TABLE [IF NOT EXISTS] [schema.]name
+            if (upper.rfind("CREATE TABLE", 0) == 0) {
+                std::string rest = trimmed.substr(12);
+                // 跳过空白
+                size_t i = 0;
+                while (i < rest.size() && (rest[i]==' '||rest[i]=='\t'||rest[i]=='\r'||rest[i]=='\n')) ++i;
+                // 可选 IF NOT EXISTS
+                std::string head = rest.substr(i, 13);
+                for (auto& c : head) c = (char)std::toupper((unsigned char)c);
+                if (head.rfind("IF NOT EXISTS", 0) == 0) {
+                    i += 13;
+                    while (i < rest.size() && (rest[i]==' '||rest[i]=='\t'||rest[i]=='\r'||rest[i]=='\n')) ++i;
+                }
+                // 取下一个 token（含 schema.name 与可选反/双引号）
+                std::string name;
+                while (i < rest.size()) {
+                    char c = rest[i];
+                    if (c==' '||c=='\t'||c=='\r'||c=='\n'||c=='('||c==';') break;
+                    if (c=='"' || c=='`' || c=='\'') { ++i; continue; }
+                    name += c;
+                    ++i;
+                }
+                // 去除 schema.
+                auto dot = name.rfind('.');
+                if (dot != std::string::npos) name = name.substr(dot + 1);
+                if (!name.empty()) tableNames.push_back(name);
+            }
+        }
+
+        if (tableNames.empty()) {
+            if (!lastErr.empty()) { RESP_ERR(cb, "DDL 执行失败: " + lastErr); return; }
+            RESP_ERR(cb, "未识别到 CREATE TABLE 语句"); return;
+        }
+
+        // 复用 importTable 流程（不复用代码，但等价行为）
+        std::string imported;
+        for (auto& tbl : tableNames) {
+            auto ex = db.queryParams("SELECT table_id FROM gen_table WHERE table_name=$1", {tbl});
+            if (ex.ok() && ex.rows() > 0) continue;
+            auto cm = db.queryParams(
+                "SELECT COALESCE(obj_description((quote_ident('public')||'.'||quote_ident($1))::regclass),'')",
+                {tbl});
+            std::string comment = (cm.ok() && cm.rows()>0) ? cm.str(0,0) : "";
+            std::string cls = toCamelCase(tbl, true);
+            std::string mod = tbl.find('_')!=std::string::npos ? tbl.substr(0,tbl.find('_')) : tbl;
+            std::string biz = tbl.rfind('_')!=std::string::npos ? tbl.substr(tbl.rfind('_')+1) : tbl;
+            db.execParams(
+                "INSERT INTO gen_table(table_name,table_comment,class_name,package_name,module_name,"
+                "business_name,function_name,function_author,gen_type,gen_path,create_time) "
+                "VALUES($1,$2,$3,'com.ruoyi',$4,$5,$2,'ruoyi','0','/',NOW())",
+                {tbl, comment, cls, mod, biz});
+            auto tid = db.queryParams("SELECT table_id FROM gen_table WHERE table_name=$1 ORDER BY table_id DESC LIMIT 1", {tbl});
+            if (!tid.ok() || tid.rows()==0) continue;
+            std::string tableIdStr = tid.str(0,0);
+            auto cols = db.queryParams(
+                "SELECT column_name,data_type,"
+                "COALESCE(col_description((quote_ident('public')||'.'||quote_ident($1))::regclass,ordinal_position),'') "
+                "FROM information_schema.columns "
+                "WHERE table_schema='public' AND table_name=$1 ORDER BY ordinal_position",
+                {tbl});
+            int sort = 1;
+            if (cols.ok()) for (int i=0;i<cols.rows();++i) {
+                std::string col  = cols.str(i,0);
+                std::string type = cols.str(i,1);
+                std::string colComment = cols.str(i,2);
+                bool isPk = (col=="id" || col==(tbl+"_id") || col=="pk");
+                std::string jtype = pgTypeToJava(type);
+                std::string jfield = toCamelCase(col, false);
+                db.execParams(
+                    "INSERT INTO gen_table_column(table_id,column_name,column_comment,column_type,"
+                    "java_type,java_field,is_pk,is_increment,is_required,"
+                    "is_insert,is_edit,is_list,is_query,query_type,html_type,dict_type,sort) "
+                    "VALUES($1,$2,$3,$4,$5,$6,$7,'0','0','1','1','1','0','EQ','input',''," + std::to_string(sort++) + ")",
+                    {tableIdStr, col, colComment, type, jtype, jfield, isPk?"1":"0"});
+            }
+            if (!imported.empty()) imported += ",";
+            imported += tbl;
+        }
+
+        OperLogUtils::write(req, "代码生成", BusinessType::INSERT,
+                            "createTable=" + imported);
+        RESP_MSG(cb, imported.empty() ? "建表成功，已自动跳过已导入表"
+                                       : "建表成功并导入: " + imported);
+    }
+
     void importTable(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         CHECK_PERM(req, cb, "tool:gen:import");
         auto tables = req->getParameter("tables");
@@ -170,6 +302,7 @@ public:
                     {tableIdStr, col, colComment, type, jtype, jfield, isPk?"1":"0"});
             }
         }
+        OperLogUtils::write(req, "代码生成", BusinessType::IMPORT, "tables=" + tables);
         RESP_MSG(cb, "导入成功");
     }
 
@@ -205,6 +338,7 @@ public:
                      std::to_string(col["columnId"].asInt64())});
             }
         }
+        LOG_OPER(req, "代码生成", BusinessType::UPDATE);
         RESP_MSG(cb, "操作成功");
     }
 
@@ -216,6 +350,7 @@ public:
             db.execParams("DELETE FROM gen_table_column WHERE table_id=$1", {id});
             db.execParams("DELETE FROM gen_table WHERE table_id=$1", {id});
         }
+        OperLogUtils::write(req, "代码生成", BusinessType::REMOVE, "ids=" + tableIds);
         RESP_MSG(cb, "操作成功");
     }
 
@@ -250,8 +385,15 @@ public:
         resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
         Json::StreamWriterBuilder wb; wb["indentation"] = "  ";
         resp->setBody(Json::writeString(wb, data));
+        // filename 防 CR/LF 头注入：仅保留字母数字及下划线/横线
+        std::string safeName;
+        for (char c : tableName) {
+            if (std::isalnum((unsigned char)c) || c == '_' || c == '-') safeName += c;
+        }
+        if (safeName.empty()) safeName = "gen";
         resp->addHeader("Content-Disposition",
-            "attachment; filename=\"" + tableName + "_gen.json\"");
+            "attachment; filename=\"" + safeName + "_gen.json\"");
+        OperLogUtils::write(req, "代码生成", BusinessType::GENCODE, "table=" + tableName);
         cb(resp);
     }
 
@@ -274,6 +416,7 @@ public:
             item["api"]        = genApi(info);
             result[tbl] = item;
         }
+        OperLogUtils::write(req, "代码生成", BusinessType::GENCODE, "tables=" + tables);
         RESP_OK(cb, result);
     }
 
@@ -306,6 +449,7 @@ public:
                 {tid, col, cmt, type, pgTypeToJava(type), toCamelCase(col,false)});
         }
         db.execParams("UPDATE gen_table SET update_time=NOW() WHERE table_id=$1", {tid});
+        OperLogUtils::write(req, "代码生成", BusinessType::UPDATE, "sync table=" + tableName);
         RESP_MSG(cb, "同步成功");
     }
 

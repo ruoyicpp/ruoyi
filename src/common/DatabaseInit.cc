@@ -375,9 +375,13 @@ std::vector<std::string> DatabaseInit::getCreateTableSqls() {
             token_key   VARCHAR(200) PRIMARY KEY,
             token_value TEXT         NOT NULL,
             expire_time BIGINT       NOT NULL,
+            user_id     BIGINT,
             create_time TIMESTAMP    DEFAULT NOW()
         ))",
         R"(CREATE INDEX IF NOT EXISTS idx_sys_token_expire ON sys_token(expire_time))",
+        // 旧版无 user_id 列时的迁移：PG 支持 IF NOT EXISTS 列；失败也不影响主流程
+        R"(ALTER TABLE sys_token ADD COLUMN IF NOT EXISTS user_id BIGINT)",
+        R"(CREATE INDEX IF NOT EXISTS idx_sys_token_user_id ON sys_token(user_id))",
 
         // -------------------------------------------------------
         // 表单构建配置表
@@ -501,10 +505,17 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         R"(UPDATE sys_menu SET menu_type='C', component='InnerLink', is_frame='0', path='http://localhost:5001'
            WHERE menu_id=2000)",
 
+        // AI 会话（远程 fallback chain：图灵机器人 + 讯飞星火 Lite），与 AI智能助手同级
+        // 后端路由 /ai/page 提供自包含 HTML 聊天 UI，POST /ai/chat 走 fallback 链
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (2100,'AI会话',0,6,'http://localhost:18080/ai/page','InnerLink','','0','0','C','0','0','','cascader','admin',NOW(),'远程 AI 助手（图灵机器人 + 讯飞星火 fallback）') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(UPDATE sys_menu SET menu_type='C', component='InnerLink', is_frame='0', path='http://localhost:18080/ai/page'
+           WHERE menu_id=2100)",
+
         // HTTPS/SSL 配置页（顶级内嵌，与 AI智能助手同级，才能正确触发 InnerLink 路由）
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
-           (1100,'HTTPS配置',0,6,'http://localhost:18080/ssl-config','InnerLink','','0','0','C','0','0','system:ssl:query','lock','admin',NOW(),'SSL/HTTPS证书配置') ON CONFLICT (menu_id) DO NOTHING)",
-        R"(UPDATE sys_menu SET menu_name='HTTPS配置',parent_id=0,order_num=6,
+           (1100,'HTTPS配置',0,7,'http://localhost:18080/ssl-config','InnerLink','','0','0','C','0','0','system:ssl:query','lock','admin',NOW(),'SSL/HTTPS证书配置') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(UPDATE sys_menu SET menu_name='HTTPS配置',parent_id=0,order_num=7,
            path='http://localhost:18080/ssl-config',component='InnerLink',is_frame='0',
            menu_type='C',perms='system:ssl:query',icon='lock'
            WHERE menu_id=1100)",
@@ -939,9 +950,12 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         // =====================================================================
         // v1.1 新增：系统日志查看器（InnerLink，顶级菜单）
         // =====================================================================
+        // 走前端开发代理 /dev-api（VUE_APP_BASE_API），保证 iframe 与父窗口同源
+        // 同源后 iframe 可读 parent.sessionStorage 中的 Admin-Token
+        // 生产部署时管理员可在线编辑菜单 path 为对应环境的 API 前缀（如 /prod-api 或 /api）
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
-           (120,'日志查看',0,9,'http://localhost:18080/monitor/logfile/page','InnerLink','','0','0','C','0','0','monitor:logfile:view','log','admin',NOW(),'系统日志文件查看器') ON CONFLICT (menu_id) DO NOTHING)",
-        R"(UPDATE sys_menu SET menu_name='日志查看',parent_id=0,order_num=9,path='http://localhost:18080/monitor/logfile/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='monitor:logfile:view',icon='log' WHERE menu_id=120)",
+           (120,'日志查看',0,9,'http://localhost:3000/dev-api/monitor/logfile/page','InnerLink','','0','0','C','0','0','monitor:logfile:view','log','admin',NOW(),'系统日志文件查看器') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(UPDATE sys_menu SET menu_name='日志查看',parent_id=0,order_num=9,path='http://localhost:3000/dev-api/monitor/logfile/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='monitor:logfile:view',icon='log' WHERE menu_id=120)",
 
         // =====================================================================
         // v1.2 新增：TOTP 两步验证按钮（挂在个人中心下）

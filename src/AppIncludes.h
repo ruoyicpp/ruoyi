@@ -44,6 +44,8 @@
 #include "common/TotpUtils.h"
 #include "common/LdapAuth.h"
 #include "common/OAuth2Manager.h"
+#include "common/LicenseManager.h"
+#include "common/ColorLogger.h"
 
 // ── 服务层 ───────────────────────────────────────────────────────
 #include "services/NginxManager.h"
@@ -75,6 +77,9 @@
 #include "system/controllers/SysSslConfigCtrl.h"
 #include "system/controllers/SysTotpCtrl.h"
 #include "system/controllers/OAuth2Ctrl.h"
+#include "system/controllers/SysMonitorConfigCtrl.h"
+#include "system/controllers/UnlockScreenCtrl.h"
+#include "system/controllers/WsTicketCtrl.h"
 
 // ── Monitor 控制器 ───────────────────────────────────────────────
 #include "monitor/controllers/SysLogCtrl.h"

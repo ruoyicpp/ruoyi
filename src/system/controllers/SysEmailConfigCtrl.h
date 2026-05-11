@@ -1,6 +1,8 @@
 #pragma once
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"
+#include "../../common/OperLogUtils.h"
+#include "../../common/SecurityUtils.h"
 #include "../../common/SmtpUtils.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
@@ -124,6 +126,7 @@ public:
 
         // 同步更新内存中的 SmtpUtils 配置
         reloadSmtp();
+        LOG_OPER(req, "邮件配置", BusinessType::UPDATE);
         RESP_MSG(cb, "保存成功");
     }
 
@@ -142,6 +145,9 @@ public:
         }
         bool ok = SmtpUtils::instance().send(to, "测试邮件 - RuoYi系统",
             "这是一封来自 RuoYi-Cpp 系统的测试邮件，如收到请忽略。");
+        OperLogUtils::write(req, "邮件配置", BusinessType::OTHER, "to=" + to,
+                            ok ? 0 : 1, ok ? "send ok" : "send failed",
+                            ok ? "" : "smtp send failed");
         if (ok) RESP_MSG(cb, "测试邮件发送成功，请查收");
         else    RESP_ERR(cb, "发送失败，请检查发件箱配置或查看系统日志");
     }
@@ -155,7 +161,7 @@ public:
             return (r.ok() && r.rows() > 0) ? r.str(0,0) : def;
         };
         std::string host     = cfgVal("sys.email.host",     "smtp.qq.com");
-        int         port     = std::stoi(cfgVal("sys.email.port", "465"));
+        int         port     = SecurityUtils::parseInt(cfgVal("sys.email.port", "465"), 465);
         std::string fromName = cfgVal("sys.email.fromName", "系统通知");
         std::string sendersJ = cfgVal("sys.email.senders",  "[]");
 

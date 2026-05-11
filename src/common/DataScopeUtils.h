@@ -7,6 +7,24 @@
 
 namespace DataScopeUtils {
 
+    // SQL 字符串字面量转义：双写单引号；用于 userName 等不便参数化的拼接场景
+    inline std::string sqlEscape(const std::string &s) {
+        std::string out;
+        out.reserve(s.size() + 4);
+        for (char c : s) {
+            if (c == '\'') out += "''";
+            else out += c;
+        }
+        return out;
+    }
+
+    // 整数防御：仅允许 0-9，过滤可能的注入字符；不合法返回 "0"
+    inline std::string sanitizeId(const std::string &s) {
+        if (s.empty()) return "0";
+        for (char c : s) if (c < '0' || c > '9') return "0";
+        return s;
+    }
+
     // 生成数据权限 SQL 附加条件
     // tableAlias: 主表别名（含 dept_id 字段，如 "u" 代表 sys_user u）
     // userAlias:  创建者字段别名（如 "u" 代表 u.create_by）
@@ -17,6 +35,7 @@ namespace DataScopeUtils {
 
         auto &db = DatabaseService::instance();
         std::string uid = std::to_string(user.userId);
+        std::string escUser = sqlEscape(user.userName);
 
         auto roleRes = db.queryParams(
             "SELECT r.role_id, r.data_scope FROM sys_role r "
@@ -25,7 +44,7 @@ namespace DataScopeUtils {
             {uid});
         if (!roleRes.ok() || roleRes.rows() == 0) {
             if (!userAlias.empty())
-                return " AND " + userAlias + ".create_by='" + user.userName + "'";
+                return " AND " + userAlias + ".create_by='" + escUser + "'";
             return "";
         }
 
@@ -45,7 +64,7 @@ namespace DataScopeUtils {
                     "SELECT dept_id FROM sys_role_dept WHERE role_id=$1", {roleId});
                 if (deptRes.ok())
                     for (int j = 0; j < deptRes.rows(); ++j)
-                        customDeptIds.push_back(deptRes.str(j, 0));
+                        customDeptIds.push_back(sanitizeId(deptRes.str(j, 0)));
             }
             else if (scope == "3") hasDept    = true;
             else if (scope == "4") hasDeptSub = true;
@@ -72,7 +91,7 @@ namespace DataScopeUtils {
             auto dRow = db.queryParams(
                 "SELECT dept_id FROM sys_user WHERE user_id=$1", {uid});
             if (dRow.ok() && dRow.rows() > 0)
-                conditions.push_back(ta + "dept_id='" + dRow.str(0, 0) + "'");
+                conditions.push_back(ta + "dept_id='" + sanitizeId(dRow.str(0, 0)) + "'");
         }
 
         // dept and sub-depts (ancestors LIKE)
@@ -80,7 +99,7 @@ namespace DataScopeUtils {
             auto dRow = db.queryParams(
                 "SELECT dept_id FROM sys_user WHERE user_id=$1", {uid});
             if (dRow.ok() && dRow.rows() > 0) {
-                std::string deptId = dRow.str(0, 0);
+                std::string deptId = sanitizeId(dRow.str(0, 0));
                 conditions.push_back(
                     ta + "dept_id IN (SELECT dept_id FROM sys_dept "
                     "WHERE del_flag='0' AND (dept_id=" + deptId +
@@ -93,7 +112,7 @@ namespace DataScopeUtils {
         // self only
         if (hasSelf && !userAlias.empty()) {
             std::string ua = userAlias.empty() ? "" : userAlias + ".";
-            conditions.push_back(ua + "create_by='" + user.userName + "'");
+            conditions.push_back(ua + "create_by='" + escUser + "'");
         }
 
         if (conditions.empty()) return "";

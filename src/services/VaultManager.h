@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <map>
+#include <vector>
 #include <atomic>
 #include <thread>
 #include <mutex>
@@ -12,11 +13,14 @@
 
 struct VaultManagerConfig {
     bool        enabled       = false;
-    std::string exePath;                // vault-with-ui.exe 完整路径
-    std::string configFile;             // vault-postgresql-simple.hcl 路径
+    std::string exePath;                // vault.exe 完整路径
+    std::string configFile;             // vault-config.json (JSON) 或 vault-*.hcl (HCL)
     std::string addr          = "http://127.0.0.1:8200";
     std::string token;
-    std::string unsealKey;              // 自动解封密钥
+    // 解封密钥：threshold > 1 时填多个；单 key 模式只填一个
+    // 兼容：unsealKey 等价于 unsealKeys[0]
+    std::string              unsealKey;
+    std::vector<std::string> unsealKeys;
     std::string secretPath    = "secret/ruoyi-cpp";
     bool        autoStart     = true;   // 拉起 Vault 子进程
     bool        showWindow    = false;

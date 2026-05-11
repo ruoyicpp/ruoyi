@@ -12,6 +12,7 @@
 #include <vector>
 #include <algorithm>
 #include <trantor/utils/Logger.h>
+#include "TermColor.h"
 
 /**
  * JsonLogger — 将 trantor 的文本日志拦截并重格式化为 NDJSON
@@ -48,6 +49,21 @@ public:
             [this](const char* msg, uint64_t len) { write(msg, len); },
             [this]() { flush(); }
         );
+    }
+
+    // ── 输出回调（由 trantor 各线程调用，亦可在 beginning advice 中显式重绑）─
+    void write(const char* msg, uint64_t len) {
+        std::lock_guard<std::mutex> lk(mu_);
+        lineBuf_.append(msg, static_cast<size_t>(len));
+        flushLines();
+    }
+
+    void flush() {
+        std::lock_guard<std::mutex> lk(mu_);
+        if (!lineBuf_.empty()) {
+            flushLines();
+        }
+        if (file_.is_open()) file_.flush();
     }
 
 private:
@@ -100,21 +116,6 @@ private:
         }
     }
 
-    // ── 输出回调（由 trantor 各线程调用）────────────────────────────────────
-    void write(const char* msg, uint64_t len) {
-        std::lock_guard<std::mutex> lk(mu_);
-        lineBuf_.append(msg, static_cast<size_t>(len));
-        flushLines();
-    }
-
-    void flush() {
-        std::lock_guard<std::mutex> lk(mu_);
-        if (!lineBuf_.empty()) {
-            flushLines();
-        }
-        if (file_.is_open()) file_.flush();
-    }
-
     // 按换行符切分、逐行处理
     void flushLines() {
         size_t pos;
@@ -129,8 +130,11 @@ private:
                     currentSize_ += json.size() + 1;
                     rotateIfNeeded();
                 }
-                // 控制台保留彩色文本（原行），方便开发时查看
-                fputs((line + "\n").c_str(), stderr);
+                // 控制台保留彩色文本（原行），走 TermColor 按级别染色后输出到 stdout
+                std::string colored = TermColor::_decorate(line.data(), line.size());
+                colored.push_back('\n');
+                std::fwrite(colored.data(), 1, colored.size(), stdout);
+                std::fflush(stdout);
             }
         }
     }
@@ -170,10 +174,17 @@ private:
         trim(level);
         p = skipSpaces(tokEnd, end);
 
-        // 4. file:line（到 " - "）
-        const char* dash = findSeq(p, end, " - ", 3);
-        if (dash) {
-            std::string src(p, dash);
+        // 4. trantor 格式：message - file:line（finish() 把 " - file:line" 追加到末尾）
+        //    用 rfind 找最后一个 " - "，避免消息本身含有 " - " 被误切
+        const char* lastDash = nullptr;
+        for (const char* q = end - 3; q >= p; --q) {
+            if (memcmp(q, " - ", 3) == 0) { lastDash = q; break; }
+        }
+        if (lastDash) {
+            msg.assign(p, lastDash);
+            trim(msg);
+            std::string src(lastDash + 3, end);
+            trim(src);
             size_t col = src.rfind(':');
             if (col != std::string::npos) {
                 file   = src.substr(0, col);
@@ -181,12 +192,11 @@ private:
             } else {
                 file = src;
             }
-            p = dash + 3;
+        } else {
+            // 没有 " - " 分隔，全部视为消息
+            msg.assign(p, end);
+            trim(msg);
         }
-
-        // 5. 剩余即消息
-        msg.assign(p, end);
-        trim(msg);
 
         // 6. 构建 JSON（避免引入额外依赖，手工序列化）
         std::string j;

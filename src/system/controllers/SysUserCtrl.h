@@ -7,6 +7,7 @@
 #include "../../common/AjaxResult.h"
 #include "../../common/PageUtils.h"
 #include "../../common/SecurityUtils.h"
+#include "../../common/XssUtils.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
 #include "../services/TokenService.h"
@@ -107,18 +108,29 @@ public:
         if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
         auto& db = DatabaseService::instance();
         std::string userName = (*body)["userName"].asString();
+        // 用户名格式校验（防注入与异常字符）
+        if (!XssUtils::isValidUsername(userName)) {
+            RESP_ERR(cb, "用户名格式无效（2-30 位，字母开头，仅字母数字 _-.）"); return;
+        }
         auto exist = db.queryParams("SELECT user_id FROM sys_user WHERE user_name=$1 AND del_flag='0' LIMIT 1", {userName});
         if (exist.ok() && exist.rows() > 0) { RESP_ERR(cb, "新增用户'" + userName + "'失败，登录账号已存在"); return; }
 
         std::string phonenumberCheck = (*body).get("phonenumber","").asString();
         std::string emailCheck       = (*body).get("email","").asString();
         if (!phonenumberCheck.empty()) {
+            if (!XssUtils::isValidPhone(phonenumberCheck)) { RESP_ERR(cb, "手机号格式不正确"); return; }
             auto p = db.queryParams("SELECT user_id FROM sys_user WHERE phonenumber=$1 AND del_flag='0' LIMIT 1", {phonenumberCheck});
             if (p.ok() && p.rows() > 0) { RESP_ERR(cb, "新增用户'" + userName + "'失败，手机号码已存在"); return; }
         }
         if (!emailCheck.empty()) {
+            if (!XssUtils::isValidEmail(emailCheck)) { RESP_ERR(cb, "邮箱格式不正确"); return; }
             auto e = db.queryParams("SELECT user_id FROM sys_user WHERE email=$1 AND del_flag='0' LIMIT 1", {emailCheck});
             if (e.ok() && e.rows() > 0) { RESP_ERR(cb, "新增用户'" + userName + "'失败，邮箱账号已存在"); return; }
+        }
+        // 昵称长度限制
+        std::string nickCheck = (*body).get("nickName","").asString();
+        if (!nickCheck.empty() && !XssUtils::lenInRange(nickCheck, 1, 30)) {
+            RESP_ERR(cb, "昵称长度不得超过 30 字符"); return;
         }
 
         std::string pwd = SecurityUtils::encryptPassword((*body).get("password","123456").asString());
@@ -165,15 +177,17 @@ public:
             auto u = db.queryParams("SELECT user_id FROM sys_user WHERE user_name=$1 AND del_flag='0' AND user_id!=$2 LIMIT 1", {userName, uid});
             if (u.ok() && u.rows() > 0) { RESP_ERR(cb, "修改用户'" + userName + "'失败，登录账号已存在"); return; }
         }
-        // 手机号唯一性
+        // 手机号格式 + 唯一性
         std::string editPhone = (*body).get("phonenumber","").asString();
         if (!editPhone.empty()) {
+            if (!XssUtils::isValidPhone(editPhone)) { RESP_ERR(cb, "手机号格式不正确"); return; }
             auto p = db.queryParams("SELECT user_id FROM sys_user WHERE phonenumber=$1 AND del_flag='0' AND user_id!=$2 LIMIT 1", {editPhone, uid});
             if (p.ok() && p.rows() > 0) { RESP_ERR(cb, "修改用户'" + userName + "'失败，手机号码已存在"); return; }
         }
-        // 邮箱唯一性
+        // 邮箱格式 + 唯一性
         std::string editEmail = (*body).get("email","").asString();
         if (!editEmail.empty()) {
+            if (!XssUtils::isValidEmail(editEmail)) { RESP_ERR(cb, "邮箱格式不正确"); return; }
             auto e = db.queryParams("SELECT user_id FROM sys_user WHERE email=$1 AND del_flag='0' AND user_id!=$2 LIMIT 1", {editEmail, uid});
             if (e.ok() && e.rows() > 0) { RESP_ERR(cb, "修改用户'" + userName + "'失败，邮箱账号已存在"); return; }
         }
@@ -195,6 +209,8 @@ public:
             for (auto &pid : (*body)["postIds"])
                 db.execParams("INSERT INTO sys_user_post(user_id,post_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
                     {uid, std::to_string(pid.asInt64())});
+        // 用户信息变动，失效 getInfo 缓存
+        MemCache::instance().remove("userinfo:" + uid);
         LOG_OPER(req, "用户管理", BusinessType::UPDATE);
         RESP_MSG(cb, "操作成功");
     }
@@ -204,13 +220,16 @@ public:
         long curUserId = GET_USER_ID(req);
         auto& db = DatabaseService::instance();
         for (auto &idStr : splitIds(ids)) {
-            long uid = std::stol(idStr);
-            if (uid == curUserId) { RESP_ERR(cb, "当前用户不能删除"); return; }
+            long uid = SecurityUtils::parseLong(idStr, 0);
+            if (uid <= 0)              { RESP_ERR(cb, "非法的用户ID");              return; }
+            if (uid == curUserId)      { RESP_ERR(cb, "当前用户不能删除");          return; }
             if (SecurityUtils::isAdmin(uid)) { RESP_ERR(cb, "不允许删除超级管理员"); return; }
             std::string s = std::to_string(uid);
             db.execParams("DELETE FROM sys_user_role WHERE user_id=$1", {s});
             db.execParams("DELETE FROM sys_user_post WHERE user_id=$1", {s});
             db.execParams("UPDATE sys_user SET del_flag='2' WHERE user_id=$1", {s});
+            MemCache::instance().remove("userinfo:" + s);
+            MemCache::instance().remove("routers:" + s);
         }
         LOG_OPER_PARAM(req, "用户管理", BusinessType::REMOVE, ids);
         RESP_MSG(cb, "操作成功");
@@ -237,6 +256,7 @@ public:
         if (SecurityUtils::isAdmin(userId)) { RESP_ERR(cb, "不允许操作超级管理员用户"); return; }
         DatabaseService::instance().execParams("UPDATE sys_user SET status=$1,update_time=NOW() WHERE user_id=$2",
             {(*body)["status"].asString(), std::to_string(userId)});
+        MemCache::instance().remove("userinfo:" + std::to_string(userId));
         LOG_OPER(req, "用户管理", BusinessType::UPDATE);
         RESP_MSG(cb, "操作成功");
     }
@@ -280,7 +300,7 @@ public:
         if (!ids.empty())
             db.execParams("INSERT INTO sys_user_role(user_id,role_id) VALUES($1,$2) ON CONFLICT DO NOTHING", {uid, ids[0]});
         // 刷新该用户的 token 权限缓存
-        long userId = std::stol(uid);
+        long userId = SecurityUtils::parseLong(uid, 0);
         if (!SecurityUtils::isAdmin(userId)) {
             auto permsRes = db.queryParams(
                 "SELECT DISTINCT m.perms FROM sys_menu m "
@@ -292,12 +312,14 @@ public:
                 "SELECT r.role_key FROM sys_role r "
                 "JOIN sys_user_role ur ON r.role_id=ur.role_id "
                 "WHERE ur.user_id=$1 AND r.status='0' AND r.del_flag='0'", {uid});
-            auto allTokens = db.query("SELECT token_key FROM sys_token");
-            if (allTokens.ok()) {
-                for (int t = 0; t < allTokens.rows(); ++t) {
-                    std::string key = allTokens.str(t, 0);
+            // 用 user_id 索引直接拿到该用户的所有 token，避免全表扫描 N+1
+            auto userTokens = db.queryParams(
+                "SELECT token_key FROM sys_token WHERE user_id=$1", {uid});
+            if (userTokens.ok()) {
+                for (int t = 0; t < userTokens.rows(); ++t) {
+                    std::string key = userTokens.str(t, 0);
                     auto cu = TokenCache::instance().get(key);
-                    if (!cu || cu->userId != userId) continue;
+                    if (!cu) continue;
                     cu->permissions.clear(); cu->roles.clear();
                     if (permsRes.ok()) for (int p = 0; p < permsRes.rows(); ++p) cu->permissions.push_back(permsRes.str(p, 0));
                     if (roleRes.ok())  for (int r = 0; r < roleRes.rows();  ++r) cu->roles.push_back(roleRes.str(r, 0));
@@ -306,6 +328,8 @@ public:
             }
             MemCache::instance().remove("routers:" + uid);
         }
+        // authRole 也会改变用户的角色列表，失效 userinfo 缓存
+        MemCache::instance().remove("userinfo:" + uid);
         LOG_OPER(req, "用户管理", BusinessType::UPDATE);
         RESP_MSG(cb, "操作成功");
     }
@@ -361,13 +385,15 @@ public:
         std::string uid   = std::to_string(userId);
         std::string phone = (*body).get("phonenumber","").asString();
         std::string email = (*body).get("email","").asString();
-        // 手机号唯一性校验（对应 C# CheckPhoneUniqueAsync）
+        // 手机号格式 + 唯一性校验
         if (!phone.empty()) {
+            if (!XssUtils::isValidPhone(phone)) { RESP_ERR(cb, "手机号格式不正确"); return; }
             auto p = db.queryParams("SELECT user_id FROM sys_user WHERE phonenumber=$1 AND del_flag='0' AND user_id!=$2 LIMIT 1", {phone, uid});
             if (p.ok() && p.rows() > 0) { RESP_ERR(cb, "修改个人信息失败，手机号码已存在"); return; }
         }
-        // 邮箱唯一性校验（对应 C# CheckEmailUniqueAsync）
+        // 邮箱格式 + 唯一性校验
         if (!email.empty()) {
+            if (!XssUtils::isValidEmail(email)) { RESP_ERR(cb, "邮箱格式不正确"); return; }
             auto e = db.queryParams("SELECT user_id FROM sys_user WHERE email=$1 AND del_flag='0' AND user_id!=$2 LIMIT 1", {email, uid});
             if (e.ok() && e.rows() > 0) { RESP_ERR(cb, "修改个人信息失败，邮箱账号已存在"); return; }
         }
@@ -375,6 +401,7 @@ public:
             "UPDATE sys_user SET nick_name=$1,email=$2,phonenumber=$3,sex=$4,update_time=NOW() WHERE user_id=$5",
             {(*body).get("nickName","").asString(), email, phone,
              (*body).get("sex","0").asString(), uid});
+        MemCache::instance().remove("userinfo:" + uid);
         RESP_MSG(cb, "操作成功");
     }
 

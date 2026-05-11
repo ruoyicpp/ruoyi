@@ -2,6 +2,7 @@
 #include <drogon/HttpController.h>
 #include <filesystem>
 #include "../../common/AjaxResult.h"
+#include "../../common/OperLogUtils.h"
 #include "../../filters/PermFilter.h"
 #include "../../common/SslManager.h"
 #include "../../services/DatabaseService.h"
@@ -89,6 +90,7 @@ public:
               + std::to_string(cfg.httpsPort) + " 启用 HTTPS"
               + (cfg.forceHttps ? "，并强制重定向 HTTP→HTTPS" : "")
             : "配置已保存（HTTPS 未启用）";
+        LOG_OPER(req, "SSL配置", BusinessType::UPDATE);
         RESP_MSG(cb, msg);
     }
 
@@ -124,6 +126,8 @@ public:
         auto& db = DatabaseService::instance();
         ensureTable(db);
         dbUpsert(db, "cert_pem", pem);
+        OperLogUtils::write(req, "SSL证书上传", BusinessType::IMPORT,
+                            "file=" + f.getFileName());
         RESP_MSG(cb, "证书上传成功（" + f.getFileName() + "）");
     }
 
@@ -159,6 +163,8 @@ public:
         auto& db = DatabaseService::instance();
         ensureTable(db);
         dbUpsert(db, "key_pem", pem);
+        // 私钥文件名不记入参数，避免在日志中出现敏感路径
+        OperLogUtils::write(req, "SSL私钥上传", BusinessType::IMPORT, "key uploaded");
         RESP_MSG(cb, "私钥上传成功");
     }
 

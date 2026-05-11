@@ -117,7 +117,7 @@ public:
     void clean(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         CHECK_PERM(req, cb, "monitor:operlog:remove");
         DatabaseService::instance().exec("DELETE FROM sys_oper_log");
-        LOG_OPER(req, "登录日志", BusinessType::CLEAN);
+        LOG_OPER(req, "操作日志", BusinessType::CLEAN);
         RESP_MSG(cb, "操作成功");
     }
 
@@ -233,7 +233,28 @@ public:
 
     void unlock(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb, const std::string &userName) {
         CHECK_PERM(req, cb, "monitor:logininfor:unlock");
+        // 同时清除用户名维度的密码错误计数 和 IP 维度的登录失败锁
+        // 避免管理员解锁后用户仍因 IP 锁无法登录
         MemCache::instance().remove(Constants::PWD_ERR_CNT_KEY + userName);
+        // 查询该用户最后一次登录的 IP，并清除该 IP 的失败计数
+        auto& db = DatabaseService::instance();
+        auto ipRes = db.queryParams(
+            "SELECT login_ip FROM sys_user WHERE user_name=$1 AND del_flag='0' LIMIT 1",
+            {userName});
+        if (ipRes.ok() && ipRes.rows() > 0) {
+            std::string ip = ipRes.str(0, 0);
+            if (!ip.empty()) MemCache::instance().remove("login:fail:ip:" + ip);
+        }
+        // 此外扫描 sys_logininfor 最近3条失败记录，一并清理它们的 IP 锁
+        auto failRes = db.queryParams(
+            "SELECT DISTINCT ipaddr FROM sys_logininfor "
+            "WHERE user_name=$1 AND status='1' "
+            "ORDER BY ipaddr LIMIT 5", {userName});
+        if (failRes.ok())
+            for (int i = 0; i < failRes.rows(); ++i) {
+                std::string ip = failRes.str(i, 0);
+                if (!ip.empty()) MemCache::instance().remove("login:fail:ip:" + ip);
+            }
         LOG_OPER_PARAM(req, "登录日志", BusinessType::UPDATE, "解锁账户: " + userName);
         RESP_MSG(cb, "操作成功");
     }

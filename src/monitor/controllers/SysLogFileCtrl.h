@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <sstream>
 #include "../../common/AjaxResult.h"
+#include "../../common/OperLogUtils.h"
 #include "../../common/SecurityUtils.h"
 #include "../../common/TokenCache.h"
 #include "../../system/services/TokenService.h"
@@ -84,6 +85,7 @@ public:
         std::error_code ec;
         std::filesystem::remove("./logs/" + name, ec);
         if (ec) { RESP_ERR(cb, "删除失败: " + ec.message()); return; }
+        OperLogUtils::write(req, "日志文件", BusinessType::CLEAN, "name=" + name);
         RESP_MSG(cb, "操作成功");
     }
 
@@ -113,13 +115,34 @@ public:
 </div>
 <div id="content">请选择日志文件...</div>
 <script>
+// token 提取优先级：
+//   1) URL 查询串 ?token=xxx（直接访问场景）
+//   2) parent.sessionStorage 'Admin-Token'（同源 iframe，菜单嵌入场景）
+//   3) 本窗口 sessionStorage（直接打开但已登录过，部分浏览器同源 iframe 共享）
+// 菜单 path 配置为 http://<frontend-host>/dev-api/monitor/logfile/page，
+// 经前端 webpack-dev-server 代理转发到后端，与父窗口同源 → 可访问 parent.sessionStorage
 let token = '';
-try { token = window.parent.sessionStorage.getItem('Admin-Token') || sessionStorage.getItem('Admin-Token') || ''; } catch(e){}
+try {
+  const u = new URL(window.location.href);
+  token = u.searchParams.get('token') || '';
+  if (!token && window.parent !== window) {
+    try { token = window.parent.sessionStorage.getItem('Admin-Token') || ''; } catch(e){}
+  }
+  if (!token) token = sessionStorage.getItem('Admin-Token') || '';
+} catch(e){}
+if (!token) {
+  document.getElementById('content').textContent = '未获取到登录凭证。请通过菜单栏「日志查看」打开（自动注入 token），或在 URL 末尾加 ?token=xxx';
+}
 const headers = { 'Authorization': 'Bearer ' + token };
+
+// 同目录相对路径请求：iframe 在 .../dev-api/monitor/logfile/page 时 → .../dev-api/monitor/logfile/list ✓
+// 直接访问 .../monitor/logfile/page 时 → .../monitor/logfile/list ✓
+// 末尾的 page 用 dirname 截掉，避免 list 拼成 page/list
+const apiBase = window.location.pathname.replace(/\/[^/]*$/, '');
 let autoTimer = null;
 
 async function loadFiles() {
-  const r = await fetch('/monitor/logfile/list', { headers });
+  const r = await fetch(apiBase + '/list', { headers });
   const d = await r.json();
   if (d.code !== 200) return;
   const sel = document.getElementById('fileSelect');
@@ -137,7 +160,7 @@ async function loadFiles() {
 async function loadFile() {
   const name = document.getElementById('fileSelect').value;
   if (!name) return;
-  const r = await fetch('/monitor/logfile/download?name=' + encodeURIComponent(name), { headers });
+  const r = await fetch(apiBase + '/download?name=' + encodeURIComponent(name), { headers });
   if (!r.ok) { document.getElementById('content').textContent = '加载失败'; return; }
   const text = await r.text();
   const el = document.getElementById('content');

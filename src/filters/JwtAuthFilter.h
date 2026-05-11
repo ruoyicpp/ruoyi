@@ -8,6 +8,7 @@
 #include "../common/SecurityUtils.h"
 #include "../common/AjaxResult.h"
 #include "../common/UaUtils.h"
+#include "../system/services/TokenService.h"
 
 // ── 防滥用配置（启动时从 config.json 加载一次）──────────────────────────────
 struct AntiAbuseConfig {
@@ -112,14 +113,12 @@ public:
                 return;
             }
 
-            // 4. 自动刷新：剩余不足20分钟时延长
+            // 4. 自动刷新：剩余不足20分钟时延长（同时写透 sys_token，重启后不丢续期）
             auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             long remaining = user.expireTime - now;
             if (remaining > 0 && remaining < 20LL * 60 * 1000) {
-                auto &cfg = JwtUtils::config();
-                user.expireTime = now + (long long)cfg.expireMinutes * 60 * 1000;
-                TokenCache::instance().update(userKey, user);
+                TokenService::instance().refreshToken(user);
             }
 
             // 5. 将用户信息注入请求属性，供 Controller 使用

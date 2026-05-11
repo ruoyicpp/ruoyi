@@ -72,6 +72,45 @@ public:
         }
     }
 
+    // ── 格式校验 ──────────────────────────────────────────────────────────────
+    // 邮箱：本地部分 + @ + 域名 + . + TLD；总长 ≤254；不允许空格/控制字符
+    static bool isValidEmail(const std::string& s) {
+        if (s.size() < 5 || s.size() > 254) return false;
+        auto at = s.find('@');
+        if (at == std::string::npos || at == 0 || at == s.size() - 1) return false;
+        if (s.find('@', at + 1) != std::string::npos) return false; // 多个 @
+        std::string local = s.substr(0, at);
+        std::string domain = s.substr(at + 1);
+        if (domain.find('.') == std::string::npos) return false;
+        for (unsigned char c : s) {
+            if (c <= ' ' || c >= 127) return false;
+        }
+        return true;
+    }
+
+    // 手机号：11 位数字 + 1 开头 + 第二位 3-9（中国大陆）；空字符串视为可选
+    static bool isValidPhone(const std::string& s) {
+        if (s.size() != 11) return false;
+        if (s[0] != '1') return false;
+        if (s[1] < '3' || s[1] > '9') return false;
+        for (char c : s) if (c < '0' || c > '9') return false;
+        return true;
+    }
+
+    // 用户名：2-30 位；字母数字下划线连字符点，必须以字母开头
+    static bool isValidUsername(const std::string& s) {
+        if (s.size() < 2 || s.size() > 30) return false;
+        if (!std::isalpha((unsigned char)s[0])) return false;
+        for (unsigned char c : s)
+            if (!std::isalnum(c) && c != '_' && c != '-' && c != '.') return false;
+        return true;
+    }
+
+    // 字符串长度限制（按字节）
+    static bool lenInRange(const std::string& s, size_t minLen, size_t maxLen) {
+        return s.size() >= minLen && s.size() <= maxLen;
+    }
+
     // ── SQL 注入防御 ──────────────────────────────────────────────────────────
     // 验证列名/表名是否为安全标识符（只允许字母、数字、下划线）
     // 用于动态构建 ORDER BY、GROUP BY 时过滤列名

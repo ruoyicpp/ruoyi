@@ -2,8 +2,13 @@
 #include <string>
 #include <fstream>
 #include <filesystem>
+#include <ctime>
 #include <json/json.h>
 #include <trantor/utils/Logger.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+#include <openssl/bio.h>
+#include <openssl/asn1.h>
 
 // SSL 证书管理器
 // 配置存储在 ./ssl/config.json，证书/私钥存储在 ./ssl/server.crt / server.key
@@ -84,5 +89,80 @@ public:
         std::ifstream f(CERT_PATH);
         if (!f) return "";
         return {std::istreambuf_iterator<char>(f), {}};
+    }
+
+    // 证书信息（启动时检查 + 前端展示）
+    struct CertInfo {
+        bool        valid       = false;
+        long long   daysLeft    = 0;          // 距过期天数（负数=已过期）
+        std::string subject;                  // CN 等主题
+        std::string issuer;                   // 颁发者
+        std::string notBefore;                // 生效时间 YYYY-MM-DD HH:MM:SS
+        std::string notAfter;                 // 过期时间
+    };
+
+    static CertInfo certInfo(const std::string& path = CERT_PATH) {
+        CertInfo info;
+        BIO* bio = BIO_new_file(path.c_str(), "r");
+        if (!bio) return info;
+        X509* x = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
+        BIO_free(bio);
+        if (!x) return info;
+
+        // Subject / Issuer
+        char buf[256] = {0};
+        if (X509_NAME_oneline(X509_get_subject_name(x), buf, sizeof(buf)))
+            info.subject = buf;
+        if (X509_NAME_oneline(X509_get_issuer_name(x), buf, sizeof(buf)))
+            info.issuer = buf;
+
+        // NotBefore / NotAfter
+        auto fmtAsn1 = [](const ASN1_TIME* t) -> std::string {
+            if (!t) return "";
+            BIO* mem = BIO_new(BIO_s_mem());
+            ASN1_TIME_print(mem, t);
+            char* p = nullptr;
+            long n = BIO_get_mem_data(mem, &p);
+            std::string s(p, p + n);
+            BIO_free(mem);
+            return s;
+        };
+        info.notBefore = fmtAsn1(X509_get0_notBefore(x));
+        info.notAfter  = fmtAsn1(X509_get0_notAfter(x));
+
+        // 计算剩余天数
+        int days = 0, secs = 0;
+        time_t now = std::time(nullptr);
+        if (ASN1_TIME_diff(&days, &secs, nullptr, X509_get0_notAfter(x)) == 1) {
+            info.daysLeft = (long long)days;
+            (void)now; (void)secs;
+        }
+        info.valid = true;
+        X509_free(x);
+        return info;
+    }
+
+    // 启动时调用：检查证书有效性 / 即将到期；返回剩余天数（-1 表示无证书或解析失败）
+    static long long checkCertOnStartup(int warnDays = 30, int criticalDays = 7) {
+        if (!certExists()) return -1;
+        auto info = certInfo();
+        if (!info.valid) {
+            LOG_WARN << "[SSL] 证书解析失败: " << CERT_PATH;
+            return -1;
+        }
+        LOG_INFO << "[SSL] cert subject=" << info.subject
+                 << " notAfter=" << info.notAfter
+                 << " daysLeft=" << info.daysLeft;
+        if (info.daysLeft < 0) {
+            LOG_ERROR << "[SSL] ⚠ 证书已过期 " << (-info.daysLeft)
+                      << " 天，请尽快更换！notAfter=" << info.notAfter;
+        } else if (info.daysLeft <= criticalDays) {
+            LOG_ERROR << "[SSL] ⚠ 证书 " << info.daysLeft
+                      << " 天后过期，紧急！notAfter=" << info.notAfter;
+        } else if (info.daysLeft <= warnDays) {
+            LOG_WARN  << "[SSL] 证书 " << info.daysLeft
+                      << " 天后过期，请及时更换。notAfter=" << info.notAfter;
+        }
+        return info.daysLeft;
     }
 };

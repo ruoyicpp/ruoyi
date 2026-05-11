@@ -16,6 +16,8 @@
 #include "../services/SysConfigService.h"
 #include "../services/SysPasswordService.h"
 #include "../../common/IpUtils.h"
+#include "../../common/RateLimiter.h"
+#include "../../common/MetricsCollector.h"
 #include "../../common/SmtpUtils.h"
 #include "SysEmailConfigCtrl.h"
 
@@ -60,6 +62,28 @@ public:
     // POST /login
     void login(const drogon::HttpRequestPtr &req,
                std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        // 限流：同 IP 每分钟最多 30 次登录尝试，防止分布式用户名轮换的暴力破解
+        std::string ip = IpUtils::getIpAddr(req);
+        if (!RateLimiter::instance().allowKey("login:ip:" + ip, 30, 60)) {
+            RESP_ERR(cb, "登录尝试过于频繁，请 1 分钟后重试");
+            return;
+        }
+
+        // IP 失败累计锁：10 次/30 分钟（白名单内网 IP 不计）
+        const int   IP_FAIL_THRESHOLD = 10;
+        const int   IP_LOCK_SECONDS   = 30 * 60;
+        std::string ipFailKey = "login:fail:ip:" + ip;
+        if (!IpUtils::isIntranetIp(ip)) {
+            auto cur = MemCache::instance().getString(ipFailKey);
+            int n = 0;
+            if (cur && !cur->empty()) { try { n = std::stoi(*cur); } catch (...) {} }
+            if (n >= IP_FAIL_THRESHOLD) {
+                LOG_WARN << "[Security] login blocked by IP lock ip=" << ip << " fails=" << n;
+                RESP_ERR(cb, "登录失败次数过多，请 30 分钟后再试");
+                return;
+            }
+        }
+
         auto body = req->getJsonObject();
         if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
 
@@ -70,10 +94,26 @@ public:
 
         try {
             auto token = SysLoginService::instance().login(username, password, code, uuid, req);
+            // 登录成功，清空 IP 失败计数
+            MemCache::instance().remove(ipFailKey);
+            MetricsCollector::instance().onLoginSuccess();
             auto result = AjaxResult::successMap();
             result["token"] = token;
             RESP_JSON(cb, result);
         } catch (const std::exception &e) {
+            MetricsCollector::instance().onLoginFail();
+            // 失败 IP 计数 +1（白名单内网不计）
+            if (!IpUtils::isIntranetIp(ip)) {
+                int n = 0;
+                auto cur = MemCache::instance().getString(ipFailKey);
+                if (cur && !cur->empty()) { try { n = std::stoi(*cur); } catch (...) {} }
+                ++n;
+                MemCache::instance().setString(ipFailKey, std::to_string(n), IP_LOCK_SECONDS);
+                if (n == IP_FAIL_THRESHOLD) {
+                    LOG_WARN << "[Security] IP locked due to repeated login failures ip="
+                             << ip << " count=" << n;
+                }
+            }
             RESP_ERR(cb, e.what());
         }
     }
@@ -111,62 +151,67 @@ public:
         auto user = GET_LOGIN_USER(req);
         long userId = user.userId;
 
-        auto& db = DatabaseService::instance();
-        // 注：user_id(0),dept_id(1),user_name(2),nick_name(3),email(4),phonenumber(5),
-        //     sex(6),avatar(7),status(8),login_ip(9),login_date(10),create_time(11),
-        //     remark(12),dept_id2(13),dept_name(14),leader(15)
-        auto res = db.queryParams(
-            "SELECT u.user_id,u.dept_id,u.user_name,u.nick_name,u.email,"
-            "u.phonenumber,u.sex,u.avatar,u.status,u.login_ip,u.login_date,"
-            "u.create_time,u.remark,"
-            "d.dept_id,d.dept_name,COALESCE(d.leader,'') "
-            "FROM sys_user u LEFT JOIN sys_dept d ON u.dept_id=d.dept_id "
-            "WHERE u.user_id=$1", {std::to_string(userId)});
-
-        if (!res.ok() || res.rows() == 0) { RESP_401(cb); return; }
-
+        // 优先读缓存（user 详情 + 嵌套 dept + 嵌套 roles），permissions/roles 仍取自 TokenCache 保持最新
+        auto cacheKey = "userinfo:" + std::to_string(userId);
+        auto cachedUser = MemCache::instance().getJson(cacheKey);
         Json::Value userJson;
-        userJson["userId"]      = (Json::Int64)res.longVal(0, 0);
-        userJson["deptId"]      = (Json::Int64)res.longVal(0, 1);
-        userJson["userName"]    = res.str(0, 2);
-        userJson["nickName"]    = res.str(0, 3);
-        userJson["email"]       = res.str(0, 4);
-        userJson["phonenumber"] = res.str(0, 5);
-        userJson["sex"]         = res.str(0, 6);
-        userJson["avatar"]      = res.str(0, 7);
-        userJson["status"]      = res.str(0, 8);
-        userJson["loginIp"]     = res.str(0, 9);
-        userJson["loginDate"]   = fmtTs(res.str(0, 10));
-        userJson["createTime"]  = fmtTs(res.str(0, 11));
-        userJson["remark"]      = res.str(0, 12);
-        userJson["admin"]       = SecurityUtils::isAdmin(userId);
+        if (cachedUser) {
+            userJson = *cachedUser;
+        } else {
+            auto& db = DatabaseService::instance();
+            auto res = db.queryParams(
+                "SELECT u.user_id,u.dept_id,u.user_name,u.nick_name,u.email,"
+                "u.phonenumber,u.sex,u.avatar,u.status,u.login_ip,u.login_date,"
+                "u.create_time,u.remark,"
+                "d.dept_id,d.dept_name,COALESCE(d.leader,'') "
+                "FROM sys_user u LEFT JOIN sys_dept d ON u.dept_id=d.dept_id "
+                "WHERE u.user_id=$1", {std::to_string(userId)});
 
-        // 嵌套 dept 字段（供前端 profile 页面 user.dept.deptName）
-        Json::Value dept;
-        dept["deptId"]   = (Json::Int64)res.longVal(0, 13);
-        dept["deptName"] = res.str(0, 14);
-        dept["leader"]   = res.str(0, 15);
-        userJson["dept"] = dept;
+            if (!res.ok() || res.rows() == 0) { RESP_401(cb); return; }
 
-        // 角色列表（嵌套到 user）供 authRole 页面用
-        auto roleRes = db.queryParams(
-            "SELECT r.role_id,r.role_name,r.role_key,r.role_sort,r.status "
-            "FROM sys_role r INNER JOIN sys_user_role ur ON r.role_id=ur.role_id "
-            "WHERE ur.user_id=$1 AND r.del_flag='0'", {std::to_string(userId)});
-        Json::Value userRoles(Json::arrayValue);
-        if (roleRes.ok()) for (int i = 0; i < roleRes.rows(); ++i) {
-            Json::Value r;
-            r["roleId"]   = (Json::Int64)roleRes.longVal(i, 0);
-            r["roleName"] = roleRes.str(i, 1);
-            r["roleKey"]  = roleRes.str(i, 2);
-            r["roleSort"] = roleRes.str(i, 3);
-            r["status"]   = roleRes.str(i, 4);
-            r["admin"]    = (roleRes.longVal(i, 0) == 1);
-            userRoles.append(r);
+            userJson["userId"]      = (Json::Int64)res.longVal(0, 0);
+            userJson["deptId"]      = (Json::Int64)res.longVal(0, 1);
+            userJson["userName"]    = res.str(0, 2);
+            userJson["nickName"]    = res.str(0, 3);
+            userJson["email"]       = res.str(0, 4);
+            userJson["phonenumber"] = res.str(0, 5);
+            userJson["sex"]         = res.str(0, 6);
+            userJson["avatar"]      = res.str(0, 7);
+            userJson["status"]      = res.str(0, 8);
+            userJson["loginIp"]     = res.str(0, 9);
+            userJson["loginDate"]   = fmtTs(res.str(0, 10));
+            userJson["createTime"]  = fmtTs(res.str(0, 11));
+            userJson["remark"]      = res.str(0, 12);
+            userJson["admin"]       = SecurityUtils::isAdmin(userId);
+
+            Json::Value dept;
+            dept["deptId"]   = (Json::Int64)res.longVal(0, 13);
+            dept["deptName"] = res.str(0, 14);
+            dept["leader"]   = res.str(0, 15);
+            userJson["dept"] = dept;
+
+            auto roleRes = db.queryParams(
+                "SELECT r.role_id,r.role_name,r.role_key,r.role_sort,r.status "
+                "FROM sys_role r INNER JOIN sys_user_role ur ON r.role_id=ur.role_id "
+                "WHERE ur.user_id=$1 AND r.del_flag='0'", {std::to_string(userId)});
+            Json::Value userRoles(Json::arrayValue);
+            if (roleRes.ok()) for (int i = 0; i < roleRes.rows(); ++i) {
+                Json::Value r;
+                r["roleId"]   = (Json::Int64)roleRes.longVal(i, 0);
+                r["roleName"] = roleRes.str(i, 1);
+                r["roleKey"]  = roleRes.str(i, 2);
+                r["roleSort"] = roleRes.str(i, 3);
+                r["status"]   = roleRes.str(i, 4);
+                r["admin"]    = (roleRes.longVal(i, 0) == 1);
+                userRoles.append(r);
+            }
+            userJson["roles"] = userRoles;
+
+            // 5 分钟 TTL；用户信息修改/角色变更时由各 Ctrl 主动失效
+            MemCache::instance().setJson(cacheKey, userJson, 300);
         }
-        userJson["roles"] = userRoles;
 
-        // 单独输出 roles/角色权限标识列表，即 permissions
+        // permissions/roles 字段每次从 TokenCache 取最新
         Json::Value roles(Json::arrayValue);
         for (auto &r : user.roles) roles.append(r);
         Json::Value perms(Json::arrayValue);
@@ -177,6 +222,14 @@ public:
         result["roles"]       = roles;
         result["permissions"] = perms;
         RESP_JSON(cb, result);
+    }
+
+    // 失效指定用户的 getInfo 缓存（profile/role/dept 变更时调用）
+    static void invalidateUserInfoCache(long userId) {
+        MemCache::instance().remove("userinfo:" + std::to_string(userId));
+    }
+    static void invalidateAllUserInfoCache() {
+        MemCache::instance().removeByPrefix("userinfo:");
     }
 
     // GET /getRouters
@@ -207,6 +260,17 @@ public:
         if (!SysConfigService::instance().isRegisterEnabled()) {
             RESP_ERR(cb, "当前系统没有开启注册功能！");
             return;
+        }
+        // 严格 IP 限频，防止脚本批量注册：每分钟 5 次 + 每小时 5 次（白名单内网放行）
+        std::string regIp = IpUtils::getIpAddr(req);
+        if (!IpUtils::isIntranetIp(regIp)) {
+            if (!RateLimiter::instance().allowKey("register:ip:1m:" + regIp, 5,   60)) {
+                RESP_ERR(cb, "注册过于频繁，请稍后再试"); return;
+            }
+            if (!RateLimiter::instance().allowKey("register:ip:1h:" + regIp, 5, 3600)) {
+                LOG_WARN << "[Security] register hourly limit ip=" << regIp;
+                RESP_ERR(cb, "今日注册次数已达上限，请明日再试"); return;
+            }
         }
         auto body = req->getJsonObject();
         if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
@@ -299,20 +363,57 @@ public:
         RESP_MSG(cb, "操作成功");
     }
 
-    // GET /health — Nginx 健康探测 + DB ping
+    // GET /health — 健康探测，返回 db / cache / 时间，适配 K8s liveness/readiness
     void health(const drogon::HttpRequestPtr&,
                 std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         auto& db = DatabaseService::instance();
+
+        // DB 探测（带耗时）
+        auto t0 = std::chrono::steady_clock::now();
         bool dbOk = db.query("SELECT 1").ok();
+        long dbMs = (long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - t0).count();
+
+        // 缓存探测（写入随机 key，立即读取，再删除）
+        std::string probeKey = "_health_" + drogon::utils::getUuid();
+        std::string probeVal = std::to_string(std::time(nullptr));
+        auto t1 = std::chrono::steady_clock::now();
+        MemCache::instance().setString(probeKey, probeVal, 10);
+        auto got = MemCache::instance().getString(probeKey);
+        bool cacheOk = got && *got == probeVal;
+        if (got) MemCache::instance().remove(probeKey);
+        long cacheMs = (long)std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - t1).count();
+
+        bool overall = dbOk && cacheOk;
         auto result = AjaxResult::successMap();
-        result["status"] = dbOk ? "ok" : "degraded";
-        result["db"]     = dbOk ? "ok" : "error";
+        result["status"]   = overall ? "ok" : "degraded";
+
+        Json::Value dbInfo;
+        dbInfo["ok"]      = dbOk;
+        dbInfo["latency"] = (Json::Int64)dbMs;
+        dbInfo["backend"] = db.backendInfo();
+        dbInfo["sqliteFallback"] = db.isUsingSqlite();
+        result["db"] = dbInfo;
+
+        Json::Value cacheInfo;
+        cacheInfo["ok"]      = cacheOk;
+        cacheInfo["latency"] = (Json::Int64)cacheMs;
+        cacheInfo["backend"] = MemCache::backendInfo();
+        result["cache"] = cacheInfo;
+
+        Json::Value sessions;
+        sessions["online"] = (Json::Int64)TokenCache::instance().size();
+        result["sessions"] = sessions;
+
         auto now = std::chrono::system_clock::now();
         auto t   = std::chrono::system_clock::to_time_t(now);
         char buf[32]; std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&t));
         result["time"] = buf;
+
         auto resp = drogon::HttpResponse::newHttpJsonResponse(result);
-        resp->setStatusCode(dbOk ? drogon::k200OK : drogon::k503ServiceUnavailable);
+        // DB 不可用且未降级 SQLite → 503；其它情况一律 200，让 K8s 不重启容器
+        resp->setStatusCode(overall ? drogon::k200OK : drogon::k503ServiceUnavailable);
         cb(resp);
     }
 
@@ -335,6 +436,11 @@ public:
     // POST /sendRegCode — 发送注册邮箱验证码（6位，5min TTL）
     void sendRegCode(const drogon::HttpRequestPtr& req,
                      std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+        // 限流：同 IP 每小时最多 5 次发送验证码（避免邮件炸弹）
+        std::string regIp = IpUtils::getIpAddr(req);
+        if (!RateLimiter::instance().allowKey("regcode:ip:" + regIp, 5, 3600)) {
+            RESP_ERR(cb, "发送验证码过于频繁，请稍后再试"); return;
+        }
         auto body = req->getJsonObject();
         if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
         std::string email = (*body).get("email", "").asString();
@@ -377,6 +483,11 @@ public:
         if (!SysConfigService::instance().isForgotPwdEnabled()) {
             RESP_ERR(cb, "当前系统未开启忘记密码功能！");
             return;
+        }
+        // 限流：同 IP 每小时最多 5 次重置密码请求
+        std::string forgotIp = IpUtils::getIpAddr(req);
+        if (!RateLimiter::instance().allowKey("forgot:ip:" + forgotIp, 5, 3600)) {
+            RESP_ERR(cb, "请求过于频繁，请稍后再试"); return;
         }
         auto body = req->getJsonObject();
         if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
@@ -447,18 +558,38 @@ public:
         RESP_MSG(cb, "密码重置成功");
     }
 
-    // GET /captchaImage — 3种验证码随机：数字加减 / 字母 / 中文数字
+    // GET /captchaImage — 验证码类型由 sys_config.sys.account.captchaType 控制：
+    //   "math"            — 数字四则运算（默认；与官方 RuoYi 行为一致）
+    //   "char" / "letter" — 4 位大写字母（排除 I/L/O/Q/V 等易混淆）
+    //   "digit" / "number"— 4 位纯数字
+    //   "mixed"           — math / letter / digit 三选一（每次随机）
+    //   其他值或缺省 → math
+    // 注：原先有的 "中文数字" 模式因 12x12 笔画栅格渲染过于粗糙（八/六 渲染成 ∧
+    //     等无法识别），已下线。
     void captcha(const drogon::HttpRequestPtr &req,
                  std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        // 限流：同 IP 验证码获取不超过 30/分钟，防止验证码洪水
+        std::string captchaIp = IpUtils::getIpAddr(req);
+        if (!RateLimiter::instance().allowKey("captcha:ip:" + captchaIp, 30, 60)) {
+            RESP_ERR(cb, "验证码获取过于频繁，请稍后再试");
+            return;
+        }
         auto uuid = drogon::utils::getUuid();
-        int mode = randInt(0, 2); // 0:数字加减 1:字母 2:中文数字
+        std::string ctype = SysConfigService::instance().selectConfigByKey("sys.account.captchaType");
+        if (ctype.empty()) ctype = "math";
+        // 0:math 1:letter 2:digit
+        int mode;
+        if      (ctype == "char"  || ctype == "letter") mode = 1;
+        else if (ctype == "digit" || ctype == "number") mode = 2;
+        else if (ctype == "mixed")                      mode = randInt(0, 2);
+        else                                            mode = 0; // math 默认
 
         std::string answer;
         std::vector<RenderCmd> cmds;
         switch (mode) {
-            case 0: makeMathCaptcha(cmds, answer);    break;
-            case 1: makeLetterCaptcha(cmds, answer);  break;
-            case 2: makeChineseCaptcha(cmds, answer);  break;
+            case 1:  makeLetterCaptcha(cmds, answer); break;
+            case 2:  makeDigitCaptcha(cmds, answer);  break;
+            default: makeMathCaptcha(cmds, answer);   break;
         }
 
         MemCache::instance().setString(Constants::CAPTCHA_CODE_KEY + uuid, answer, 120);
@@ -522,6 +653,18 @@ private:
             char c = pool[randInt(0, (int)sizeof(pool) - 2)];
             cmds.push_back(asciiCmd(c));
             answer += (char)std::tolower(c);
+        }
+    }
+
+    // ===================== 验证码模式：纯数字（4 位） =====================
+    // 首位排除 0，避免前导零造成 "0731" 与 "731" 输入歧义
+    static void makeDigitCaptcha(std::vector<RenderCmd>& cmds, std::string& answer) {
+        answer.clear();
+        for (int i = 0; i < 4; i++) {
+            int d = (i == 0) ? randInt(1, 9) : randInt(0, 9);
+            char c = (char)('0' + d);
+            cmds.push_back(asciiCmd(c));
+            answer += c;
         }
     }
 

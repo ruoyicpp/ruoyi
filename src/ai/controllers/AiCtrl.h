@@ -8,6 +8,7 @@ public:
         ADD_METHOD_TO(AiCtrl::generate,   "/ai/generate",   drogon::Post);
         ADD_METHOD_TO(AiCtrl::transcribe, "/ai/transcribe", drogon::Post);
         ADD_METHOD_TO(AiCtrl::health,     "/ai/health",     drogon::Get);
+        ADD_METHOD_TO(AiCtrl::page,       "/ai/page",       drogon::Get);
     METHOD_LIST_END
 
     void chat(const drogon::HttpRequestPtr& req,
@@ -18,4 +19,6 @@ public:
                     std::function<void(const drogon::HttpResponsePtr&)>&& cb);
     void health(const drogon::HttpRequestPtr& req,
                 std::function<void(const drogon::HttpResponsePtr&)>&& cb);
+    void page(const drogon::HttpRequestPtr& req,
+              std::function<void(const drogon::HttpResponsePtr&)>&& cb);
 };

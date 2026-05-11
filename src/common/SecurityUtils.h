@@ -35,4 +35,19 @@ public:
     static std::string getTokenKey(const std::string &uuid) {
         return Constants::LOGIN_TOKEN_KEY + uuid;
     }
+
+    // ── 安全的字符串到整数转换 ────────────────────────────────────────────
+    // 不会抛异常；非数字/越界返回默认值（默认 0）。用于 URL 路径参数等不可信输入。
+    static long parseLong(const std::string &s, long def = 0) {
+        if (s.empty()) return def;
+        try { return std::stol(s); } catch (...) { return def; }
+    }
+    static long long parseLongLong(const std::string &s, long long def = 0) {
+        if (s.empty()) return def;
+        try { return std::stoll(s); } catch (...) { return def; }
+    }
+    static int parseInt(const std::string &s, int def = 0) {
+        if (s.empty()) return def;
+        try { return std::stoi(s); } catch (...) { return def; }
+    }
 };

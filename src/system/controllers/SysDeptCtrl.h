@@ -2,9 +2,12 @@
 #include "../../common/OperLogUtils.h"
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"
+#include "../../common/DataScopeUtils.h"
 #include "../../common/SecurityUtils.h"
+#include "../../common/TokenCache.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
+#include "../services/TokenService.h"
 
 class SysDeptCtrl : public drogon::HttpController<SysDeptCtrl> {
 public:
@@ -14,6 +17,7 @@ public:
         ADD_METHOD_TO(SysDeptCtrl::getById,     "/system/dept/{deptId}",          drogon::Get,    "JwtAuthFilter");
         ADD_METHOD_TO(SysDeptCtrl::add,         "/system/dept",                   drogon::Post,   "JwtAuthFilter");
         ADD_METHOD_TO(SysDeptCtrl::edit,        "/system/dept",                   drogon::Put,    "JwtAuthFilter");
+        ADD_METHOD_TO(SysDeptCtrl::updateSort,  "/system/dept/updateSort",        drogon::Put,    "JwtAuthFilter");
         ADD_METHOD_TO(SysDeptCtrl::remove,      "/system/dept/{deptId}",          drogon::Delete, "JwtAuthFilter");
     METHOD_LIST_END
 
@@ -27,6 +31,8 @@ public:
         auto status   = req->getParameter("status");
         if (!deptName.empty()) { sql += " AND dept_name LIKE $" + std::to_string(idx++); params.push_back("%" + deptName + "%"); }
         if (!status.empty())   { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
+        // 数据权限过滤：限制当前用户能看到的部门（按 dept_id 维度）
+        sql += DATA_SCOPE_FILTER(req, "", "");
         sql += " ORDER BY parent_id,order_num";
         auto res = params.empty() ? db.query(sql) : db.queryParams(sql, params);
         Json::Value arr(Json::arrayValue);
@@ -132,6 +138,39 @@ public:
             }
             inSql += ")";
             if (!ancParams.empty()) db.execParams(inSql, ancParams);
+        }
+        // 部门名/leader 改变会影响 getInfo 中嵌套 dept 字段
+        MemCache::instance().removeByPrefix("userinfo:");
+        LOG_OPER(req, "部门管理", BusinessType::UPDATE);
+        RESP_MSG(cb, "操作成功");
+    }
+
+    // PUT /system/dept/updateSort  body: { deptIds:"1,2,3", orderNums:"10,20,30" }
+    void updateSort(const drogon::HttpRequestPtr &req,
+                    std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        CHECK_PERM(req, cb, "system:dept:edit");
+        auto body = req->getJsonObject();
+        if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
+        std::string deptIdsStr  = (*body).get("deptIds",  "").asString();
+        std::string orderNumsStr= (*body).get("orderNums","").asString();
+        if (deptIdsStr.empty() || orderNumsStr.empty()) { RESP_ERR(cb, "参数不能为空"); return; }
+
+        auto split = [](const std::string& s) {
+            std::vector<std::string> v; std::stringstream ss(s); std::string t;
+            while (std::getline(ss, t, ',')) if (!t.empty()) v.push_back(t);
+            return v;
+        };
+        auto ids = split(deptIdsStr);
+        auto ons = split(orderNumsStr);
+        if (ids.size() != ons.size()) { RESP_ERR(cb, "ID 与排序值数量不匹配"); return; }
+
+        auto& db = DatabaseService::instance();
+        for (size_t i = 0; i < ids.size(); ++i) {
+            // 数字校验防注入
+            for (char c : ids[i]) if (c < '0' || c > '9') { RESP_ERR(cb, "非法的部门ID"); return; }
+            for (char c : ons[i]) if (c < '0' || c > '9') { RESP_ERR(cb, "非法的排序值"); return; }
+            db.execParams("UPDATE sys_dept SET order_num=$1,update_time=NOW() WHERE dept_id=$2",
+                          {ons[i], ids[i]});
         }
         LOG_OPER(req, "部门管理", BusinessType::UPDATE);
         RESP_MSG(cb, "操作成功");

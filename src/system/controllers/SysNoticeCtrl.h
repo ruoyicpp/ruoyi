@@ -15,6 +15,9 @@ public:
         ADD_METHOD_TO(SysNoticeCtrl::add,     "/system/notice",         drogon::Post,   "JwtAuthFilter");
         ADD_METHOD_TO(SysNoticeCtrl::edit,    "/system/notice",         drogon::Put,    "JwtAuthFilter");
         ADD_METHOD_TO(SysNoticeCtrl::remove,  "/system/notice/{ids}",   drogon::Delete, "JwtAuthFilter");
+        // 顶栏通知：标记单条 / 批量已读（沿用 sys_notice_read(user_id, notice_id, read_at)）
+        ADD_METHOD_TO(SysNoticeCtrl::markRead,    "/system/notice/markRead",    drogon::Post,   "JwtAuthFilter");
+        ADD_METHOD_TO(SysNoticeCtrl::markReadAll, "/system/notice/markReadAll", drogon::Post,   "JwtAuthFilter");
     METHOD_LIST_END
 
     void list(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
@@ -125,6 +128,44 @@ public:
             db.execParams("DELETE FROM sys_notice WHERE notice_id=$1", {idStr});
         LOG_OPER_PARAM(req, "通知公告", BusinessType::REMOVE, ids);
         RESP_MSG(cb, "操作成功");
+    }
+
+    // 标记单条通知已读：POST /system/notice/markRead?noticeId=123
+    void markRead(const drogon::HttpRequestPtr &req,
+                  std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        long userId = GET_USER_ID(req);
+        if (userId <= 0) { RESP_401(cb); return; }
+        std::string nid = req->getParameter("noticeId");
+        if (nid.empty()) { RESP_ERR(cb, "noticeId 不能为空"); return; }
+        // 复合主键 (user_id, notice_id) 已存在则忽略；read_at 默认 NOW()
+        DatabaseService::instance().execParams(
+            "INSERT INTO sys_notice_read(user_id, notice_id, read_at) VALUES($1,$2,NOW()) "
+            "ON CONFLICT (user_id, notice_id) DO NOTHING",
+            {std::to_string(userId), nid});
+        RESP_MSG(cb, "已标记为已读");
+    }
+
+    // 批量标记已读：POST /system/notice/markReadAll?ids=1,2,3   (ids 为空表示标记当前所有有效公告)
+    void markReadAll(const drogon::HttpRequestPtr &req,
+                     std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        long userId = GET_USER_ID(req);
+        if (userId <= 0) { RESP_401(cb); return; }
+        auto& db = DatabaseService::instance();
+        std::string ids = req->getParameter("ids");
+        std::vector<std::string> noticeIds;
+        if (!ids.empty()) {
+            noticeIds = splitIds(ids);
+        } else {
+            auto res = db.query("SELECT notice_id FROM sys_notice WHERE status='0'");
+            if (res.ok()) for (int i = 0; i < res.rows(); ++i) noticeIds.push_back(res.str(i, 0));
+        }
+        for (auto& nid : noticeIds) {
+            db.execParams(
+                "INSERT INTO sys_notice_read(user_id, notice_id, read_at) VALUES($1,$2,NOW()) "
+                "ON CONFLICT (user_id, notice_id) DO NOTHING",
+                {std::to_string(userId), nid});
+        }
+        RESP_MSG(cb, "已全部标记为已读");
     }
 
 private:

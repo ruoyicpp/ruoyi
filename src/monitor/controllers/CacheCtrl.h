@@ -1,6 +1,7 @@
 #pragma once
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"
+#include "../../common/OperLogUtils.h"
 #include "../../common/TokenCache.h"
 #include "../../common/Constants.h"
 #include "../../filters/PermFilter.h"
@@ -114,18 +115,21 @@ public:
     void clearCacheName(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb, const std::string &cacheName) {
         CHECK_PERM(req, cb, "monitor:cache:list");
         MemCache::instance().removeByPrefix(cacheName);
+        OperLogUtils::write(req, "缓存清理", BusinessType::CLEAN, "name=" + cacheName);
         RESP_MSG(cb, "操作成功");
     }
 
     void clearCacheKey(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb, const std::string &cacheKey) {
         CHECK_PERM(req, cb, "monitor:cache:list");
         MemCache::instance().remove(cacheKey);
+        OperLogUtils::write(req, "缓存清理", BusinessType::CLEAN, "key=" + cacheKey);
         RESP_MSG(cb, "操作成功");
     }
 
     void clearCacheAll(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         CHECK_PERM(req, cb, "monitor:cache:list");
         MemCache::instance().clear();
+        LOG_OPER(req, "缓存清理", BusinessType::CLEAN);
         RESP_MSG(cb, "操作成功");
     }
 };

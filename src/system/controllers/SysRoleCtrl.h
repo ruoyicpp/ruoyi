@@ -8,6 +8,7 @@
 #include "../services/TokenService.h"
 #include "../../common/TokenCache.h"
 #include "../../common/OperLogUtils.h"
+#include "../../common/DataScopeUtils.h"
 #include "../../common/CsvUtils.h"
 #include <set>
 
@@ -35,19 +36,38 @@ public:
         CHECK_PERM(req, cb, "system:role:list");
         auto page = PageParam::fromRequest(req);
         auto& db = DatabaseService::instance();
-        std::string sql = "SELECT role_id,role_name,role_key,role_sort,data_scope,status,create_time,remark FROM sys_role WHERE del_flag='0'";
+
+        // 数据权限过滤：通过 sys_user_role / sys_user / sys_dept 关联获取角色被授予用户的部门
+        // 当前用户为超管（userId=1）时返回空串，等价于不加 join 直接查 sys_role
+        std::string scopeFilter = DATA_SCOPE_FILTER(req, "d", "u");
+
+        std::string base;
+        if (scopeFilter.empty()) {
+            base = "FROM sys_role r WHERE r.del_flag='0'";
+        } else {
+            base = "FROM sys_role r "
+                   "LEFT JOIN sys_user_role ur ON ur.role_id=r.role_id "
+                   "LEFT JOIN sys_user u ON u.user_id=ur.user_id "
+                   "LEFT JOIN sys_dept d ON u.dept_id=d.dept_id "
+                   "WHERE r.del_flag='0'" + scopeFilter;
+        }
+
         auto roleName = req->getParameter("roleName");
         auto status   = req->getParameter("status");
         std::vector<std::string> params;
         int idx = 1;
-        if (!roleName.empty()) { sql += " AND role_name LIKE $" + std::to_string(idx++); params.push_back("%" + roleName + "%"); }
-        if (!status.empty())   { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
+        if (!roleName.empty()) { base += " AND r.role_name LIKE $" + std::to_string(idx++); params.push_back("%" + roleName + "%"); }
+        if (!status.empty())   { base += " AND r.status=$" + std::to_string(idx++); params.push_back(status); }
 
-        std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";
+        std::string distinctCols = "DISTINCT r.role_id,r.role_name,r.role_key,r.role_sort,r.data_scope,r.status,r.create_time,r.remark";
+
+        std::string countSql = "SELECT COUNT(*) FROM (SELECT " + distinctCols + " " + base + ") t";
         auto cntRes = params.empty() ? db.query(countSql) : db.queryParams(countSql, params);
         long total = (cntRes.ok() && cntRes.rows() > 0) ? cntRes.longVal(0, 0) : 0;
 
-        sql += " ORDER BY role_sort LIMIT " + std::to_string(page.pageSize) + " OFFSET " + std::to_string(page.offset());
+        std::string sql = "SELECT " + distinctCols + " " + base +
+                          " ORDER BY r.role_sort LIMIT " + std::to_string(page.pageSize) +
+                          " OFFSET " + std::to_string(page.offset());
 
         auto res = params.empty() ? db.query(sql) : db.queryParams(sql, params);
         Json::Value rows(Json::arrayValue);
@@ -131,24 +151,22 @@ public:
                     {rid, std::to_string(mid.asInt64())});
         // 清除所有用户的路由缓存，下次请求 getRouters 时重新构建
         MemCache::instance().removeByPrefix("routers:");
+        // 角色名/状态变化也会影响 getInfo 中嵌套 roles 字段
+        MemCache::instance().removeByPrefix("userinfo:");
         // 刷新拥有该角色的所有在线用户的 token 权限
+        // 优化：用 sys_token.user_id 索引 + JOIN 受影响用户列表，避免全表扫描 N+1
         {
-            auto affectedRes = db.queryParams(
-                "SELECT user_id FROM sys_user_role WHERE role_id=$1", {rid});
-            std::set<long> affected;
-            if (affectedRes.ok())
-                for (int i = 0; i < affectedRes.rows(); ++i)
-                    affected.insert(affectedRes.longVal(i, 0));
-
-            auto allTokensRes = db.query("SELECT token_key FROM sys_token");
-            if (allTokensRes.ok()) {
-                for (int t = 0; t < allTokensRes.rows(); ++t) {
-                    std::string tokenKey = allTokensRes.str(t, 0);
+            auto affectedTokens = db.queryParams(
+                "SELECT t.token_key, t.user_id FROM sys_token t "
+                "JOIN sys_user_role ur ON ur.user_id=t.user_id "
+                "WHERE ur.role_id=$1", {rid});
+            if (affectedTokens.ok()) {
+                for (int t = 0; t < affectedTokens.rows(); ++t) {
+                    std::string tokenKey = affectedTokens.str(t, 0);
+                    long uid = affectedTokens.longVal(t, 1);
+                    if (SecurityUtils::isAdmin(uid)) continue;
                     auto cachedUser = TokenCache::instance().get(tokenKey);
                     if (!cachedUser) continue;
-                    if (!affected.count(cachedUser->userId)) continue;
-                    if (SecurityUtils::isAdmin(cachedUser->userId)) continue;
-                    long uid = cachedUser->userId;
                     auto permsRes = db.queryParams(
                         "SELECT DISTINCT m.perms FROM sys_menu m "
                         "JOIN sys_role_menu rm ON m.menu_id=rm.menu_id "
@@ -180,7 +198,8 @@ public:
         CHECK_PERM(req, cb, "system:role:remove");
         auto& db = DatabaseService::instance();
         for (auto &idStr : splitIds(ids)) {
-            long rid = std::stol(idStr);
+            long rid = SecurityUtils::parseLong(idStr, 0);
+            if (rid <= 0)                       { RESP_ERR(cb, "非法的角色ID");              return; }
             if (SecurityUtils::isAdminRole(rid)) { RESP_ERR(cb, "不允许删除超级管理员角色"); return; }
             std::string s = std::to_string(rid);
             auto cnt = db.queryParams("SELECT COUNT(*) FROM sys_user_role WHERE role_id=$1", {s});
@@ -194,6 +213,7 @@ public:
     }
 
     void changeStatus(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        CHECK_PERM(req, cb, "system:role:edit");
         auto body = req->getJsonObject();
         if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
         long roleId = (*body)["roleId"].asInt64();
@@ -205,6 +225,7 @@ public:
     }
 
     void dataScope(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        CHECK_PERM(req, cb, "system:role:edit");
         auto body = req->getJsonObject();
         if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
         long roleId = (*body)["roleId"].asInt64();
@@ -323,7 +344,7 @@ public:
             db.execParams("DELETE FROM sys_user_role WHERE user_id=$1", {uid});
             db.execParams("INSERT INTO sys_user_role(user_id,role_id) VALUES($1,$2) ON CONFLICT DO NOTHING", {uid, roleId});
             // 刷新 token 缓存中该用户的权限
-            long userId = std::stol(uid);
+            long userId = SecurityUtils::parseLong(uid, 0);
             if (!SecurityUtils::isAdmin(userId)) {
                 auto permsRes = db.queryParams(
                     "SELECT DISTINCT m.perms FROM sys_menu m "
@@ -335,12 +356,13 @@ public:
                     "SELECT r.role_key FROM sys_role r "
                     "JOIN sys_user_role ur ON r.role_id=ur.role_id "
                     "WHERE ur.user_id=$1 AND r.status='0' AND r.del_flag='0'", {uid});
-                auto allTokens = db.query("SELECT token_key FROM sys_token");
-                if (allTokens.ok()) {
-                    for (int t = 0; t < allTokens.rows(); ++t) {
-                        std::string key = allTokens.str(t, 0);
+                auto userTokens = db.queryParams(
+                    "SELECT token_key FROM sys_token WHERE user_id=$1", {uid});
+                if (userTokens.ok()) {
+                    for (int t = 0; t < userTokens.rows(); ++t) {
+                        std::string key = userTokens.str(t, 0);
                         auto cu = TokenCache::instance().get(key);
-                        if (!cu || cu->userId != userId) continue;
+                        if (!cu) continue;
                         cu->permissions.clear(); cu->roles.clear();
                         if (permsRes.ok()) for (int p = 0; p < permsRes.rows(); ++p) cu->permissions.push_back(permsRes.str(p, 0));
                         if (roleRes.ok())  for (int r = 0; r < roleRes.rows();  ++r) cu->roles.push_back(roleRes.str(r, 0));

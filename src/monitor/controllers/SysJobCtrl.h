@@ -5,8 +5,11 @@
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"
 #include "../../common/PageUtils.h"
+#include "../../common/SecurityUtils.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
+#include "../../common/LicenseManager.h"
+#include "../../common/CsvUtils.h"
 
 // 定时任务 /monitor/job  (C++ Cron 引擎 + JobScheduler 实际调度)
 class SysJobCtrl : public drogon::HttpController<SysJobCtrl> {
@@ -22,6 +25,7 @@ public:
         ADD_METHOD_TO(SysJobCtrl::logList,     "/monitor/jobLog/list",        drogon::Get,    "JwtAuthFilter");
         ADD_METHOD_TO(SysJobCtrl::logClean,    "/monitor/jobLog/clean",       drogon::Delete, "JwtAuthFilter");
         ADD_METHOD_TO(SysJobCtrl::logRemove,   "/monitor/jobLog/{ids}",       drogon::Delete, "JwtAuthFilter");
+        ADD_METHOD_TO(SysJobCtrl::logExport,   "/monitor/jobLog/export",      drogon::Post,   "JwtAuthFilter");
     METHOD_LIST_END
 
     void list(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
@@ -104,8 +108,10 @@ public:
         CHECK_PERM(req, cb, "monitor:job:remove");
         auto& db = DatabaseService::instance();
         for (auto &idStr : splitIds(ids)) {
+            long jid = SecurityUtils::parseLong(idStr, 0);
+            if (jid <= 0) { RESP_ERR(cb, "非法的任务ID"); return; }
             db.execParams("DELETE FROM sys_job WHERE job_id=$1", {idStr});
-            JobScheduler::instance().unscheduleJob(std::stol(idStr));
+            JobScheduler::instance().unscheduleJob(jid);
         }
         LOG_OPER_PARAM(req, "定时任务", BusinessType::REMOVE, ids);
         RESP_MSG(cb, "操作成功");
@@ -193,6 +199,39 @@ public:
         DatabaseService::instance().exec("DELETE FROM sys_job_log");
         LOG_OPER(req, "定时任务日志", BusinessType::CLEAN);
         RESP_MSG(cb, "操作成功");
+    }
+
+    void logExport(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        CHECK_FEATURE(cb, "EXPORT");
+        CHECK_PERM(req, cb, "monitor:job:list");
+        auto& db = DatabaseService::instance();
+        std::string sql = "SELECT job_log_id,job_name,job_group,invoke_target,job_message,status,exception_info,create_time FROM sys_job_log WHERE 1=1";
+        std::vector<std::string> params;
+        int idx = 1;
+        auto jobName = req->getParameter("jobName");
+        auto status  = req->getParameter("status");
+        if (!jobName.empty()) { sql += " AND job_name LIKE $" + std::to_string(idx++); params.push_back("%" + jobName + "%"); }
+        if (!status.empty())  { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
+        sql += " ORDER BY job_log_id DESC LIMIT 10000";
+        auto res = params.empty() ? db.query(sql) : db.queryParams(sql, params);
+        std::vector<std::string> headers = {"日志编号","任务名称","任务组名","调用目标","日志信息","执行状态","异常信息","执行时间"};
+        std::vector<std::vector<std::string>> data;
+        if (res.ok()) for (int i = 0; i < res.rows(); ++i) {
+            data.push_back({
+                res.str(i,0), res.str(i,1), res.str(i,2), res.str(i,3),
+                res.str(i,4), res.str(i,5) == "0" ? "成功" : "失败",
+                res.str(i,6), fmtTs(res.str(i,7))
+            });
+        }
+        auto csvContent = CsvUtils::generate(headers, data);
+        auto resp = drogon::HttpResponse::newHttpResponse();
+        resp->setStatusCode(drogon::k200OK);
+        resp->setContentTypeCode(drogon::CT_NONE);
+        resp->addHeader("Content-Type", "application/octet-stream");
+        resp->addHeader("Content-Disposition", "attachment; filename=\"job_log.csv\"");
+        resp->setBody(csvContent);
+        cb(resp);
+        LOG_OPER(req, "定时任务日志", BusinessType::EXPORT);
     }
 
     void logRemove(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb, const std::string &ids) {

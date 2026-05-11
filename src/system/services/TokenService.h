@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <chrono>
+#include <fstream>
 #include <drogon/drogon.h>
 #include "../../common/LoginUser.h"
 #include "../../common/TokenCache.h"
@@ -9,6 +10,28 @@
 #include "../../common/IpUtils.h"
 #include "../../common/UaUtils.h"
 #include "../../services/DatabaseService.h"
+
+// 多终端策略：是否在新登录时踢掉同 userId 的其它在线会话
+// 通过 config.json 的 security.kick_previous_session 控制（默认 false）
+// 0=未初始化，1=true，2=false
+struct MultiSessionPolicy {
+    static bool kickPrevious() {
+        static int cached = [] {
+            int v = 2;
+            try {
+                std::ifstream f("config.json");
+                if (!f.is_open()) return v;
+                Json::Value root; Json::CharReaderBuilder rb; std::string e;
+                if (Json::parseFromStream(rb, f, &root, &e)
+                    && root.isMember("security")
+                    && root["security"].isMember("kick_previous_session"))
+                    v = root["security"]["kick_previous_session"].asBool() ? 1 : 2;
+            } catch (...) {}
+            return v;
+        }();
+        return cached == 1;
+    }
+};
 
 // 对应 RuoYi.Net TokenService
 class TokenService {
@@ -20,6 +43,17 @@ public:
 
     // 创建 token，生成 uuid 后存入缓存，返回 JWT 字符串
     std::string createToken(LoginUser &user, const drogon::HttpRequestPtr &req) {
+        // 多终端策略：踢掉同 userId 的其它在线会话（若已开启）
+        if (MultiSessionPolicy::kickPrevious() && user.userId > 0) {
+            try {
+                auto all = TokenCache::instance().getAll();
+                for (auto &u : all) {
+                    if (u.userId == user.userId && !u.token.empty())
+                        delLoginUser(u.token);
+                }
+            } catch (...) {}
+        }
+
         auto uuid = drogon::utils::getUuid();
         user.token = uuid;
 
@@ -63,15 +97,15 @@ public:
         user.expireTime = now + (long long)cfg.expireMinutes * 60 * 1000;
         auto key = SecurityUtils::getTokenKey(user.token);
         TokenCache::instance().set(key, user, cfg.expireMinutes);
-        // 写透到 sys_token（仅 SQLite，用于重启恢复）
+        // 写透到 sys_token（含 user_id 字段以便按用户索引查询）
         try {
             Json::FastWriter fw;
             std::string val = fw.write(user.toJson());
             DatabaseService::instance().execParams(
-                "INSERT INTO sys_token(token_key,token_value,expire_time,create_time) "
-                "VALUES($1,$2,$3,NOW()) "
-                "ON CONFLICT(token_key) DO UPDATE SET token_value=$2,expire_time=$3",
-                {key, val, std::to_string(user.expireTime)});
+                "INSERT INTO sys_token(token_key,token_value,expire_time,user_id,create_time) "
+                "VALUES($1,$2,$3,$4,NOW()) "
+                "ON CONFLICT(token_key) DO UPDATE SET token_value=$2,expire_time=$3,user_id=$4",
+                {key, val, std::to_string(user.expireTime), std::to_string(user.userId)});
         } catch (...) {}
     }
 

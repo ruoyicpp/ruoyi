@@ -127,20 +127,26 @@ private:
     }
 
     // 专门迁移 SQLite 中残留的 BCrypt 密码（不经过路由，直接操作 SQLite）
+    // 使用参数化查询防止注入；SQLite 用 ? 占位符
     static void migrateSqlitePasswords(DatabaseService& db) {
         if (!db.hasSqlite()) return;
         auto res = db.querySqliteDirect(
-            "SELECT user_id, user_name FROM sys_user WHERE password LIKE '$2a$%' OR password LIKE '$2b$%'");
+            "SELECT user_id, user_name FROM sys_user "
+            "WHERE password LIKE ?1 OR password LIKE ?2",
+            {"$2a$%", "$2b$%"});
         if (!res.ok() || res.rows() == 0) return;
-        const std::string defPwd = "admin123";
+        const std::string defPwd  = "admin123";
         const std::string newHash = SecurityUtils::encryptPassword(defPwd);
         int migrated = 0;
         for (int i = 0; i < res.rows(); ++i) {
             std::string userId = res.str(i, 0);
-            db.execSqliteDirect("UPDATE sys_user SET password='" + newHash + "' WHERE user_id=" + userId);
+            db.execSqliteDirect(
+                "UPDATE sys_user SET password=?1 WHERE user_id=?2",
+                {newHash, userId});
             ++migrated;
         }
         if (migrated > 0)
-            std::cout << "[DatabaseInit] SQLite: 已将 " << migrated << " 个 BCrypt 密码迁移为 PBKDF2" << std::endl;
+            std::cout << "[DatabaseInit] SQLite: 已将 " << migrated
+                      << " 个 BCrypt 密码迁移为 PBKDF2" << std::endl;
     }
 };

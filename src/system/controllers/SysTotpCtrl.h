@@ -1,6 +1,7 @@
 #pragma once
 #include <drogon/drogon.h>
 #include "../../common/AjaxResult.h"
+#include "../../common/OperLogUtils.h"
 #include "../../common/TotpUtils.h"
 #include "../../common/TokenCache.h"
 #include "../../services/DatabaseService.h"
@@ -61,6 +62,7 @@ public:
 
         db.execParams("UPDATE sys_user SET totp_secret=$1, totp_enabled=1, totp_secret_tmp='' WHERE user_id=$2",
                       std::vector<std::string>{secret, std::to_string(user->userId)});
+        LOG_OPER(req, "TOTP启用", BusinessType::UPDATE);
         RESP_MSG(cb, "操作成功");
     }
 
@@ -72,6 +74,7 @@ public:
         DatabaseService::instance().execParams(
             "UPDATE sys_user SET totp_secret='', totp_enabled=0 WHERE user_id=$1",
             std::vector<std::string>{std::to_string(user->userId)});
+        LOG_OPER(req, "TOTP关闭", BusinessType::UPDATE);
         RESP_MSG(cb, "操作成功");
     }
 

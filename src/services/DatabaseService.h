@@ -1,4 +1,15 @@
 #pragma once
+
+// =============================================================
+// 双驱动分发：
+//   - RUOYI_USE_PG_DRIVER ON  → 走自研 drogon_pg_driver（连接池 + 熔断 + 独占事务）
+//   - RUOYI_USE_PG_DRIVER OFF → 走官方 libpq 单连接 / libpq-lite pool（本文件下方实现）
+// 控制器代码无需改动，永远 #include "DatabaseService.h"。
+// =============================================================
+#ifdef RUOYI_USE_PG_DRIVER
+#  include "DatabaseServicePg.h"
+#else
+
 #include <string>
 #include <vector>
 #include <mutex>
@@ -6,9 +17,23 @@
 #include <chrono>
 #include <cctype>
 #include <cstring>
+#include <functional>
 #include <stdexcept>
 #include <libpq-fe.h>
 #include <sqlite3.h>
+#include "common/SqliteCipher.h"
+
+// 全局 DB 指标钩子（避免循环依赖：DatabaseService 不直接 include MetricsCollector）
+// main.cc 启动时绑定到 MetricsCollector::onDbQuery
+namespace DbMetricsHook {
+    using Fn = std::function<void(long ms, bool ok, bool isWrite)>;
+    inline Fn hook;
+    inline void notify(long ms, bool ok, bool isWrite) {
+        if (hook) {
+            try { hook(ms, ok, isWrite); } catch (...) {}
+        }
+    }
+}
 #ifdef _WIN32
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
@@ -143,6 +168,13 @@ public:
     // --------------------------------------------------------
     // 事务 RAII
     // --------------------------------------------------------
+    // ⚠️ 已知限制：在 libpq-lite 连接池模式下，每次 exec/query 从池中
+    // 独立 acquire/release 连接，因此 BEGIN/INSERT/COMMIT 可能落在不同连接上，
+    // 导致事务语义失效。仅在「单连接 conn_」模式或 SQLite 模式下可靠。
+    // 当前代码并未直接使用 Transaction；多表写入依赖应用层的 ON CONFLICT
+    // 与 del_flag/JOIN 兜底，少量不一致可由用户重新提交修复。
+    // 后续如需可靠事务，应改造为：begin() 时 pin 一个连接，
+    // 后续 exec/query 走该 pinned 连接，commit/rollback 时归还。
     class Transaction {
         DatabaseService& db_;
         bool committed_ = false;
@@ -213,12 +245,43 @@ public:
             lite_ = nullptr;
             return false;
         }
+#ifdef HAVE_SQLCIPHER
+        if (!cipherKey_.empty()) {
+            if (sqlite3_key(lite_, cipherKey_.data(), (int)cipherKey_.size()) != SQLITE_OK) {
+                std::cout << "[DB] sqlite3_key 应用失败: " << sqlite3_errmsg(lite_) << std::endl;
+                sqlite3_close(lite_); lite_ = nullptr;
+                return false;
+            }
+            // 验证密钥正确性（触发页解密，key 错会在此失败）
+            char* zerr = nullptr;
+            if (sqlite3_exec(lite_, "SELECT count(*) FROM sqlite_master;",
+                             nullptr, nullptr, &zerr) != SQLITE_OK) {
+                std::string msg = zerr ? zerr : "key 验证失败";
+                if (zerr) sqlite3_free(zerr);
+                std::cout << "[DB] SQLite 密钥验证失败: " << msg << std::endl;
+                sqlite3_close(lite_); lite_ = nullptr;
+                return false;
+            }
+            if (cipherCfg_.cipherPageSize > 0) {
+                std::string ps = "PRAGMA cipher_page_size=" +
+                                 std::to_string(cipherCfg_.cipherPageSize) + ";";
+                sqlite3_exec(lite_, ps.c_str(), nullptr, nullptr, nullptr);
+            }
+            std::cout << "[DB] SQLite 加密连接已建立: " << path << std::endl;
+        }
+#endif
         sqlite3_exec(lite_, "PRAGMA journal_mode=WAL;",      nullptr, nullptr, nullptr);
         sqlite3_exec(lite_, "PRAGMA synchronous=NORMAL;",    nullptr, nullptr, nullptr);
         sqlite3_exec(lite_, "PRAGMA foreign_keys=ON;",       nullptr, nullptr, nullptr);
         sqlite3_busy_timeout(lite_, 5000);
         std::cout << "[DB] Connected to SQLite: " << path << std::endl;
         return true;
+    }
+
+    void setCipherKey(const std::string& key, const SqliteCipher::KeyConfig& cfg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        cipherKey_ = key;
+        cipherCfg_ = cfg;
     }
 
     bool isConnected() const {
@@ -271,6 +334,13 @@ public:
         return execSqliteLocked(sql, {});
     }
 
+    // directly execute SQL on SQLite with parameters (for safe migration)
+    bool execSqliteDirect(const std::string& sql,
+                          const std::vector<std::string>& params) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return execSqliteLocked(sql, params);
+    }
+
     // directly query SQLite with params (bypass routing, for migration)
     QueryResult querySqliteDirect(const std::string& sql, const std::vector<std::string>& params = {}) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -283,48 +353,61 @@ public:
     //   PG 不可用：写 SQLite，并将 DML 存入 pendingSync_
     // --------------------------------------------------------
     bool exec(const std::string& sql) {
+        auto t0 = std::chrono::steady_clock::now();
         std::lock_guard<std::mutex> lock(mutex_);
         ensurePgOrFallbackLocked();
 
+        bool ret;
         if (!useSqlite_) {
             bool ok = execPgLocked(sql);
             if (!ok && (!conn_ || PQstatus(conn_) != CONNECTION_OK)) {
                 switchToSqliteLocked();
                 if (isDml(sql)) {
                     pendingSyncIfRoom({sql, {}});
-                    return execSqliteLocked(toSqlite(sql), {});
-                }
-                return false;
+                    ret = execSqliteLocked(toSqlite(sql), {});
+                } else ret = false;
+            } else {
+                if (ok && isDml(sql) && lite_) execSqliteLocked(toSqlite(sql), {});
+                ret = ok;
             }
-            if (ok && isDml(sql) && lite_)
-                execSqliteLocked(toSqlite(sql), {});
-            return ok;
         } else {
             tryRecoverPgLocked();
             if (isDml(sql)) pendingSyncIfRoom({sql, {}});
-            return execSqliteLocked(toSqlite(sql), {});
+            ret = execSqliteLocked(toSqlite(sql), {});
         }
+        long ms = (long)std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        logSlow("exec", sql, ms);
+        DbMetricsHook::notify(ms, ret, true);
+        return ret;
     }
 
     bool execParams(const std::string& sql, const std::vector<std::string>& params) {
+        auto t0 = std::chrono::steady_clock::now();
         std::lock_guard<std::mutex> lock(mutex_);
         ensurePgOrFallbackLocked();
 
+        bool ret;
         if (!useSqlite_) {
             bool ok = execParamsPgLocked(sql, params);
             if (!ok && (!conn_ || PQstatus(conn_) != CONNECTION_OK)) {
                 switchToSqliteLocked();
                 pendingSyncIfRoom({sql, params});
-                return execSqliteLocked(toSqlite(sql), params);
+                ret = execSqliteLocked(toSqlite(sql), params);
+            } else {
+                if (ok && isDml(sql) && lite_) execSqliteLocked(toSqlite(sql), params);
+                ret = ok;
             }
-            if (ok && isDml(sql) && lite_)
-                execSqliteLocked(toSqlite(sql), params);
-            return ok;
         } else {
             tryRecoverPgLocked();
             pendingSyncIfRoom({sql, params});
-            return execSqliteLocked(toSqlite(sql), params);
+            ret = execSqliteLocked(toSqlite(sql), params);
         }
+        long ms = (long)std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        logSlow("execParams", sql, ms);
+        DbMetricsHook::notify(ms, ret, true);
+        return ret;
     }
 
     // --------------------------------------------------------
@@ -332,37 +415,49 @@ public:
     //   优先用 PG；PG 失败时自动切换到 SQLite
     // --------------------------------------------------------
     QueryResult query(const std::string& sql) {
+        auto t0 = std::chrono::steady_clock::now();
         std::lock_guard<std::mutex> lock(mutex_);
         ensurePgOrFallbackLocked();
 
+        QueryResult ret;
         if (!useSqlite_) {
             auto r = queryPgLocked(sql);
             if (!r.ok() && (!conn_ || PQstatus(conn_) != CONNECTION_OK)) {
                 switchToSqliteLocked();
-                return querySqliteLocked(toSqlite(sql), {});
-            }
-            return r;
+                ret = querySqliteLocked(toSqlite(sql), {});
+            } else ret = std::move(r);
         } else {
             tryRecoverPgLocked();
-            return querySqliteLocked(toSqlite(sql), {});
+            ret = querySqliteLocked(toSqlite(sql), {});
         }
+        long ms = (long)std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        logSlow("query", sql, ms);
+        DbMetricsHook::notify(ms, ret.ok(), false);
+        return ret;
     }
 
     QueryResult queryParams(const std::string& sql, const std::vector<std::string>& params) {
+        auto t0 = std::chrono::steady_clock::now();
         std::lock_guard<std::mutex> lock(mutex_);
         ensurePgOrFallbackLocked();
 
+        QueryResult ret;
         if (!useSqlite_) {
             auto r = queryParamsPgLocked(sql, params);
             if (!r.ok() && (!conn_ || PQstatus(conn_) != CONNECTION_OK)) {
                 switchToSqliteLocked();
-                return querySqliteLocked(toSqlite(sql), params);
-            }
-            return r;
+                ret = querySqliteLocked(toSqlite(sql), params);
+            } else ret = std::move(r);
         } else {
             tryRecoverPgLocked();
-            return querySqliteLocked(toSqlite(sql), params);
+            ret = querySqliteLocked(toSqlite(sql), params);
         }
+        long ms = (long)std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        logSlow("queryParams", sql, ms);
+        DbMetricsHook::notify(ms, ret.ok(), false);
+        return ret;
     }
 
     bool begin()    { return exec("BEGIN"); }
@@ -379,9 +474,30 @@ private:
     PGconn*     conn_       = nullptr;
     sqlite3*    lite_       = nullptr;
     std::string sqlitePath_ = "ruoyi.db";
+    std::string cipherKey_;                       // 加密主密钥（为空则未加密）
+    SqliteCipher::KeyConfig cipherCfg_;           // 加密参数（pageSize / kdfIter）
     std::mutex  mutex_;
     bool        useSqlite_  = false;
     std::chrono::steady_clock::time_point pgRetryAt_{};
+
+    // 慢查询阈值 (ms)，启动时可由 config.json 调整
+    int slowQueryWarnMs_ = 200;
+    int slowQueryErrMs_  = 1000;
+public:
+    void setSlowQueryThreshold(int warnMs, int errMs) {
+        slowQueryWarnMs_ = warnMs > 0 ? warnMs : 200;
+        slowQueryErrMs_  = errMs  > 0 ? errMs  : 1000;
+    }
+private:
+    void logSlow(const char* op, const std::string& sql, long ms) const {
+        if (ms < slowQueryWarnMs_) return;
+        std::string snippet = sql.size() > 200 ? sql.substr(0, 200) + "..." : sql;
+        if (ms >= slowQueryErrMs_) {
+            std::cout << "[SlowSQL][ERR][" << op << "] " << ms << "ms SQL: " << snippet << std::endl;
+        } else {
+            std::cout << "[SlowSQL][WARN][" << op << "] " << ms << "ms SQL: " << snippet << std::endl;
+        }
+    }
 
     struct PendingWrite { std::string sql; std::vector<std::string> params; };
     std::vector<PendingWrite> pendingSync_;
@@ -771,3 +887,5 @@ private:
         return qr;
     }
 };
+
+#endif // RUOYI_USE_PG_DRIVER

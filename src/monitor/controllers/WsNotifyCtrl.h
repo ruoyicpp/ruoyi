@@ -1,6 +1,7 @@
 #pragma once
 #include <drogon/WebSocketController.h>
 #include <drogon/HttpRequest.h>
+#include <algorithm>
 #include <unordered_map>
 #include <vector>
 #include <mutex>
