@@ -1,0 +1,34 @@
+# Drogon 预编译库目录
+
+此目录用于存放 Drogon 框架的预编译静态库文件。
+
+## 下载预编译库
+
+请从以下位置下载对应平台的预编译库：
+
+- **发布页面**: [Releases](../../releases)
+- **网盘链接**: (待补充)
+
+## 目录结构
+
+下载后解压到此目录，最终结构应为：
+
+```
+drogon/
+├── windows/          # Windows 平台 (MSYS2 UCRT64)
+│   ├── include/      # 头文件
+│   └── lib/          # 静态库
+└── linux/            # Linux 平台
+    ├── include/      # 头文件
+    └── lib/          # 静态库
+```
+
+## 使用说明
+
+详细使用方法请参考 [drogon-release/README.md](../drogon-release/README.md)
+
+## 文件大小
+
+- Windows: 约 13 MB
+- Linux: 约 13 MB
+- 总计: 约 26 MB
