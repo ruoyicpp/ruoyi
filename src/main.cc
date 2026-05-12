@@ -296,6 +296,44 @@ int main(int argc, char* argv[]) {
             JsonLogger::instance().init(logDir, logBase, maxSizeBytes, keepFiles);
         }
 
+        // ── 控制台输出重定向（默认重定向到 logs/console.log）──────────────────
+        // 项目中有 172 处 std::cout 直接打印，会阻塞 drogon 主事件循环。
+        // freopen 让 std::cout 指向的 stdout 流改为文件追加，零代码改动覆盖全部。
+        // 想看实时控制台输出请在 config.json 设 app.console_output=true，或 tail -f logs/console.log。
+        // 注意：本步骤在启动 banner 之后执行，banner 仍可见。
+        {
+            bool consoleOutput = false;
+            std::string logDirForConsole = "./logs";
+            try {
+                std::ifstream cf(configFile);
+                if (cf.is_open()) {
+                    Json::Value root; Json::CharReaderBuilder rb; std::string err;
+                    if (Json::parseFromStream(rb, cf, &root, &err)) {
+                        consoleOutput = root["app"].get("console_output", false).asBool();
+                        if (root["log"].isObject() && root["log"].isMember("log_path")) {
+                            auto p = root["log"]["log_path"].asString();
+                            if (!p.empty()) logDirForConsole = p;
+                        }
+                    }
+                }
+            } catch (...) {}
+            if (!consoleOutput) {
+                std::error_code ec;
+                std::filesystem::create_directories(logDirForConsole, ec);
+                const std::string outPath = logDirForConsole + "/console.log";
+                // freopen 改变 stdout 内部 fd 指向，所有走 stdout / std::cout / ColorStreambuf 的写入都进入此文件
+                if (std::freopen(outPath.c_str(), "a", stdout) == nullptr) {
+                    LOG_WARN << "[Log] freopen stdout failed, console output remains on terminal";
+                } else {
+                    std::setvbuf(stdout, nullptr, _IOLBF, 4096);  // 行缓冲，便于 tail
+                    LOG_INFO << "[Log] stdout redirected to " << outPath
+                             << " (set app.console_output=true to keep terminal output)";
+                }
+            } else {
+                LOG_INFO << "[Log] console_output=true, stdout stays on terminal";
+            }
+        }
+
         LOG_INFO << "Cache backend: " << MemCache::backendInfo();
         std::cout << "[Cache] backend: " << MemCache::backendInfo() << std::endl;
 
@@ -833,6 +871,24 @@ int main(int argc, char* argv[]) {
                drogon::AdviceChainCallback&& accb) {
                 auto& sv = SignUtils::instance();
                 const std::string& path = req->path();
+
+                // ── WebSocket 路径早期 token 预检 ──────────────────────
+                // drogon 框架在 router 匹配后才回调 handleNewConnection，
+                // 此时 HTTP 已完成 WS 升级。若到 handleNewConnection 才发现
+                // 缺 token 再 shutdown，攻击者可借机消耗 socket/内存资源。
+                // 这里在 PreHandling 阶段先拒掉缺 token 的 WS 请求。
+                if (path.size() >= 4 && path.compare(0, 4, "/ws/") == 0) {
+                    if (req->getParameter("token").empty()) {
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode(drogon::k401Unauthorized);
+                        resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                        resp->setBody(R"({"code":401,"msg":"缺少 token 参数"})");
+                        acb(resp); return;
+                    }
+                    // 有 token 时继续走原 WebSocketController 流程
+                    // （在 handleNewConnection 里再做 JWT 解析与 TokenCache 验证）
+                    accb(); return;
+                }
 
                 // 引导接口、重置接口、健康检查、版本接口完全放行
                 if (path == "/challenge" || path == "/resetPassword" || path == "/forgotPassword"
@@ -1631,7 +1687,9 @@ load();
             }
 
             LOG_INFO << "RuoYi-Cpp 启动完成，监听 " << listenAddr << ":" << listenPort;
-            std::cout <<
+            // 用 stderr 输出佛祖横幅与启动成功提示 —— stderr 不受 app.console_output
+            // 控制的 stdout 重定向影响，确保关键启动信号始终在终端可见
+            std::cerr <<
                 "\x1b[38;2;255;215;0m"  // GOLD：佛祖保佑横幅
                 "\n"
                 "////////////////////////////////////////////////////////////////////\n"

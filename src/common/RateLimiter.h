@@ -52,9 +52,12 @@ public:
             LOG_INFO << "[RateLimit] Redis backend attached (cross-process counter)";
     }
 
+    // 由 config.json 完全控制 whitelist（clear 后用配置值替换；空表示禁用本地豁免）
+    // 注意：调用前 whitelist_ 已含默认 ::1（构造函数）；configure 会重置
     void configure(const Config& cfg) {
         std::lock_guard<std::mutex> lk(mu_);
         cfg_ = cfg;
+        whitelist_.clear();
         for (auto& ip : cfg.whitelist) whitelist_.insert(ip);
     }
 
@@ -229,9 +232,9 @@ private:
     RedisBackend backend_;
 
     RateLimiter() {
-        // 默认白名单
-        whitelist_.insert("127.0.0.1");
+        // 默认 IPv6 loopback（兜底，避免开发环境本机自检被锁）。
+        // 注意：configure() 会用 config.json 的 whitelist 完全替换本集合。
+        // 0.0.0.0 是绑定地址，作为客户端来源 IP 永不会出现，不放入默认集。
         whitelist_.insert("::1");
-        whitelist_.insert("0.0.0.0");
     }
 };
