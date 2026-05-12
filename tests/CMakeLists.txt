@@ -117,6 +117,16 @@ endif()
 if (_have_test_cipher)
     list(APPEND _test_targets test_sqlite_file_cipher)
 endif()
+
+# test_http_status：self-contained（用 static_assert + 数值快照，绕开 drogon 头依赖）
+add_executable(test_http_status
+    test_main.cc
+    test_http_status.cc
+)
+target_include_directories(test_http_status PRIVATE ${TEST_INCLUDES})
+target_compile_features(test_http_status PRIVATE cxx_std_17)
+add_test(NAME http_status COMMAND $<TARGET_FILE:test_http_status>)
+list(APPEND _test_targets test_http_status)
 add_custom_target(ruoyi-tests
     DEPENDS ${_test_targets}
     COMMENT "Build all ruoyi-cpp unit tests"

@@ -28,6 +28,7 @@
 #include "common/CrashHandler.h"
 #include "common/DatabaseInit.h"
 #include "common/JwtUtils.h"
+#include "common/HttpStatus.h"   // HTTP 状态码全集 + 二进制风格别名（_11011=404 等）
 #include "common/TokenCache.h"
 #include "common/XssUtils.h"
 #include "common/DeviceBinding.h"
