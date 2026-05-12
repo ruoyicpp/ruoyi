@@ -34,36 +34,49 @@ public:
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><title>通知渠道</title>
 <style>
-  body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f9;color:#333;margin:0;padding:20px}
-  h1{margin:0 0 16px;font-size:20px}
-  .toolbar{margin-bottom:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input,select,button,textarea{padding:6px 12px;border-radius:4px;border:1px solid #d9d9d9;font-size:14px}
-  button{background:#1890ff;color:#fff;cursor:pointer;border:none}
-  button:hover{background:#40a9ff}
-  button.danger{background:#cf1322}button.danger:hover{background:#ff4d4f}
-  button.muted{background:#8c8c8c}
-  button.test{background:#52c41a}button.test:hover{background:#73d13d}
-  table{width:100%;background:#fff;border-collapse:collapse;border-radius:6px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)}
-  th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid #f0f0f0}
-  th{background:#fafafa;font-weight:600}
-  .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px}
-  .on{background:#f6ffed;color:#52c41a}.off{background:#fff1f0;color:#cf1322}
-  .badge{font-size:11px;padding:2px 6px;border-radius:3px;background:#e6f4ff;color:#1890ff}
-  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;z-index:99}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+       background:#fff;color:#303133;margin:0;padding:20px;font-size:14px}
+  .title{font-size:16px;font-weight:600;color:#303133;margin:0 0 16px;
+         padding-bottom:12px;border-bottom:1px solid #ebeef5}
+  .toolbar{margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input,select,textarea{padding:6px 10px;border-radius:2px;border:1px solid #dcdfe6;
+                        font-size:13px;color:#606266}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:#409eff}
+  button{padding:6px 14px;border-radius:2px;border:1px solid #dcdfe6;cursor:pointer;
+         font-size:13px;background:#fff;color:#606266}
+  button:hover{color:#409eff;border-color:#c6e2ff}
+  button.primary{background:#409eff;border-color:#409eff;color:#fff}
+  button.primary:hover{background:#66b1ff;border-color:#66b1ff;color:#fff}
+  button.danger{color:#f56c6c;border-color:#fbc4c4}
+  button.danger:hover{background:#fef0f0;border-color:#f56c6c}
+  button.success{color:#67c23a;border-color:#c2e7b0}
+  button.success:hover{background:#f0f9eb;border-color:#67c23a}
+  table{width:100%;background:#fff;border-collapse:collapse;font-size:13px;
+        border:1px solid #ebeef5}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #ebeef5;color:#606266}
+  th{background:#fff;font-weight:500;color:#909399}
+  tr:last-child td{border-bottom:none}
+  .pill{font-size:12px}
+  .on{color:#67c23a}.off{color:#f56c6c}
+  .badge{font-size:12px;color:#909399}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+            align-items:center;justify-content:center;z-index:99}
   .modal-bg.show{display:flex}
-  .modal{background:#fff;padding:24px;border-radius:8px;width:520px;max-width:90vw}
-  .modal h2{margin:0 0 16px;font-size:18px}
-  .modal label{display:block;margin-top:12px;font-size:13px;color:#666}
+  .modal{background:#fff;padding:20px;border-radius:2px;width:520px;max-width:90vw;
+         border:1px solid #ebeef5}
+  .modal h2{margin:0 0 16px;font-size:16px;font-weight:600;
+            padding-bottom:12px;border-bottom:1px solid #ebeef5}
+  .modal label{display:block;margin-top:12px;font-size:13px;color:#606266}
   .modal input,.modal select,.modal textarea{width:100%;box-sizing:border-box;margin-top:4px}
-  .modal textarea{font-family:monospace;height:60px}
+  .modal textarea{font-family:Consolas,monospace;height:60px}
   .modal .row{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
 </style></head>
 <body>
-<h1>📢 通知渠道管理</h1>
+<div class="title">通知渠道管理</div>
 <div class="toolbar">
   <input id="qName" placeholder="按名称搜索" style="width:200px">
-  <button onclick="load()">查询</button>
-  <button onclick="openEdit(null)">+ 创建渠道</button>
+  <button class="primary" onclick="load()">查询</button>
+  <button onclick="openEdit(null)">创建渠道</button>
 </div>
 <table>
   <thead><tr><th>ID</th><th>名称</th><th>类型</th><th>Webhook</th><th>启用</th><th>创建人</th><th>操作</th></tr></thead>
@@ -86,14 +99,14 @@ public:
   <label>Secret（加签密钥；wxwork 可留空）<input id="fSecret"></label>
   <label>启用 <select id="fEnabled"><option value="1">是</option><option value="0">否</option></select></label>
   <label>备注 <input id="fRemark"></label>
-  <div class="row"><button class="muted" onclick="close_('mEdit')">取消</button><button onclick="save()">保存</button></div>
+  <div class="row"><button onclick="close_('mEdit')">取消</button><button class="primary" onclick="save()">保存</button></div>
 </div></div>
 
 <div class="modal-bg" id="mTest"><div class="modal">
   <h2>测试发送</h2>
   <label>标题 <input id="tTitle" value="RuoYi-Cpp 测试通知"></label>
   <label>内容 <textarea id="tContent">这是一条测试消息，验证渠道签名与连通性</textarea></label>
-  <div class="row"><button class="muted" onclick="close_('mTest')">取消</button><button class="test" onclick="doTest()">发送</button></div>
+  <div class="row"><button onclick="close_('mTest')">取消</button><button class="success" onclick="doTest()">发送</button></div>
 </div></div>
 
 <script>
@@ -122,9 +135,9 @@ async function load() {
     <td><span class="pill ${it.enabled?'on':'off'}">${it.enabled?'启用':'禁用'}</span></td>
     <td>${esc(it.createBy)}</td>
     <td>
-      <button class="test" onclick="openTest(${it.id})">测试</button>
-      <button class="muted" onclick="openEdit(${it.id}, ${JSON.stringify(it).replace(/"/g,'&quot;')})">编辑</button>
-      <button class="danger" onclick="del(${it.id})">删</button>
+      <button class="success" onclick="openTest(${it.id})">测试</button>
+      <button onclick="openEdit(${it.id}, ${JSON.stringify(it).replace(/"/g,'&quot;')})">编辑</button>
+      <button class="danger" onclick="del(${it.id})">删除</button>
     </td></tr>`).join('');
 }
 
@@ -171,7 +184,7 @@ async function doTest() {
   };
   const r = await fetch(API + '/' + testTargetId + '/test', { method:'POST', headers:H, body:JSON.stringify(body) });
   const d = await r.json();
-  alert(d.code === 200 ? '✅ ' + d.msg : '❌ ' + (d.msg||'失败'));
+  alert(d.code === 200 ? d.msg : (d.msg||'失败'));
   if (d.code === 200) close_('mTest');
 }
 
@@ -301,6 +314,11 @@ else load();
         RESP_JSON(cb, r);
     }
 
+    // POST /system/notify/send
+    // Body:
+    //   { channelId: 1, title: "...", content: "..." }        // 仅外部 webhook
+    //   { channelId: 1, title, content, userIds: [42, 88] }   // + 给指定用户站内消息 + WsBus 推送
+    //   { title, content, userIds: [42] }                     // 仅站内消息，不调外部 webhook
     void send(const drogon::HttpRequestPtr &req,
               std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         CHECK_PERM(req, cb, "system:notify:send");
@@ -309,12 +327,34 @@ else load();
         long channelId      = (*json).get("channelId", 0).asInt64();
         std::string title   = (*json).get("title", "").asString();
         std::string content = (*json).get("content", "").asString();
-        if (channelId <= 0 || title.empty() || content.empty()) {
-            RESP_ERR(cb, "channelId/title/content 必填"); return;
+        std::string level   = (*json).get("level", "info").asString();
+        Json::Value userIds = (*json)["userIds"];      // 可选数组
+
+        if (title.empty() || content.empty()) {
+            RESP_ERR(cb, "title/content 必填"); return;
         }
-        bool sent = NotifyService::sendToChannel(channelId, title, content);
-        if (!sent) { RESP_ERR(cb, "渠道不存在或被禁用"); return; }
-        Json::Value r = AjaxResult::success(); RESP_JSON(cb, r);
+        if (channelId <= 0 && (!userIds.isArray() || userIds.empty())) {
+            RESP_ERR(cb, "channelId 与 userIds 至少填一个"); return;
+        }
+
+        int channelSent = 0, inboxSent = 0;
+        if (channelId > 0) {
+            if (NotifyService::sendToChannel(channelId, title, content)) ++channelSent;
+            else { RESP_ERR(cb, "渠道不存在或被禁用"); return; }
+        }
+        if (userIds.isArray()) {
+            for (const auto& uid : userIds) {
+                long u = uid.isInt64() ? uid.asInt64() : uid.asInt();
+                if (u > 0 && NotifyService::sendInbox(u, title, content, level)) {
+                    ++inboxSent;
+                }
+            }
+        }
+
+        Json::Value r = AjaxResult::success();
+        r["channelSent"] = channelSent;
+        r["inboxSent"]   = inboxSent;
+        RESP_JSON(cb, r);
     }
 };
 

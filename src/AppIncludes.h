@@ -99,6 +99,7 @@
 // ── Common 控制器 ────────────────────────────────────────────────
 #include "common/controllers/CommonCtrl.h"
 #include "common/controllers/DashboardCtrl.h"
+#include "common/controllers/LicenseApiCtrl.h"
 
 // ── Tool 控制器 ──────────────────────────────────────────────────
 #include "tool/controllers/GenCtrl.h"

@@ -80,53 +80,45 @@ public:
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><title>系统重启</title>
 <style>
-  body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f9;color:#333;
-       margin:0;padding:24px;display:flex;justify-content:center}
-  .card{max-width:640px;width:100%;background:#fff;border-radius:8px;
-        box-shadow:0 2px 12px rgba(0,0,0,0.08);padding:32px}
-  h1{margin-top:0;color:#cf1322;font-size:20px}
-  .warn{background:#fff3cd;border-left:4px solid #ffc107;padding:12px 16px;
-        margin:16px 0;border-radius:4px;font-size:14px}
-  .danger{background:#fff1f0;border-left:4px solid #cf1322;padding:12px 16px;
-          margin:16px 0;border-radius:4px;font-size:14px}
-  .stat{background:#e6f4ff;border-left:4px solid #1890ff;padding:12px 16px;
-        margin:16px 0;border-radius:4px;font-size:14px}
-  .num{font-size:28px;font-weight:bold;color:#1890ff}
-  .row{display:flex;gap:12px;margin-top:24px}
-  button{padding:10px 20px;border-radius:4px;border:none;cursor:pointer;
-         font-size:14px;flex:1}
-  .btn-refresh{background:#1890ff;color:#fff}
-  .btn-refresh:hover{background:#40a9ff}
-  .btn-restart{background:#cf1322;color:#fff}
-  .btn-restart:hover{background:#ff4d4f}
-  .btn-restart:disabled{background:#d9d9d9;cursor:not-allowed}
-  #status{margin-top:16px;padding:10px;border-radius:4px;display:none}
-  #status.ok{background:#f6ffed;color:#52c41a;display:block}
-  #status.err{background:#fff1f0;color:#cf1322;display:block}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+       background:#fff;color:#303133;margin:0;padding:20px;font-size:14px}
+  .card{max-width:720px;background:#fff;border:1px solid #ebeef5;border-radius:2px;padding:20px}
+  .title{font-size:16px;font-weight:600;color:#303133;margin:0 0 16px;
+         padding-bottom:12px;border-bottom:1px solid #ebeef5}
+  .field{display:flex;align-items:center;padding:8px 0;color:#606266}
+  .field .label{width:120px;color:#909399}
+  .field .num{font-size:18px;color:#409eff;font-weight:600}
+  .tip{color:#909399;font-size:13px;line-height:1.6;margin:8px 0}
+  .tip.danger{color:#f56c6c}
+  .row{margin-top:16px;display:flex;gap:8px}
+  button{padding:7px 16px;border-radius:2px;border:1px solid #dcdfe6;cursor:pointer;
+         font-size:13px;background:#fff;color:#606266}
+  button:hover{color:#409eff;border-color:#c6e2ff;background:#fff}
+  button.primary{background:#409eff;border-color:#409eff;color:#fff}
+  button.primary:hover{background:#66b1ff;border-color:#66b1ff;color:#fff}
+  button.danger{background:#f56c6c;border-color:#f56c6c;color:#fff}
+  button.danger:hover{background:#f78989;border-color:#f78989;color:#fff}
+  button:disabled{background:#fff;border-color:#ebeef5;color:#c0c4cc;cursor:not-allowed}
+  #status{margin-top:12px;font-size:13px;display:none;color:#606266}
+  #status.ok{color:#67c23a;display:block}
+  #status.err{color:#f56c6c;display:block}
 </style>
 </head>
 <body>
 <div class="card">
-  <h1>⚠️ 系统重启管理</h1>
+  <div class="title">系统重启</div>
 
-  <div class="warn">
-    <strong>请注意：</strong>重启会让所有在线用户掉线，正在进行的请求会被中断。
-    建议在业务低峰期操作，或与值班人员协调后再点击。
+  <div class="field">
+    <span class="label">当前在线用户</span>
+    <span class="num" id="onlineCount">-</span>
   </div>
 
-  <div class="stat">
-    <div>当前在线用户：</div>
-    <div class="num" id="onlineCount">--</div>
-  </div>
-
-  <div class="danger">
-    <strong>⚠️ 不可恢复：</strong>实际重启依赖外部进程守护（Windows Service / systemd / Docker / pm2）。
-    如果未配置守护进程，本操作会让服务<strong>关停而不会自动启动</strong>。
-  </div>
+  <div class="tip">重启会让所有在线用户掉线，正在进行的请求会被中断。</div>
+  <div class="tip danger">依赖外部守护进程（systemd / Docker / Windows Service / pm2）才能自动拉起；否则只是关停。</div>
 
   <div class="row">
-    <button class="btn-refresh" onclick="refresh()">🔄 刷新在线人数</button>
-    <button class="btn-restart" id="restartBtn" onclick="doRestart()">⚡ 立即重启</button>
+    <button onclick="refresh()">刷新</button>
+    <button class="danger" id="restartBtn" onclick="doRestart()">立即重启</button>
   </div>
 
   <div id="status"></div>
@@ -171,7 +163,7 @@ async function doRestart() {
     });
     const d = await r.json();
     if (d.code === 200) {
-      showStatus('ok', '✅ ' + (d.msg || '已发送停机指令') + '。如已配置守护进程，5~10 秒后会自动拉起。');
+      showStatus('ok', (d.msg || '已发送停机指令') + '。如已配置守护进程，约 5~10 秒后会自动拉起。');
     } else {
       showStatus('err', d.msg || '操作失败');
       document.getElementById('restartBtn').disabled = false;

@@ -11,6 +11,7 @@
 #include <drogon/HttpRequest.h>
 #include <trantor/utils/Logger.h>
 #include "../services/DatabaseService.h"
+#include "WsBus.h"
 
 // f15 消息通知中心服务
 //
@@ -212,15 +213,29 @@ inline bool sendToChannel(long channelId,
     return true;
 }
 
-// ── 站内消息：写 sys_message 表 ──────────────────────────────────────────
+// ── 站内消息：写 sys_message 表 + WsBus 实时推送 ─────────────────────
+// 流程：
+//   1) INSERT INTO sys_message → 离线时用户登录后从 inbox 取回
+//   2) WsBus::publish("user:<id>") → 在线时浏览器立即收到推送
+//      （前端顶栏徽标 +1 / 弹气泡）
 inline bool sendInbox(long userId,
                       const std::string& title,
                       const std::string& content,
                       const std::string& level = "info") {
-    return DatabaseService::instance().execParams(
+    bool ok = DatabaseService::instance().execParams(
         "INSERT INTO sys_message(user_id, title, content, level) "
         "VALUES($1, $2, $3, $4)",
         {std::to_string(userId), title, content, level});
+    if (ok) {
+        Json::Value push;
+        push["type"]    = "inbox";        // 前端按 type 分发
+        push["title"]   = title;
+        push["content"] = content;
+        push["level"]   = level;
+        push["ts"]      = (Json::Int64)std::time(nullptr);
+        WsBus::instance().publish("user:" + std::to_string(userId), push);
+    }
+    return ok;
 }
 
 }   // namespace NotifyService

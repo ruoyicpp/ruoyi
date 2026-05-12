@@ -30,37 +30,47 @@ public:
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><title>API Key 管理</title>
 <style>
-  body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6f9;color:#333;margin:0;padding:20px}
-  h1{margin:0 0 16px;font-size:20px}
-  .toolbar{margin-bottom:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  input,select,button{padding:6px 12px;border-radius:4px;border:1px solid #d9d9d9;font-size:14px}
-  button{background:#1890ff;color:#fff;cursor:pointer;border:none}
-  button:hover{background:#40a9ff}
-  button.danger{background:#cf1322}button.danger:hover{background:#ff4d4f}
-  button.muted{background:#8c8c8c}
-  table{width:100%;background:#fff;border-collapse:collapse;border-radius:6px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)}
-  th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid #f0f0f0}
-  th{background:#fafafa;font-weight:600}
-  tr:hover{background:#f9fbfd}
-  .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px}
-  .on{background:#f6ffed;color:#52c41a}.off{background:#fff1f0;color:#cf1322}
-  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);align-items:center;justify-content:center;z-index:99}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+       background:#fff;color:#303133;margin:0;padding:20px;font-size:14px}
+  .title{font-size:16px;font-weight:600;color:#303133;margin:0 0 16px;
+         padding-bottom:12px;border-bottom:1px solid #ebeef5}
+  .toolbar{margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  input,select{padding:6px 10px;border-radius:2px;border:1px solid #dcdfe6;font-size:13px;color:#606266}
+  input:focus,select:focus{outline:none;border-color:#409eff}
+  button{padding:6px 14px;border-radius:2px;border:1px solid #dcdfe6;cursor:pointer;
+         font-size:13px;background:#fff;color:#606266}
+  button:hover{color:#409eff;border-color:#c6e2ff}
+  button.primary{background:#409eff;border-color:#409eff;color:#fff}
+  button.primary:hover{background:#66b1ff;border-color:#66b1ff;color:#fff}
+  button.danger{color:#f56c6c;border-color:#fbc4c4}
+  button.danger:hover{background:#fef0f0;border-color:#f56c6c}
+  table{width:100%;background:#fff;border-collapse:collapse;font-size:13px;
+        border:1px solid #ebeef5}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #ebeef5;color:#606266}
+  th{background:#fff;font-weight:500;color:#909399}
+  tr:last-child td{border-bottom:none}
+  .pill{font-size:12px;color:#606266}
+  .on{color:#67c23a}.off{color:#f56c6c}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+            align-items:center;justify-content:center;z-index:99}
   .modal-bg.show{display:flex}
-  .modal{background:#fff;padding:24px;border-radius:8px;width:480px;max-width:90vw}
-  .modal h2{margin:0 0 16px;font-size:18px}
-  .modal label{display:block;margin-top:12px;font-size:13px;color:#666}
+  .modal{background:#fff;padding:20px;border-radius:2px;width:480px;max-width:90vw;
+         border:1px solid #ebeef5}
+  .modal h2{margin:0 0 16px;font-size:16px;font-weight:600;
+            padding-bottom:12px;border-bottom:1px solid #ebeef5}
+  .modal label{display:block;margin-top:12px;font-size:13px;color:#606266}
   .modal input{width:100%;box-sizing:border-box;margin-top:4px}
   .modal .row{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
-  .keyshow{background:#fffbe6;border-left:4px solid #faad14;padding:14px;margin:12px 0;border-radius:4px;word-break:break-all;font-family:monospace}
-  .keyshow strong{color:#cf1322}
+  .keyshow{padding:12px;margin:8px 0;word-break:break-all;font-family:Consolas,monospace;
+           font-size:13px;color:#303133;border:1px solid #ebeef5}
+  .keyshow strong{color:#f56c6c}
 </style></head>
 <body>
-<h1>🔑 API Key 管理</h1>
+<div class="title">API Key 管理</div>
 <div class="toolbar">
   <input id="qName" placeholder="按名称搜索" style="width:200px">
-  <button onclick="load()">查询</button>
-  <button onclick="openCreate()">+ 创建 Key</button>
-  <button class="muted" onclick="load()">刷新</button>
+  <button class="primary" onclick="load()">查询</button>
+  <button onclick="openCreate()">创建 Key</button>
 </div>
 <table>
   <thead><tr><th>ID</th><th>名称</th><th>前缀</th><th>用户ID</th><th>启用</th><th>过期</th><th>最近使用</th><th>创建人</th><th>操作</th></tr></thead>
@@ -74,15 +84,15 @@ public:
   <label>绑定用户 ID *（继承其权限） <input id="fUserId" type="number"></label>
   <label>过期时间（可选，YYYY-MM-DD HH:MM:SS）<input id="fExpire" placeholder="留空=永不过期"></label>
   <label>备注 <input id="fRemark"></label>
-  <div class="row"><button class="muted" onclick="close_('mCreate')">取消</button><button onclick="doCreate()">创建</button></div>
+  <div class="row"><button onclick="close_('mCreate')">取消</button><button class="primary" onclick="doCreate()">创建</button></div>
 </div></div>
 
 <!-- key 显示 -->
 <div class="modal-bg" id="mKey"><div class="modal">
-  <h2>⚠️ 仅本次显示</h2>
+  <h2>仅本次显示</h2>
   <div class="keyshow"><strong>请立即复制保存：</strong><br><span id="newKey"></span></div>
-  <p style="font-size:13px;color:#666">关闭后将无法再次查看此 Key（DB 仅存哈希）。</p>
-  <div class="row"><button onclick="copyKey()">复制</button><button onclick="close_('mKey')">已保存</button></div>
+  <p style="font-size:13px;color:#909399;margin:8px 0">关闭后将无法再次查看此 Key（DB 仅存 SHA-256 哈希）。</p>
+  <div class="row"><button onclick="close_('mKey')">关闭</button><button class="primary" onclick="copyKey()">复制</button></div>
 </div></div>
 
 <script>
@@ -112,8 +122,8 @@ async function load() {
     <td>${it.lastUsedAt||'-'}</td>
     <td>${esc(it.createBy)}</td>
     <td>
-      <button class="muted" onclick="toggle(${it.id}, '${esc(it.name)}', ${it.enabled?0:1})">${it.enabled?'禁用':'启用'}</button>
-      <button class="danger" onclick="del(${it.id})">删</button>
+      <button onclick="toggle(${it.id}, '${esc(it.name)}', ${it.enabled?0:1})">${it.enabled?'禁用':'启用'}</button>
+      <button class="danger" onclick="del(${it.id})">删除</button>
     </td></tr>`).join('');
 }
 

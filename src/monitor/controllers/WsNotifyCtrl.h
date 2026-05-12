@@ -9,6 +9,7 @@
 #include "../../common/JwtUtils.h"
 #include "../../common/TokenCache.h"
 #include "../../common/SecurityUtils.h"
+#include "../../common/WsBus.h"
 
 /**
  * WsNotifyCtrl — 服务端推送通知 WebSocket
@@ -45,7 +46,9 @@ public:
             long userId = cached->userId;
             conn->setContext(std::make_shared<ConnCtx>(uuid, userId));
             addConn(userId, conn);
-            LOG_INFO << "[WsNotify] userId=" << userId << " 已连接";
+            // f15: 订阅个人 topic，用于 NotifyService::sendInbox 后 WsBus::publish
+            WsBus::instance().subscribe("user:" + std::to_string(userId), conn);
+            LOG_INFO << "[WsNotify] userId=" << userId << " 已连接 + 订阅 user:" << userId;
         } catch (...) {
             conn->send("{\"type\":\"error\",\"msg\":\"token 解析失败\"}");
             conn->shutdown();
@@ -54,6 +57,8 @@ public:
 
     // ── 连接断开 ────────────────────────────────────────────────────────────
     void handleConnectionClosed(const drogon::WebSocketConnectionPtr &conn) override {
+        // f15: 取消全部 WsBus 订阅（包含 user:<id> 及任何 broadcast 前缀）
+        WsBus::instance().unsubscribeAll(conn);
         auto ctx = conn->getContext<ConnCtx>();
         if (ctx) {
             removeConn(ctx->userId, conn);

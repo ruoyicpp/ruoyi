@@ -268,6 +268,30 @@ std::vector<std::string> DatabaseInit::getCreateTableSqls() {
         R"(CREATE INDEX IF NOT EXISTS idx_sys_apikey_user_id ON sys_apikey(user_id))",
 
         // -------------------------------------------------------
+        // sys_license 远程授权服务表（移植自 ruoyi-server LicenseApiCtrl）
+        // 服务端：管理员签发 license_key + 客户端启动时验证 + 心跳保活
+        // 客户端：仍用 LicenseManager 验证本地 license.lic 文件签名
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_license (
+            id              BIGSERIAL    PRIMARY KEY,
+            license_key     VARCHAR(64)  NOT NULL UNIQUE,
+            licensee        VARCHAR(128) NOT NULL DEFAULT '',
+            fp_hash         VARCHAR(128) NOT NULL DEFAULT '',
+            fp_primary      VARCHAR(128) NOT NULL DEFAULT '',
+            expire_date     VARCHAR(20)  NOT NULL DEFAULT 'PERPETUAL',
+            max_users       INT          NOT NULL DEFAULT 0,
+            features        VARCHAR(255) NOT NULL DEFAULT 'FULL',
+            grace_days      INT          NOT NULL DEFAULT 7,
+            machine_id      VARCHAR(128) NOT NULL DEFAULT '',
+            mac             VARCHAR(64)  NOT NULL DEFAULT '',
+            cpu             VARCHAR(255) NOT NULL DEFAULT '',
+            status          SMALLINT     NOT NULL DEFAULT 1,
+            created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            last_heartbeat  TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_sys_license_key ON sys_license(license_key))",
+
+        // -------------------------------------------------------
         // sys_notify_channel 通知渠道配置（f15）
         // - channel_type: 'dingtalk' | 'feishu' | 'wxwork' | 'webhook'
         // - webhook_url + secret 用于 HMAC-SHA256 签名
@@ -1044,10 +1068,15 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
            (132,'通知渠道',0,12,'http://localhost:3000/dev-api/system/notify/channel/page','InnerLink','','0','0','C','0','0','system:notify:list','message','admin',NOW(),'钉钉/飞书/企业微信 webhook 渠道配置') ON CONFLICT (menu_id) DO NOTHING)",
         R"(UPDATE sys_menu SET menu_name='通知渠道',parent_id=0,order_num=12,path='http://localhost:3000/dev-api/system/notify/channel/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='system:notify:list',icon='message' WHERE menu_id=132)",
 
-        // 给 admin 角色（role_id=1）授权这 3 个新菜单（幂等，避免重复）
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (133,'License授权',0,13,'http://localhost:3000/dev-api/api/license/page','InnerLink','','0','0','C','0','0','system:license:list','validCode','admin',NOW(),'License 授权 HTTP 服务（签发 + 心跳 + 列表）') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(UPDATE sys_menu SET menu_name='License授权',parent_id=0,order_num=13,path='http://localhost:3000/dev-api/api/license/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='system:license:list',icon='validCode' WHERE menu_id=133)",
+
+        // 给 admin 角色（role_id=1）授权这 4 个新菜单（幂等，避免重复）
         R"(INSERT INTO sys_role_menu(role_id,menu_id) VALUES (1,130) ON CONFLICT DO NOTHING)",
         R"(INSERT INTO sys_role_menu(role_id,menu_id) VALUES (1,131) ON CONFLICT DO NOTHING)",
         R"(INSERT INTO sys_role_menu(role_id,menu_id) VALUES (1,132) ON CONFLICT DO NOTHING)",
+        R"(INSERT INTO sys_role_menu(role_id,menu_id) VALUES (1,133) ON CONFLICT DO NOTHING)",
 
         // =====================================================================
         // v1.2 新增：TOTP 两步验证按钮（挂在个人中心下）
