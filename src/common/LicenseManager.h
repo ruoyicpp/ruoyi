@@ -277,10 +277,22 @@ static inline bool hasFeature(const std::string& feature) {
 
 // ─── 控制台输出 ───────────────────────────────────────────────────────────
 static inline void printPanel(const LicenseInfo& lic) {
-    const char* LINE = "============================================================";
-    std::cout << "\n" << LINE << "\n";
-    std::cout << "  RuoYi-Cpp 许可证信息\n";
-    std::cout << LINE << "\n";
+    // ANSI 颜色（直接内联，避免引入额外头文件）
+    constexpr const char* GOLD   = "\x1b[38;2;255;215;0m";
+    constexpr const char* GREEN  = "\x1b[1;32m";
+    constexpr const char* YELLOW = "\x1b[1;33m";
+    constexpr const char* RED    = "\x1b[1;31m";
+    constexpr const char* RESET  = "\x1b[0m";
+
+    // 按状态选颜色
+    const char* stColor = YELLOW;
+    switch (lic.status) {
+        case Status::VALID:             stColor = GREEN;  break;
+        case Status::EXPIRING_SOON:
+        case Status::HARDWARE_UPGRADED:
+        case Status::FILE_NOT_FOUND:    stColor = YELLOW; break;
+        default:                        stColor = RED;    break;
+    }
 
     auto statusStr = [](Status s) -> const char* {
         switch (s) {
@@ -296,8 +308,13 @@ static inline void printPanel(const LicenseInfo& lic) {
         }
     };
 
+    const char* LINE = "============================================================";
+    std::cout << "\n" << GOLD << LINE << RESET << "\n";
+    std::cout << GOLD << "  RuoYi-Cpp 许可证信息\n";
+    std::cout << LINE << RESET << "\n";
+
     if (lic.status == Status::FILE_NOT_FOUND || lic.status == Status::PARSE_ERROR) {
-        std::cout << "  状态    : " << statusStr(lic.status) << "\n";
+        std::cout << "  状态    : " << stColor << statusStr(lic.status) << RESET << "\n";
     } else {
         std::cout << "  被授权方: " << lic.licensee   << "\n";
         std::cout << "  颁发日期: " << lic.issueDate  << "\n";
@@ -306,14 +323,14 @@ static inline void printPanel(const LicenseInfo& lic) {
             if (lic.daysLeft > 0)
                 std::cout << "  剩余天数: " << lic.daysLeft << " 天\n";
             else
-                std::cout << "  已过期  : " << -lic.daysLeft << " 天前\n";
+                std::cout << "  已过期  : " << stColor << -lic.daysLeft << " 天前" << RESET << "\n";
         }
         std::cout << "  功能模块: " << lic.features   << "\n";
         if (lic.maxUsers > 0)
             std::cout << "  最大用户: " << lic.maxUsers << "\n";
-        std::cout << "  状态    : " << statusStr(lic.status) << "\n";
+        std::cout << "  状态    : " << stColor << statusStr(lic.status) << RESET << "\n";
     }
-    std::cout << LINE << "\n\n";
+    std::cout << GOLD << LINE << RESET << "\n\n";
 }
 
 static inline void printFingerprintRequest() {

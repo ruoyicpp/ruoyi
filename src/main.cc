@@ -1,4 +1,5 @@
 #include "AppIncludes.h"
+#include "common/ColorLogger.h"
 #ifdef RUOYI_USE_EMBEDDED_FRONTEND
 #  include "common/EmbeddedFrontend.h"
 #endif
@@ -41,6 +42,7 @@ static std::string buildDbConnStr(const ConfigLoader& loader, int timeout = 5) {
 extern "C" void ruoyi_init_openssl_provider();
 
 int main(int argc, char* argv[]) {
+    ColorLogger::install(); // 开启彩色控制台输出（Windows VT + trantor 拦截）
     // 最先安装崩溃日志捕获，确保任何时刻崩溃都有记录
     CrashHandler::install("./logs");
 

@@ -254,6 +254,14 @@ public:
             return false;
         }
         PQsetClientEncoding(conn_, "UTF8");
+        // 拦截 NOTICE/WARNING 通知，转为彩色 [DB] 标签输出
+        // 用 std::cerr 而非 std::cout：stdout 可能被 freopen 重定向到 console.log
+        PQsetNoticeProcessor(conn_, [](void*, const char* msg) {
+            if (!msg || !*msg) return;
+            std::string s(msg);
+            while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
+            if (!s.empty()) std::cerr << "[DB] " << s << std::endl;
+        }, nullptr);
         useSqlite_ = false;
         std::cout << "[DB] Connected to PostgreSQL (official libpq)" << std::endl;
         return true;

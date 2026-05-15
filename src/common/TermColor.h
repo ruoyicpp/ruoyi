@@ -96,6 +96,8 @@ inline const char* _tagColor(std::string_view tag) {
     if (tag == "[RegCode]") return MAGENTA;
     // 限流 / 警告类
     if (tag == "[RateLimit]") return YELLOW;
+    // 菜单 / 启动配置
+    if (tag == "[Menu]") return B_CYAN;
     // 启动 / 服务正常
     if (tag == "[NGINX]" || tag == "[SysDictService]") return GREEN;
     // 服务器信息
@@ -112,6 +114,8 @@ inline const char* _tagColor(std::string_view tag) {
 inline std::string _decorate(const char* data, std::size_t len) {
     std::string_view line(data, len);
     if (line.empty()) return std::string(line);
+    // 行内已含 ANSI 序列则直接透传，避免二次包装
+    if (line.find("\x1b[") != std::string_view::npos) return std::string(line);
 
     auto isWord = [](unsigned char c) {
         return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
@@ -137,6 +141,7 @@ inline std::string _decorate(const char* data, std::size_t len) {
     else if (findWord("WARN") || findWord("WARNING")) lineColor = _ansi::YELLOW;
     else if (findWord("DEBUG"))                       lineColor = _ansi::GRAY;
     else if (findWord("TRACE"))                       lineColor = _ansi::GRAY;
+    else if (findWord("NOTICE"))                      lineColor = _ansi::GRAY;
     else if (findWord("INFO"))                        lineColor = _ansi::GREEN;
 
     std::string out;
@@ -160,13 +165,9 @@ inline std::string _decorate(const char* data, std::size_t len) {
             out.append(tag.data(), tag.size());
             out.append(_ansi::RESET);
             std::string_view rest = line.substr(rb + 1);
-            if (lineColor) {
-                out.append(lineColor);
-                out.append(rest.data(), rest.size());
-                out.append(_ansi::RESET);
-            } else {
-                out.append(rest.data(), rest.size());
-            }
+            out.append(lineColor ? lineColor : _ansi::CYAN);
+            out.append(rest.data(), rest.size());
+            out.append(_ansi::RESET);
             return out;
         }
     }
@@ -202,8 +203,16 @@ protected:
     }
 
     std::streamsize xsputn(const char* s, std::streamsize n) override {
-        for (std::streamsize i = 0; i < n; ++i)
-            overflow(static_cast<unsigned char>(s[i]));
+        const char* p   = s;
+        const char* end = s + n;
+        while (p < end) {
+            const char* nl = static_cast<const char*>(std::memchr(p, '\n', end - p));
+            if (!nl) { buf_.append(p, end - p); break; }
+            buf_.append(p, nl - p);
+            flushLine();
+            std::fputc('\n', sink_);
+            p = nl + 1;
+        }
         return n;
     }
 
@@ -229,6 +238,10 @@ inline ColorStreambuf& _outBuf() {
     static ColorStreambuf inst(stdout);
     return inst;
 }
+inline ColorStreambuf& _errBuf() {
+    static ColorStreambuf inst(stderr);
+    return inst;
+}
 
 inline void init() {
 #ifdef _WIN32
@@ -248,6 +261,8 @@ inline void init() {
 #endif
     std::cout.rdbuf(&_outBuf());
     std::cout.setf(std::ios::unitbuf);
+    std::cerr.rdbuf(&_errBuf());
+    std::cerr.setf(std::ios::unitbuf);
 }
 
 inline void writeColored(const char* msg, std::size_t len) {
