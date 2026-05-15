@@ -111,6 +111,41 @@ int main(int argc, char* argv[]) {
             std::filesystem::current_path(exePath);
         }
 
+        // ── watchdog 移交：直接双击 exe 时自动转交给同目录 watchdog ──────────
+        // watchdog 启动本进程时会追加 --launched-by-watchdog，没有该标记说明直接双击。
+        {
+            bool fromWatchdog = false;
+            for (int i = 1; i < argc; ++i)
+                if (std::string(argv[i]) == "--launched-by-watchdog")
+                    { fromWatchdog = true; break; }
+
+            if (!fromWatchdog) {
+#ifdef _WIN32
+                const char* wdExe = "watchdog.exe";
+#else
+                const char* wdExe = "./watchdog";
+#endif
+                if (std::filesystem::exists(wdExe)) {
+                    std::cout << "[info] watchdog detected, handing off..." << std::endl;
+#ifdef _WIN32
+                    std::string cmd = std::string("\"") + wdExe + "\"";
+                    STARTUPINFOA si{}; si.cb = sizeof(si);
+                    PROCESS_INFORMATION pi{};
+                    std::vector<char> buf(cmd.begin(), cmd.end()); buf.push_back('\0');
+                    if (CreateProcessA(nullptr, buf.data(), nullptr, nullptr, FALSE,
+                                       0, nullptr, nullptr, &si, &pi)) {
+                        CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+                        return 0;
+                    }
+#else
+                    pid_t p = ::fork();
+                    if (p == 0) { ::execl(wdExe, wdExe, nullptr); ::_exit(1); }
+                    if (p > 0) return 0;
+#endif
+                }
+            }
+        }
+
         // ── 多进程编排器分支 ──────────────────────────────────────────────────
         // 1) 子进程（env 中已带 RUOYI_WORKER_INDEX）：直接走单进程流程
         // 2) 主进程 + app.worker_processes>1：进入 orchestrator，spawn 子进程并监控
@@ -1532,13 +1567,50 @@ load();
                 // baseUrl 为空表示"推断结果不可信，跳过更新"
                 std::string baseUrl;
                 bool explicitUrl = false;
+
+                // 读 api_prefix（来自 frontend / embedded_frontend）
+                auto readApiPrefix = [&]() -> std::string {
+                    bool extEn = mroot.isMember("frontend")
+                                 && mroot["frontend"].get("enabled", false).asBool();
+                    bool embEn = mroot.isMember("embedded_frontend")
+                                 && mroot["embedded_frontend"].get("enabled", false).asBool();
+                    std::string ap;
+                    if (extEn)      ap = mroot["frontend"].get("api_prefix", "/prod-api").asString();
+                    else if (embEn) ap = mroot["embedded_frontend"].get("api_prefix", "/prod-api").asString();
+                    if (ap == "/") ap.clear();
+                    return ap;
+                };
+
                 if (mroot.isMember("menu")
                     && mroot["menu"].isMember("api_base_url")
                     && !mroot["menu"]["api_base_url"].asString().empty()) {
-                    // 显式指定，去掉末尾 /，优先级最高
+                    // ① 显式指定，去掉末尾 /，优先级最高
                     baseUrl = mroot["menu"]["api_base_url"].asString();
                     while (!baseUrl.empty() && baseUrl.back() == '/') baseUrl.pop_back();
                     explicitUrl = true;
+                } else if (mroot.isMember("domain")
+                           && !mroot["domain"].asString().empty()) {
+                    // ② domain 字段：自动拼 scheme://domain[:port][/api_prefix]
+                    std::string d = mroot["domain"].asString();
+                    // nginx_embedded 启用时走 443 HTTPS（标准端口不加端口号）
+                    bool nginxEnabled = mroot.isMember("nginx_embedded")
+                                        && mroot["nginx_embedded"].get("enabled", false).asBool();
+                    std::string scheme = nginxEnabled ? "https" : "http";
+                    int port = -1; // -1=标准端口，不加
+                    if (!nginxEnabled && mroot.isMember("listeners")
+                        && mroot["listeners"].isArray()
+                        && mroot["listeners"].size() > 0) {
+                        auto& L = mroot["listeners"][0];
+                        int p = L.get("port", 18080).asInt();
+                        if (L.get("ssl", false).asBool()) scheme = "https";
+                        bool isStd = (scheme=="http" && p==80)||(scheme=="https" && p==443);
+                        if (!isStd) port = p;
+                    }
+                    std::string portStr = (port > 0) ? ":" + std::to_string(port) : "";
+                    baseUrl = scheme + "://" + d + portStr + readApiPrefix();
+                    explicitUrl = true;
+                    LOG_INFO << "[Menu] baseUrl from domain field: " << baseUrl;
+                    std::cout << "[Menu] domain=" << d << " -> baseUrl=" << baseUrl << std::endl;
                 } else {
                     // 自动推断：从 listeners + frontend/embedded_frontend
                     std::string host   = "localhost";
@@ -2018,6 +2090,34 @@ load();
                 if (Json::parseFromStream(nrb, nf, &nroot, &nerrs)
                     && nroot.isMember("nginx_embedded")) {
                     auto nc = NginxEmbedded::Config::fromJson(nroot["nginx_embedded"]);
+
+                    // domain 字段：自动修改 nginx.conf server_name 并强制启用 nginx
+                    std::string globalDomain;
+                    if (nroot.isMember("domain"))
+                        globalDomain = nroot["domain"].asString();
+                    if (!globalDomain.empty()) {
+                        nc.enabled = true; // domain 非空 → 自动启用
+                        // 修改 nginx.conf 里所有 server_name _; → server_name {domain};
+                        std::string confPath = nc.prefix + "/" + nc.confFile;
+                        try {
+                            std::ifstream cin_(confPath);
+                            if (cin_.is_open()) {
+                                std::string buf((std::istreambuf_iterator<char>(cin_)), {});
+                                cin_.close();
+                                std::string from = "server_name _;", to = "server_name " + globalDomain + ";";
+                                size_t p = 0;
+                                while ((p = buf.find(from, p)) != std::string::npos)
+                                    { buf.replace(p, from.size(), to); p += to.size(); }
+                                std::ofstream cout_(confPath);
+                                cout_ << buf;
+                                LOG_INFO << "[NginxEmbedded] nginx.conf server_name -> " << globalDomain;
+                                std::cout << "[NginxEmbedded] nginx.conf server_name -> " << globalDomain << std::endl;
+                            }
+                        } catch (const std::exception& ce) {
+                            LOG_WARN << "[NginxEmbedded] 修改 nginx.conf 失败: " << ce.what();
+                        }
+                    }
+
                     LOG_INFO << "[NginxEmbedded] enabled=" << nc.enabled
                              << " prefix=" << nc.prefix
                              << " conf=" << nc.confFile;
@@ -2050,6 +2150,10 @@ load();
                         && aroot.isMember("acme")) {
                         // 优先使用 certmanager 动态库（含 dns_provider 且库文件存在时）
                         auto cmc = CertManagerAcme::Config::fromJson(aroot["acme"]);
+                        // domain 字段：acme.domains 为空时自动用顶层 domain
+                        if (cmc.domains.empty() && aroot.isMember("domain")
+                            && !aroot["domain"].asString().empty())
+                            cmc.domains.push_back(aroot["domain"].asString());
                         bool usedCertManager = false;
                         if (cmc.enabled && !cmc.dnsProvider.empty())
                             usedCertManager = CertManagerAcme::instance().start(cmc);
@@ -2065,7 +2169,24 @@ load();
             LOG_WARN << "[ACME] 初始化失败: " << e.what();
         }
 
+        // ── 心跳线程：每 2 秒写 .watchdog_heartbeat，让守护进程检测假死 ─────
+        std::atomic<bool> hbStop{false};
+        std::thread hbThread([&hbStop]() {
+            while (!hbStop.load()) {
+                try {
+                    std::ofstream f(".watchdog_heartbeat", std::ios::trunc);
+                    f << std::time(nullptr);
+                } catch (...) {}
+                for (int i = 0; i < 20 && !hbStop.load(); ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        });
+
         drogon::app().run();
+
+        hbStop.store(true);
+        if (hbThread.joinable()) hbThread.join();
+        std::filesystem::remove(".watchdog_heartbeat");
 
         // ── 退出清理：先停反向代理（停止接收新连接，让 drogon 排空）─────
         try { CertManagerAcme::instance().stop(); } catch (...) {}
