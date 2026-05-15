@@ -10,6 +10,7 @@
 #include "../../common/TokenCache.h"
 #include "../../common/SecurityUtils.h"
 #include "../../common/WsBus.h"
+#include "../../system/controllers/WsTicketCtrl.h"
 
 /**
  * WsNotifyCtrl — 服务端推送通知 WebSocket
@@ -29,30 +30,48 @@ public:
     // ── 新连接建立 ──────────────────────────────────────────────────────────
     void handleNewConnection(const drogon::HttpRequestPtr &req,
                              const drogon::WebSocketConnectionPtr &conn) override {
+        long userId = 0;
+        std::string uuid;
+
+        std::string ticket   = req->getParameter("ticket");
         std::string jwtToken = req->getParameter("token");
-        if (jwtToken.empty()) {
-            conn->send("{\"type\":\"error\",\"msg\":\"缺少 token 参数\"}");
-            conn->shutdown();
-            return;
-        }
-        try {
-            auto uuid   = JwtUtils::parseUuid(jwtToken);
-            auto cached = TokenCache::instance().get(SecurityUtils::getTokenKey(uuid));
-            if (!cached) {
-                conn->send("{\"type\":\"error\",\"msg\":\"token 无效或已过期\"}");
+
+        if (!ticket.empty()) {
+            // ── 优先走 ticket 认证（安全：一次性，避免 JWT 出现在 URL）──────
+            auto info = WsTicketCtrl::consume(ticket);
+            if (!info) {
+                conn->send("{\"type\":\"error\",\"msg\":\"ticket 无效或已过期\"}");
                 conn->shutdown();
                 return;
             }
-            long userId = cached->userId;
-            conn->setContext(std::make_shared<ConnCtx>(uuid, userId));
-            addConn(userId, conn);
-            // f15: 订阅个人 topic，用于 NotifyService::sendInbox 后 WsBus::publish
-            WsBus::instance().subscribe("user:" + std::to_string(userId), conn);
-            LOG_INFO << "[WsNotify] userId=" << userId << " 已连接 + 订阅 user:" << userId;
-        } catch (...) {
-            conn->send("{\"type\":\"error\",\"msg\":\"token 解析失败\"}");
+            userId = info->userId;
+            uuid   = "ticket:" + std::to_string(userId);
+        } else if (!jwtToken.empty()) {
+            // ── fallback：直接 JWT token 认证 ─────────────────────────────
+            try {
+                uuid = JwtUtils::parseUuid(jwtToken);
+                auto cached = TokenCache::instance().get(SecurityUtils::getTokenKey(uuid));
+                if (!cached) {
+                    conn->send("{\"type\":\"error\",\"msg\":\"token 无效或已过期\"}");
+                    conn->shutdown();
+                    return;
+                }
+                userId = cached->userId;
+            } catch (...) {
+                conn->send("{\"type\":\"error\",\"msg\":\"token 解析失败\"}");
+                conn->shutdown();
+                return;
+            }
+        } else {
+            conn->send("{\"type\":\"error\",\"msg\":\"缺少 ticket 或 token 参数\"}");
             conn->shutdown();
+            return;
         }
+
+        conn->setContext(std::make_shared<ConnCtx>(uuid, userId));
+        addConn(userId, conn);
+        WsBus::instance().subscribe("user:" + std::to_string(userId), conn);
+        LOG_INFO << "[WsNotify] userId=" << userId << " 已连接 + 订阅 user:" << userId;
     }
 
     // ── 连接断开 ────────────────────────────────────────────────────────────
