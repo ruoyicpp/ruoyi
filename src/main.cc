@@ -7,6 +7,7 @@
 #include "common/NginxEmbedded.h"
 #include "services/WorkerOrchestrator.h"
 #include "services/AcmeManager.h"
+#include "services/CertManagerDriver.h"
 #ifdef _WIN32
 #  include <io.h>      // _isatty / _fileno
 #endif
@@ -1986,8 +1987,15 @@ load();
                     std::string aerrs;
                     if (Json::parseFromStream(arb, af, &aroot, &aerrs)
                         && aroot.isMember("acme")) {
-                        auto ac = AcmeManager::Config::fromJson(aroot["acme"]);
-                        if (ac.enabled) AcmeManager::instance().start(ac);
+                        // 优先使用 certmanager 动态库（含 dns_provider 配置时）
+                        auto cmc = CertManagerAcme::Config::fromJson(aroot["acme"]);
+                        if (cmc.enabled && !cmc.dnsProvider.empty()) {
+                            CertManagerAcme::instance().start(cmc);
+                        } else {
+                            // fallback: 原 win-acme / acme.sh 子进程方式
+                            auto ac = AcmeManager::Config::fromJson(aroot["acme"]);
+                            if (ac.enabled) AcmeManager::instance().start(ac);
+                        }
                     }
                 }
             }
@@ -1998,6 +2006,7 @@ load();
         drogon::app().run();
 
         // ── 退出清理：先停反向代理（停止接收新连接，让 drogon 排空）─────
+        try { CertManagerAcme::instance().stop(); } catch (...) {}
         try { AcmeManager::instance().stop(); } catch (...) {}
         try { NginxEmbedded::instance().stop(); } catch (...) {}
     } catch (const std::exception &e) {
