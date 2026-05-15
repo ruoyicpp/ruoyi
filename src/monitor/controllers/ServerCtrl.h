@@ -12,10 +12,15 @@
 #ifdef _WIN32
 #  include <windows.h>
 #  include <psapi.h>
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
 #else
 #  include <fstream>
 #  include <unistd.h>
 #  include <sys/statvfs.h>
+#  include <sys/socket.h>
+#  include <netdb.h>
+#  include <arpa/inet.h>
 #endif
 
 // 服务器信息接口 /monitor/server (跨平台: Windows MinGW + Linux)
@@ -57,7 +62,7 @@ public:
         mem["usage"] = totalGB > 0 ? round2(usedGB / totalGB * 100.0) : std::string("0.00");
         server["mem"] = mem;
 
-        // ====== C++ 运行时信息（类比 JVM） ======
+        // ====== C++ 运行时信息类比 JVM ======
         Json::Value jvm;
         jvm["name"]    = "ruoyi-cpp (Drogon C++)";
         jvm["version"] = "C++17 / g++ " + std::string(__VERSION__);
@@ -77,7 +82,7 @@ public:
         // ====== 系统信息 ======
         Json::Value sys_info;
         sys_info["computerName"] = getHostname();
-        sys_info["computerIp"]   = "127.0.0.1";
+        sys_info["computerIp"]   = getLocalIp();
 #ifdef _WIN32
         sys_info["osName"] = "Windows";
         sys_info["osArch"] = sizeof(void*) == 8 ? "x86_64" : "x86";
@@ -183,6 +188,31 @@ private:
         gethostname(buf, sizeof(buf));
         return buf;
 #endif
+    }
+
+    std::string getLocalIp() {
+        char hostname[256] = {};
+#ifdef _WIN32
+        DWORD sz = sizeof(hostname);
+        GetComputerNameA(hostname, &sz);
+#else
+        gethostname(hostname, sizeof(hostname));
+#endif
+        addrinfo hints{}, *res = nullptr;
+        hints.ai_family   = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        if (getaddrinfo(hostname, nullptr, &hints, &res) == 0 && res) {
+            char ip[INET_ADDRSTRLEN] = {};
+            inet_ntop(AF_INET,
+                &reinterpret_cast<sockaddr_in*>(res->ai_addr)->sin_addr,
+                ip, sizeof(ip));
+            freeaddrinfo(res);
+            std::string s(ip);
+            // 跳过回环地址
+            if (!s.empty() && s != "127.0.0.1") return s;
+        }
+        if (res) freeaddrinfo(res);
+        return "127.0.0.1";
     }
 
     std::string getCurrentDir() {

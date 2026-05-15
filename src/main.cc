@@ -522,6 +522,35 @@ int main(int argc, char* argv[]) {
                     corsCfg->credentials = c.get("allow_credentials", false).asBool();
                 }
             }
+            // 若 menu.api_base_url 已配置，自动将其 origin 加入 CORS 白名单
+            // 避免生产域名只填了 api_base_url 而忘了在 cors.allow_origins 重复填写
+            {
+                std::ifstream maf("config.json");
+                if (maf.is_open()) {
+                    Json::Value mr; Json::CharReaderBuilder rb2; std::string err2;
+                    if (Json::parseFromStream(rb2, maf, &mr, &err2)
+                        && mr.isMember("menu") && mr["menu"].isMember("api_base_url")) {
+                        std::string abu = mr["menu"]["api_base_url"].asString();
+                        if (!abu.empty()) {
+                            // 提取 scheme://host[:port]
+                            auto pos = abu.find("://");
+                            if (pos != std::string::npos) {
+                                auto rest = abu.substr(pos + 3);
+                                auto slash = rest.find('/');
+                                std::string origin = abu.substr(0, pos + 3)
+                                    + (slash != std::string::npos ? rest.substr(0, slash) : rest);
+                                // 避免重复
+                                bool found = false;
+                                for (auto& o : corsCfg->origins) if (o == origin) { found = true; break; }
+                                if (!found) {
+                                    corsCfg->origins.push_back(origin);
+                                    LOG_INFO << "[CORS] auto-added origin from api_base_url: " << origin;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             if (corsCfg->origins.empty()) corsCfg->origins.push_back("*");
             if (corsCfg->methods.empty())  corsCfg->methods  = "GET,POST,PUT,DELETE,OPTIONS";
             if (corsCfg->headers.empty())  corsCfg->headers  = "*";
@@ -1449,10 +1478,11 @@ load();
                 LOG_WARN << "[Menu] clear routers cache failed: " << e.what();
             }
 
-            // ── 启动时校正"日志查看"菜单 URL（适配多种部署模式）──────────────
-            //   优先级：menu.logfile_external_url 显式覆盖
-            //         > 合并部署（frontend.enabled / embedded_frontend.enabled）
-            //         > 默认 dev 分离 (localhost:3000 + /dev-api)
+            // ── 启动时统一校正所有 InnerLink 菜单 URL ─────────────────────────
+            // 优先级：menu.api_base_url（显式，生产环境推荐）
+            //       > frontend/embedded_frontend.enabled（合并部署）
+            //       > 直连后端（无 apiPrefix）
+            // menu.logfile_external_url 仍作为 menu_id=120 的单独兜底覆盖。
             try {
                 std::ifstream mf(configFile);
                 Json::Value mroot;
@@ -1460,79 +1490,100 @@ load();
                     Json::CharReaderBuilder rb; std::string err;
                     Json::parseFromStream(rb, mf, &mroot, &err);
                 }
-                std::string logfileUrl;
-                if (mroot.isMember("menu")
-                    && mroot["menu"].isMember("logfile_external_url")
-                    && !mroot["menu"]["logfile_external_url"].asString().empty()) {
-                    logfileUrl = mroot["menu"]["logfile_external_url"].asString();
-                } else {
-                    bool extEn = mroot.isMember("frontend")
-                                 && mroot["frontend"].get("enabled", false).asBool();
-                    bool embEn = mroot.isMember("embedded_frontend")
-                                 && mroot["embedded_frontend"].get("enabled", false).asBool();
-                    if (extEn || embEn) {
-                        // 合并部署：与后端同 host:port
-                        // listener 是 0.0.0.0 时浏览器无法访问，回退用 localhost
-                        std::string host = "localhost";
-                        int         port = 18080;
-                        if (mroot.isMember("listeners") && mroot["listeners"].isArray()
-                            && mroot["listeners"].size() > 0) {
-                            auto& L = mroot["listeners"][0];
-                            std::string a = L.get("address", "0.0.0.0").asString();
-                            if (!a.empty() && a != "0.0.0.0" && a != "::") host = a;
-                            port = L.get("port", 18080).asInt();
-                        }
-                        std::string apiPrefix = extEn
-                            ? mroot["frontend"].get("api_prefix", "/prod-api").asString()
-                            : mroot["embedded_frontend"].get("api_prefix", "/prod-api").asString();
-                        if (apiPrefix == "/") apiPrefix.clear();
-                        logfileUrl = "http://" + host + ":" + std::to_string(port)
-                                   + apiPrefix + "/monitor/logfile/page";
-                    } else {
-                        logfileUrl = "http://localhost:3000/dev-api/monitor/logfile/page";
-                    }
-                }
-                auto upd = DatabaseService::instance().execParams(
-                    "UPDATE sys_menu SET path=$1 WHERE menu_id=120", {logfileUrl});
-                LOG_INFO << "[Menu] 日志查看菜单 URL 已校正: " << logfileUrl;
-                std::cout << "[Menu] 日志查看 -> " << logfileUrl << std::endl;
 
-                // ── 同样校正 "AI会话" (menu_id=2100) ──
-                // 显式覆盖 > 合并部署(后端同源) > dev 分离(localhost:3000/dev-api)
-                std::string aiPageUrl;
+                // ── 判断 host 是否为内网地址（反向代理场景下不可从浏览器访问）────
+                auto isPrivateHost = [](const std::string& h) -> bool {
+                    if (h == "localhost" || h == "127.0.0.1" || h == "0.0.0.0"
+                        || h == "::" || h == "::1") return true;
+                    // 10.x / 172.16-31.x / 192.168.x
+                    if (h.substr(0, 3) == "10.") return true;
+                    if (h.substr(0, 8) == "192.168.") return true;
+                    if (h.size() > 4 && h.substr(0, 4) == "172.") {
+                        int seg = 0;
+                        try { seg = std::stoi(h.substr(4, h.find('.', 4) - 4)); } catch (...) {}
+                        if (seg >= 16 && seg <= 31) return true;
+                    }
+                    return false;
+                };
+
+                // ── 计算通用 baseUrl ──────────────────────────────────────────
+                // baseUrl 为空表示"推断结果不可信，跳过更新"
+                std::string baseUrl;
+                bool explicitUrl = false;
                 if (mroot.isMember("menu")
-                    && mroot["menu"].isMember("ai_page_url")
-                    && !mroot["menu"]["ai_page_url"].asString().empty()) {
-                    aiPageUrl = mroot["menu"]["ai_page_url"].asString();
+                    && mroot["menu"].isMember("api_base_url")
+                    && !mroot["menu"]["api_base_url"].asString().empty()) {
+                    // 显式指定，去掉末尾 /，优先级最高
+                    baseUrl = mroot["menu"]["api_base_url"].asString();
+                    while (!baseUrl.empty() && baseUrl.back() == '/') baseUrl.pop_back();
+                    explicitUrl = true;
                 } else {
+                    // 自动推断：从 listeners + frontend/embedded_frontend
+                    std::string host   = "localhost";
+                    int         port   = 18080;
+                    std::string scheme = "http";
+                    if (mroot.isMember("listeners") && mroot["listeners"].isArray()
+                        && mroot["listeners"].size() > 0) {
+                        auto& L = mroot["listeners"][0];
+                        std::string a = L.get("address", "0.0.0.0").asString();
+                        if (!a.empty() && a != "0.0.0.0" && a != "::") host = a;
+                        port = L.get("port", 18080).asInt();
+                        if (L.get("ssl", false).asBool()) scheme = "https";
+                    }
                     bool extEn = mroot.isMember("frontend")
                                  && mroot["frontend"].get("enabled", false).asBool();
                     bool embEn = mroot.isMember("embedded_frontend")
                                  && mroot["embedded_frontend"].get("enabled", false).asBool();
-                    if (extEn || embEn) {
-                        std::string host = "localhost";
-                        int         port = 18080;
-                        if (mroot.isMember("listeners") && mroot["listeners"].isArray()
-                            && mroot["listeners"].size() > 0) {
-                            auto& L = mroot["listeners"][0];
-                            std::string a = L.get("address", "0.0.0.0").asString();
-                            if (!a.empty() && a != "0.0.0.0" && a != "::") host = a;
-                            port = L.get("port", 18080).asInt();
-                        }
-                        std::string apiPrefix = extEn
-                            ? mroot["frontend"].get("api_prefix", "/prod-api").asString()
-                            : mroot["embedded_frontend"].get("api_prefix", "/prod-api").asString();
-                        if (apiPrefix == "/") apiPrefix.clear();
-                        aiPageUrl = "http://" + host + ":" + std::to_string(port)
-                                  + apiPrefix + "/ai/page";
+                    std::string apiPrefix;
+                    if (extEn)
+                        apiPrefix = mroot["frontend"].get("api_prefix", "/prod-api").asString();
+                    else if (embEn)
+                        apiPrefix = mroot["embedded_frontend"].get("api_prefix", "/prod-api").asString();
+                    if (apiPrefix == "/") apiPrefix.clear();
+
+                    if (isPrivateHost(host)) {
+                        // 内网地址 → 反向代理场景下浏览器无法访问，跳过更新
+                        LOG_WARN << "[Menu] InnerLink 菜单 URL 未更新：自动推断地址 "
+                                 << host << " 为内网地址，反向代理场景下浏览器无法访问。\n"
+                                 << "        请在 config.json 设置 menu.api_base_url，例如：\n"
+                                 << "        \"api_base_url\": \"https://your-domain.com/prod-api\"";
+                        std::cerr << "[Menu] WARNING: api_base_url 未配置，菜单 URL 保持数据库现有值。\n"
+                                  << "  -> 生产/反向代理环境请设置 config.json: menu.api_base_url\n";
+                        // baseUrl 保持空字符串，下方 for 循环将跳过写库
                     } else {
-                        aiPageUrl = "http://localhost:3000/dev-api/ai/page";
+                        baseUrl = scheme + "://" + host + ":" + std::to_string(port) + apiPrefix;
                     }
                 }
-                DatabaseService::instance().execParams(
-                    "UPDATE sys_menu SET path=$1 WHERE menu_id=2100", {aiPageUrl});
-                LOG_INFO << "[Menu] AI会话菜单 URL 已校正: " << aiPageUrl;
-                std::cout << "[Menu] AI会话 -> " << aiPageUrl << std::endl;
+
+                // ── 全量 InnerLink 菜单 ID → 路径后缀 ────────────────────────
+                static const std::pair<int, const char*> kMenuSuffixes[] = {
+                    {120,  "/monitor/logfile/page"},
+                    {130,  "/monitor/restart/page"},
+                    {131,  "/system/apikey/page"},
+                    {132,  "/system/notify/channel/page"},
+                    {133,  "/api/license/page"},
+                    {1100, "/ssl-config"},
+                    {2100, "/ai/page"},
+                };
+                for (auto& [mid, suffix] : kMenuSuffixes) {
+                    // logfile_external_url 兼容旧配置：menu_id=120 单独覆盖（优先级高于 baseUrl）
+                    std::string url;
+                    if (mid == 120
+                        && mroot.isMember("menu")
+                        && mroot["menu"].isMember("logfile_external_url")
+                        && !mroot["menu"]["logfile_external_url"].asString().empty()) {
+                        url = mroot["menu"]["logfile_external_url"].asString();
+                    } else if (!baseUrl.empty()) {
+                        url = baseUrl + suffix;
+                    } else {
+                        continue; // 内网地址推断结果，跳过此菜单，保留数据库现有值
+                    }
+                    DatabaseService::instance().execParams(
+                        "UPDATE sys_menu SET path=$1 WHERE menu_id=$2",
+                        {url, std::to_string(mid)});
+                    LOG_INFO << "[Menu] 菜单 " << mid << " URL 已校正: " << url;
+                    std::cout << "[Menu] " << mid << " -> " << url << std::endl;
+                }
             } catch (const std::exception& e) {
                 LOG_WARN << "[Menu] 校正菜单 URL 失败: " << e.what();
             }

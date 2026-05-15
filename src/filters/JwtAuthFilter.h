@@ -9,6 +9,7 @@
 #include "../common/AjaxResult.h"
 #include "../common/UaUtils.h"
 #include "../common/ApiKeyService.h"
+#include "../common/IpUtils.h"
 #include "../system/services/TokenService.h"
 
 // ── 防滥用配置（启动时从 config.json 加载一次）──────────────────────────────
@@ -117,7 +118,7 @@ public:
 
             // 3. Token 绑定校验（防止 token 被抓包后在其他设备重放）
             const auto& anti = AntiAbuseConfig::get();
-            std::string curIp    = req->peerAddr().toIp();
+            std::string curIp    = IpUtils::getIpAddr(req); // 反向代理场景下读 X-Forwarded-For，与登录时一致
             std::string curBrowser = UaUtils::parse(ua).browser;
 
             if (anti.checkIp && !user.ipAddr.empty() && user.ipAddr != curIp) {
