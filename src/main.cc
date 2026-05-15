@@ -853,15 +853,21 @@ int main(int argc, char* argv[]) {
 
         // ── 安全响应头（XSS/点击劫持/内容嗅探防御）────────────────────────────
         drogon::app().registerPostHandlingAdvice(
-            [](const drogon::HttpRequestPtr&,
+            [](const drogon::HttpRequestPtr& req,
                const drogon::HttpResponsePtr& resp) {
                 resp->addHeader("X-Content-Type-Options",  "nosniff");
-                resp->addHeader("X-Frame-Options",         "SAMEORIGIN");
                 resp->addHeader("X-XSS-Protection",        "1; mode=block");
                 resp->addHeader("Referrer-Policy",         "strict-origin-when-cross-origin");
-                resp->addHeader("Content-Security-Policy",
-                    "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-                    "style-src 'self' 'unsafe-inline'; img-src 'self' data:");
+                // /ai/* 页面允许被跨域 iframe 嵌入（前端内嵌 AI 会话页）
+                const std::string& p = req->path();
+                bool isAiPage = (p == "/ai" || p == "/ai/" ||
+                                 (p.size() > 4 && p.compare(0, 4, "/ai/") == 0));
+                if (!isAiPage) {
+                    resp->addHeader("X-Frame-Options", "SAMEORIGIN");
+                    resp->addHeader("Content-Security-Policy",
+                        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                        "style-src 'self' 'unsafe-inline'; img-src 'self' data:");
+                }
             });
 
         // ── XSS 过滤（POST/PUT 请求 JSON body 净化）──────────────────────────
