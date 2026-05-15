@@ -1987,11 +1987,12 @@ load();
                     std::string aerrs;
                     if (Json::parseFromStream(arb, af, &aroot, &aerrs)
                         && aroot.isMember("acme")) {
-                        // 优先使用 certmanager 动态库（含 dns_provider 配置时）
+                        // 优先使用 certmanager 动态库（含 dns_provider 且库文件存在时）
                         auto cmc = CertManagerAcme::Config::fromJson(aroot["acme"]);
-                        if (cmc.enabled && !cmc.dnsProvider.empty()) {
-                            CertManagerAcme::instance().start(cmc);
-                        } else {
+                        bool usedCertManager = false;
+                        if (cmc.enabled && !cmc.dnsProvider.empty())
+                            usedCertManager = CertManagerAcme::instance().start(cmc);
+                        if (!usedCertManager) {
                             // fallback: 原 win-acme / acme.sh 子进程方式
                             auto ac = AcmeManager::Config::fromJson(aroot["acme"]);
                             if (ac.enabled) AcmeManager::instance().start(ac);

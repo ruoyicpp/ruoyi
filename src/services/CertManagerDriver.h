@@ -181,8 +181,10 @@ public:
             r.certmanagerLib   = c.get("certmanager_lib",
 #ifdef _WIN32
                                        "certmanager.dll"
+#elif defined(__APPLE__)
+                                       "libcertmanager.dylib"
 #else
-                                       "certmanager.so"
+                                       "libcertmanager.so"
 #endif
                                  ).asString();
             r.legoPath         = c.get("lego_path",    ".lego").asString();
@@ -222,9 +224,13 @@ public:
             return false;
         }
 
-        // 加载 DLL
+        // 加载 DLL / SO，文件不存在时静默跳过
+        if (!std::filesystem::exists(cfg_.certmanagerLib)) {
+            LOG_INFO << "[ACME] certmanager lib not found, skipping: " << cfg_.certmanagerLib;
+            return false;
+        }
         if (!drv_.load(cfg_.certmanagerLib)) {
-            LOG_WARN << "[ACME] certmanager lib not found: " << cfg_.certmanagerLib;
+            LOG_WARN << "[ACME] certmanager lib load failed: " << cfg_.certmanagerLib;
             return false;
         }
 
