@@ -2270,13 +2270,18 @@ load();
         // ── 心跳线程：每 2 秒写 .watchdog_heartbeat，让守护进程检测假死 ─────
         std::atomic<bool> hbStop{false};
         std::thread hbThread([&hbStop]() {
-            while (!hbStop.load()) {
+            // 立即写第一次，让 watchdog 宽限期内就能看到有效心跳
+            auto writeHb = []() {
                 try {
                     std::ofstream f(".watchdog_heartbeat", std::ios::trunc);
                     f << std::time(nullptr);
                 } catch (...) {}
+            };
+            writeHb();
+            while (!hbStop.load()) {
                 for (int i = 0; i < 20 && !hbStop.load(); ++i)
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if (!hbStop.load()) writeHb();
             }
         });
 

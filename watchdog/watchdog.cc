@@ -111,6 +111,7 @@ struct Config {
     int         count             = 1;     // 同时监控的进程数（多实例模式）
     int         heartbeatTimeout  = 10;    // 心跳超时秒数，0=不检查
     std::string heartbeatFile     = ".watchdog_heartbeat";
+    int         graceSeconds      = 30;    // 进程刚启动后的宽限期，期间不检查心跳
     long long   maxLogSize        = 10 * 1024 * 1024; // 单文件上限字节，0=不限
     int         maxLogFiles       = 5;                // 最多保留几个备份
 };
@@ -142,6 +143,7 @@ static Config loadIni(const std::string& path) {
         else if (k == "count")              c.count            = std::stoi(v);
         else if (k == "heartbeat_timeout")  c.heartbeatTimeout = std::stoi(v);
         else if (k == "heartbeat_file")     c.heartbeatFile    = v;
+        else if (k == "grace_seconds")      c.graceSeconds     = std::stoi(v);
         else if (k == "max_log_size")       c.maxLogSize       = std::stoll(v);
         else if (k == "max_log_files")      c.maxLogFiles      = std::stoi(v);
     }
@@ -164,6 +166,7 @@ static Config parseCli(int argc, char* argv[]) {
         else if (a == "--count")              c.count           = std::stoi(next());
         else if (a == "--heartbeat-timeout")  c.heartbeatTimeout= std::stoi(next());
         else if (a == "--heartbeat-file")     c.heartbeatFile   = next();
+        else if (a == "--grace-seconds")      c.graceSeconds    = std::stoi(next());
         else if (a == "--max-log-size")       c.maxLogSize      = std::stoll(next());
         else if (a == "--max-log-files")      c.maxLogFiles     = std::stoi(next());
     }
@@ -355,6 +358,7 @@ int main(int argc, char* argv[]) {
             std::string tag = (n > 1) ? ("[#" + std::to_string(idx) + "]") : "";
             Process& proc = procs[idx];
             int restarts = 0;
+            auto procStartTime = std::chrono::steady_clock::now();
 
             while (!g_quit.load()) {
                 if (!proc.running()) {
@@ -374,27 +378,34 @@ int main(int argc, char* argv[]) {
                     }
 
                     proc.close();
+                    // 删除旧心跳文件，防止残留文件触发立即超时
+                    { std::error_code ec; std::filesystem::remove(cfg.heartbeatFile, ec); }
                     if (!proc.start(cfg)) {
                         wlog(tag, "启动失败，" + std::to_string(cfg.restartDelay) + " 秒后重试...", "ERROR");
                         std::this_thread::sleep_for(std::chrono::seconds(cfg.restartDelay));
                         ++restarts;
                         continue;
                     }
+                    procStartTime = std::chrono::steady_clock::now();
                     wlog(tag, "已启动", "INFO", (long long)proc.pid);
                     ++restarts;
                 }
-                // ── 心跳超时检查（主动检测假死/卡死）────────────────────────
+                // ── 心跳超时检查（宽限期内不检查，防止残留旧文件误判）────────
                 if (cfg.heartbeatTimeout > 0 && proc.running()) {
-                    std::error_code ec;
-                    auto mtime = std::filesystem::last_write_time(cfg.heartbeatFile, ec);
-                    if (!ec) {
-                        auto now = std::filesystem::file_time_type::clock::now();
-                        int age = (int)std::chrono::duration_cast<std::chrono::seconds>(now - mtime).count();
-                        if (age > cfg.heartbeatTimeout) {
-                            wlog(tag, "心跳超时（" + std::to_string(age) + "s），强制重启", "WARN");
-                            proc.kill();
-                            proc.waitFor(3000);
-                            proc.close();
+                    auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::steady_clock::now() - procStartTime).count();
+                    if (uptime >= cfg.graceSeconds) {
+                        std::error_code ec;
+                        auto mtime = std::filesystem::last_write_time(cfg.heartbeatFile, ec);
+                        if (!ec) {
+                            auto now = std::filesystem::file_time_type::clock::now();
+                            int age = (int)std::chrono::duration_cast<std::chrono::seconds>(now - mtime).count();
+                            if (age > cfg.heartbeatTimeout) {
+                                wlog(tag, "心跳超时（" + std::to_string(age) + "s），强制重启", "WARN");
+                                proc.kill();
+                                proc.waitFor(3000);
+                                proc.close();
+                            }
                         }
                     }
                 }
