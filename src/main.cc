@@ -909,16 +909,19 @@ int main(int argc, char* argv[]) {
                 // 此时 HTTP 已完成 WS 升级。若到 handleNewConnection 才发现
                 // 缺 token 再 shutdown，攻击者可借机消耗 socket/内存资源。
                 // 这里在 PreHandling 阶段先拒掉缺 token 的 WS 请求。
-                if (path.size() >= 4 && path.compare(0, 4, "/ws/") == 0) {
-                    if (req->getParameter("token").empty()) {
+                // /ws/ticket 是普通 HTTP 接口（签发 WS 票据），走正常 JWT 流程
+                // 只对真正的 WebSocket 升级路径（/ws/notify 等）做 token 参数预检
+                if (path.size() >= 4 && path.compare(0, 4, "/ws/") == 0
+                    && path != "/ws/ticket") {
+                    if (req->getParameter("token").empty()
+                        && req->getParameter("ticket").empty()) {
                         auto resp = drogon::HttpResponse::newHttpResponse();
                         resp->setStatusCode(drogon::k401Unauthorized);
                         resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
-                        resp->setBody(R"({"code":401,"msg":"缺少 token 参数"})");
+                        resp->setBody(R"({"code":401,"msg":"缺少 token/ticket 参数"})");
                         acb(resp); return;
                     }
-                    // 有 token 时继续走原 WebSocketController 流程
-                    // （在 handleNewConnection 里再做 JWT 解析与 TokenCache 验证）
+                    // 有 token/ticket 时继续走 WebSocketController 流程
                     accb(); return;
                 }
 
