@@ -981,6 +981,8 @@ int main(int argc, char* argv[]) {
                     || path == "/health" || path == "/version" || path == "/ssl-config") {
                     accb(); return;
                 }
+                // certmanager API：handler 内部自行鉴权（localhost 无 token 也可用）
+                if (path.rfind("/api/ssl/", 0) == 0) { accb(); return; }
                 // AI 内置助手页 + AI 健康检查 + AI 聊天后端：放行
                 // /ai/page 是 InnerLink iframe 嵌入的内置 HTML 页面
                 // /ai/chat 由该页面 fetch 调用，已通过 fallback 集成讯飞星火外部 API
@@ -1421,6 +1423,102 @@ load();
                 resp->setBody(html);
                 cb(resp);
             }, {drogon::Get});
+
+        // ── certmanager REST API（直接封装 DLL，无需开 web_ui_addr 端口）─────
+        // GET  /api/ssl/version         → DLL 版本
+        // GET  /api/ssl/providers       → 支持的 DNS 提供商列表
+        // GET  /api/ssl/certs           → 已申请证书列表
+        // GET  /api/ssl/cert/{id}       → 单个证书详情
+        // POST /api/ssl/obtain          → 申请新证书 body:{email,domains,provider,env_vars,key_type}
+        // POST /api/ssl/renew/{id}      → 续期证书
+        // DELETE /api/ssl/cert/{id}     → 吊销证书
+        auto sslAuth = [](const drogon::HttpRequestPtr& req) -> bool {
+            // 完整验证 JWT 并要求管理员角色
+            auto user = TokenService::instance().getLoginUser(req);
+            return user.has_value() && SecurityUtils::isAdmin(user->userId);
+        };
+        auto ssl401 = []() {
+            Json::Value e; e["code"] = 401; e["msg"] = "未授权";
+            return drogon::HttpResponse::newHttpJsonResponse(e);
+        };
+
+        drogon::app().registerHandler("/api/ssl/version",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                Json::Value j; j["version"] = CertManagerAcme::instance().version();
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        drogon::app().registerHandler("/api/ssl/providers",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                Json::Value j; j["data"] = CertManagerAcme::instance().listDNSProvidersJson();
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        drogon::app().registerHandler("/api/ssl/certs",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                Json::Value j; j["data"] = CertManagerAcme::instance().listCertsJson();
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        drogon::app().registerHandler("/api/ssl/cert/{id}",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                              const std::string& id) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                Json::Value j; j["data"] = CertManagerAcme::instance().getCertInfoJson(id);
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        drogon::app().registerHandler("/api/ssl/cert/{id}",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                              const std::string& id) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().revokeCertJson(id)));
+            }, {drogon::Delete});
+
+        drogon::app().registerHandler("/api/ssl/renew/{id}",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                              const std::string& id) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().renewCertJson(id, 0)));
+            }, {drogon::Post});
+
+        drogon::app().registerHandler("/api/ssl/obtain",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                auto body = req->getJsonObject();
+                if (!body) {
+                    Json::Value e; e["code"] = 400; e["msg"] = "需要 JSON body";
+                    cb(drogon::HttpResponse::newHttpJsonResponse(e)); return;
+                }
+                std::string email    = (*body).get("email",    "").asString();
+                std::string provider = (*body).get("provider", "").asString();
+                std::string keyType  = (*body).get("key_type", "EC256").asString();
+                // domains: ["a.com","b.com"] → "a.com,b.com"
+                std::string domainList;
+                for (auto& d : (*body)["domains"])
+                    domainList += (domainList.empty() ? "" : ",") + d.asString();
+                // env_vars: {key:val} → JSON 字符串
+                std::string envJson = "{}";
+                if (body->isMember("env_vars")) {
+                    Json::StreamWriterBuilder wb; wb["indentation"] = "";
+                    envJson = Json::writeString(wb, (*body)["env_vars"]);
+                }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().obtainCertJson(
+                        email, domainList, provider, envJson, keyType, 0)));
+            }, {drogon::Post});
 
         // 数据库就绪后初始化
         drogon::app().registerBeginningAdvice([configFile, cfgLoader, isPrimary]() {
