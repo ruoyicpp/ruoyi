@@ -16,6 +16,7 @@
 #include "../../common/DataScopeUtils.h"
 #include "../../common/CsvUtils.h"
 #include "../services/SysPasswordService.h"
+#include "../services/SysConfigService.h"
 #include "SysLoginCtrl.h"
 
 // /system/user 用户管理，使用直接 libpq 查询
@@ -133,7 +134,12 @@ public:
             RESP_ERR(cb, "昵称长度不得超过 30 字符"); return;
         }
 
-        std::string pwd = SecurityUtils::encryptPassword((*body).get("password","123456").asString());
+        std::string initPwd = (*body).get("password","").asString();
+        if (initPwd.empty()) {
+            initPwd = SysConfigService::instance().selectConfigByKey("sys.user.initPassword");
+            if (initPwd.empty()) initPwd = "123456";
+        }
+        std::string pwd = SecurityUtils::encryptPassword(initPwd);
         std::string deptId      = std::to_string((*body).get("deptId", 0).asInt64());
         std::string nickName    = (*body).get("nickName", userName).asString();
         std::string email       = (*body).get("email", "").asString();
@@ -603,8 +609,10 @@ private:
                     {nickName, phone, email, sex, status, uid});
                 success++;
             } else {
-                // 插入新用户，默认密码 123456
-                std::string pwd = SecurityUtils::encryptPassword("123456");
+                // 插入新用户，默认密码取 sys.user.initPassword 配置项
+                std::string initPwd2 = SysConfigService::instance().selectConfigByKey("sys.user.initPassword");
+                if (initPwd2.empty()) initPwd2 = "123456";
+                std::string pwd = SecurityUtils::encryptPassword(initPwd2);
                 db.execParams(
                     "INSERT INTO sys_user(dept_id,user_name,nick_name,password,phonenumber,email,sex,status,del_flag,create_time)"
                     " VALUES($1,$2,$3,$4,$5,$6,$7,$8,'0',NOW())",

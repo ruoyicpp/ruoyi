@@ -4,6 +4,7 @@
 #include <json/json.h>
 #include <sstream>
 #include "../../common/AjaxResult.h"
+#include "../../system/services/SysConfigService.h"
 
 class WebsiteInfoCtrl : public drogon::HttpController<WebsiteInfoCtrl> {
 public:
@@ -20,9 +21,28 @@ public:
             return;
         }
 
-        auto client = drogon::HttpClient::newHttpClient("https://api.pearktrue.cn");
+        // API 地址从 sys_config(sys.websiteinfo.api) 读，fallback 到内置地址
+        std::string apiBase = SysConfigService::instance().selectConfigByKey("sys.websiteinfo.api");
+        if (apiBase.empty()) apiBase = "https://api.pearktrue.cn";
+        // 分离 host 和 path（如 https://host/path/to/api）
+        std::string apiSchemeHost = apiBase, apiPath = "/api/website/info/";
+        for (auto prefix : {"https://", "http://"}) {
+            if (apiBase.rfind(prefix, 0) == 0) {
+                auto rest = apiBase.substr(strlen(prefix));
+                auto slash = rest.find('/');
+                if (slash != std::string::npos) {
+                    apiSchemeHost = std::string(prefix) + rest.substr(0, slash);
+                    apiPath = rest.substr(slash);
+                    if (apiPath.back() != '/') apiPath += '/';
+                } else {
+                    apiSchemeHost = apiBase;
+                }
+                break;
+            }
+        }
+        auto client = drogon::HttpClient::newHttpClient(apiSchemeHost);
         auto apiReq = drogon::HttpRequest::newHttpRequest();
-        apiReq->setPath("/api/website/info/");
+        apiReq->setPath(apiPath);
         apiReq->setMethod(drogon::Get);
         apiReq->setParameter("url", targetUrl);
 
