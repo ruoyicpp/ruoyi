@@ -319,6 +319,15 @@ int main(int argc, char* argv[]) {
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+    // 单实例锁：防止多个 watchdog 同时运行
+    {
+        HANDLE h = CreateMutexA(nullptr, FALSE, "Local\\ruoyi-watchdog-singleton");
+        if (h && GetLastError() == ERROR_ALREADY_EXISTS) {
+            std::cerr << "[watchdog] already running, exit." << std::endl;
+            return 0;
+        }
+        // 持有 h 直到进程退出，无需 CloseHandle
+    }
     SetConsoleCtrlHandler(ctrlHandler, TRUE);
 #else
     signal(SIGINT,  sigHandler);

@@ -52,27 +52,7 @@ int main(int argc, char* argv[]) {
     // system OpenSSL DLL 在多线程并发时引发 RtlReAllocateHeap 堆损坏崩溃
     ruoyi_init_openssl_provider();
 
-#ifdef _WIN32
-    // ── 单实例锁：防止多个 ruoyi-cpp 主进程同时启动导致堆损坏 ─────
-    // 多进程 worker 模式（RUOYI_WORKER_INDEX 已设）时跳过，让 Orchestrator
-    // 主进程持锁、各子进程仍能正常初始化各自的资源
-    if (std::getenv("RUOYI_WORKER_INDEX") == nullptr) {
-        // Local namespace 锁，避免污染 Global 命名空间需要管理员权限
-        static HANDLE s_singleInstance =
-            CreateMutexA(nullptr, FALSE, "Local\\ruoyi-cpp-singleton");
-        if (s_singleInstance && GetLastError() == ERROR_ALREADY_EXISTS) {
-            std::cerr << "[FATAL] 已有一个 ruoyi-cpp 主进程在运行（互斥锁 "
-                         "Local\\ruoyi-cpp-singleton 已被占用），"
-                         "请先关闭旧实例再启动" << std::endl;
-            // 仅当从控制台交互运行时才等回车；服务/脚本场景直接退出
-            if (std::getenv("RUOYI_NO_PAUSE") == nullptr && _isatty(_fileno(stdin))) {
-                std::cout << "按回车键退出..." << std::endl;
-                std::cin.get();
-            }
-            return 2;
-        }
-    }
-#endif
+// 单实例锁已移至 watchdog 检测之后（见下方），确保双击 exe 时始终能正确移交给 watchdog
 
     try {
 #ifdef _WIN32
@@ -144,6 +124,22 @@ int main(int argc, char* argv[]) {
 #endif
                 }
             }
+
+            // ── 单实例锁（只在由 watchdog 启动时检查，防止多实例堆损坏）────────
+            // 移到 watchdog 检测之后：直接双击时先移交给 watchdog 再退出，
+            // 不因单实例锁而跳过移交逻辑。
+#ifdef _WIN32
+            if (fromWatchdog && std::getenv("RUOYI_WORKER_INDEX") == nullptr) {
+                static HANDLE s_singleInstance =
+                    CreateMutexA(nullptr, FALSE, "Local\\ruoyi-cpp-singleton");
+                if (s_singleInstance && GetLastError() == ERROR_ALREADY_EXISTS) {
+                    std::cerr << "[FATAL] 已有一个 ruoyi-cpp 主进程在运行，请先关闭旧实例" << std::endl;
+                    if (std::getenv("RUOYI_NO_PAUSE") == nullptr && _isatty(_fileno(stdin)))
+                        std::cin.get();
+                    return 2;
+                }
+            }
+#endif
         }
 
         // ── 多进程编排器分支 ──────────────────────────────────────────────────
