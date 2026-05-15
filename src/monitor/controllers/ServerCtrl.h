@@ -3,6 +3,7 @@
 #include "../../common/AjaxResult.h"
 #include "../../filters/PermFilter.h"
 #include <string>
+#include <set>
 #include <thread>
 #include <chrono>
 #include <ctime>
@@ -21,6 +22,9 @@
 #  include <sys/socket.h>
 #  include <netdb.h>
 #  include <arpa/inet.h>
+#  include <sys/utsname.h>
+#  include <ifaddrs.h>
+#  include <mntent.h>
 #endif
 
 // 服务器信息接口 /monitor/server (跨平台: Windows MinGW + Linux)
@@ -39,17 +43,14 @@ public:
         Json::Value server;
 
         // ====== CPU ======
+        CpuStat cs = getCpuStat();
         Json::Value cpu;
-        int cores = (int)std::thread::hardware_concurrency();
-        double used = getCpuUsage();
-        double sys  = used * 0.3;           // 估算（粗略）
-        double user = used - sys;
-        cpu["cpuNum"] = cores;
+        cpu["cpuNum"] = (int)std::thread::hardware_concurrency();
         cpu["total"]  = 100.0;
-        cpu["sys"]    = round2(sys);
-        cpu["used"]   = round2(user);
-        cpu["wait"]   = 0.0;
-        cpu["free"]   = round2(100.0 - used);
+        cpu["sys"]    = round2(cs.sys);
+        cpu["used"]   = round2(cs.user);
+        cpu["wait"]   = round2(cs.wait);
+        cpu["free"]   = round2(std::max(0.0, 100.0 - cs.total));
         server["cpu"] = cpu;
 
         // ====== 内存 ======
@@ -62,20 +63,20 @@ public:
         mem["usage"] = totalGB > 0 ? round2(usedGB / totalGB * 100.0) : std::string("0.00");
         server["mem"] = mem;
 
-        // ====== C++ 运行时信息类比 JVM ======
+        // ====== 进程信息（类比 JVM）======
+        double procMB = getProcessMemMB();
+        double sysMB  = totalGB * 1024.0;
         Json::Value jvm;
-        jvm["name"]    = "ruoyi-cpp (Drogon C++)";
-        jvm["version"] = "C++17 / g++ " + std::string(__VERSION__);
-        jvm["home"]    = getCurrentDir();
+        jvm["name"]      = "ruoyi-cpp (Drogon C++)";
+        jvm["version"]   = getCompilerVersion();
+        jvm["home"]      = getCurrentDir();
         jvm["startTime"] = fmtWallTime(startWall_);
         jvm["runTime"]   = fmtUptime();
-        // 进程内存
-        double procMB = getProcessMemMB();
-        jvm["total"]   = round2(procMB) + " M";
-        jvm["max"]     = "N/A";
-        jvm["used"]    = round2(procMB) + " M";
-        jvm["free"]    = "N/A";
-        jvm["usage"]   = 0.0;
+        jvm["total"]     = round2(sysMB) + " M";
+        jvm["max"]       = round2(sysMB) + " M";
+        jvm["used"]      = round2(procMB) + " M";
+        jvm["free"]      = round2(std::max(0.0, sysMB - procMB)) + " M";
+        jvm["usage"]     = sysMB > 0 ? round2(procMB / sysMB * 100.0) : std::string("0.00");
         jvm["inputArgs"] = "";
         server["jvm"] = jvm;
 
@@ -83,14 +84,9 @@ public:
         Json::Value sys_info;
         sys_info["computerName"] = getHostname();
         sys_info["computerIp"]   = getLocalIp();
-#ifdef _WIN32
-        sys_info["osName"] = "Windows";
-        sys_info["osArch"] = sizeof(void*) == 8 ? "x86_64" : "x86";
-#else
-        sys_info["osName"] = "Linux";
-        sys_info["osArch"] = "x86_64";
-#endif
-        sys_info["userDir"] = getCurrentDir();
+        sys_info["osName"]       = getOsName();
+        sys_info["osArch"]       = getOsArch();
+        sys_info["userDir"]      = getCurrentDir();
         server["sys"] = sys_info;
 
         // ====== 磁盘状态 ======
@@ -100,6 +96,8 @@ public:
     }
 
 private:
+    struct CpuStat { double total = 0, sys = 0, user = 0, wait = 0; };
+
     static std::string round2(double v) {
         std::ostringstream ss;
         ss << std::fixed << std::setprecision(2) << v;
@@ -111,26 +109,54 @@ private:
         return ss.str();
     }
 
-    double getCpuUsage() {
+    CpuStat getCpuStat() {
 #ifdef _WIN32
         static FILETIME prevIdle{}, prevKernel{}, prevUser{};
+        static bool inited_ = false;
+        if (!inited_) {
+            GetSystemTimes(&prevIdle, &prevKernel, &prevUser);
+            inited_ = true;
+            return {};
+        }
         FILETIME idle, kernel, user;
-        if (!GetSystemTimes(&idle, &kernel, &user)) return 0.0;
-        auto toULL = [](FILETIME ft) -> unsigned long long {
-            return ((unsigned long long)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+        if (!GetSystemTimes(&idle, &kernel, &user)) return {};
+        auto toULL = [](FILETIME ft) -> ULONGLONG {
+            return ((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
         };
-        unsigned long long idleDiff   = toULL(idle)   - toULL(prevIdle);
-        unsigned long long kernelDiff = toULL(kernel) - toULL(prevKernel);
-        unsigned long long userDiff   = toULL(user)   - toULL(prevUser);
+        ULONGLONG idleDiff   = toULL(idle)   - toULL(prevIdle);
+        ULONGLONG kernelDiff = toULL(kernel) - toULL(prevKernel);
+        ULONGLONG userDiff   = toULL(user)   - toULL(prevUser);
         prevIdle = idle; prevKernel = kernel; prevUser = user;
-        unsigned long long total = kernelDiff + userDiff;
-        if (total == 0) return 0.0;
-        return 100.0 * (1.0 - (double)idleDiff / total);
+        ULONGLONG total = kernelDiff + userDiff;
+        if (total == 0) return {};
+        ULONGLONG sysDiff = kernelDiff > idleDiff ? kernelDiff - idleDiff : 0;
+        CpuStat st;
+        st.total = 100.0 * (double)(total - idleDiff) / total;
+        st.sys   = 100.0 * (double)sysDiff  / total;
+        st.user  = 100.0 * (double)userDiff / total;
+        st.wait  = 0.0;
+        return st;
 #else
-        std::ifstream f("/proc/loadavg");
-        double load = 0;
-        f >> load;
-        return std::min(load * 10.0, 100.0);
+        static long long pu=0,pni=0,ps=0,pi=0,piow=0,pirq=0,psirq=0,pst=0;
+        std::ifstream f("/proc/stat");
+        if (!f) return {};
+        std::string lbl;
+        long long u,ni,s,id,iow=0,irq=0,sirq=0,st=0;
+        f >> lbl >> u >> ni >> s >> id >> iow >> irq >> sirq >> st;
+        long long total = u+ni+s+id+iow+irq+sirq+st;
+        long long prev  = pu+pni+ps+pi+piow+pirq+psirq+pst;
+        long long dT = total - prev;
+        if (dT <= 0) { pu=u;pni=ni;ps=s;pi=id;piow=iow;pirq=irq;psirq=sirq;pst=st; return {}; }
+        long long dIdle = id-pi, dSys=(s+irq+sirq)-(ps+pirq+psirq);
+        long long dUser=(u+ni)-(pu+pni), dWait=iow-piow;
+        pu=u;pni=ni;ps=s;pi=id;piow=iow;pirq=irq;psirq=sirq;pst=st;
+        auto clamp=[](double v){ return v<0?0.0:v>100.0?100.0:v; };
+        CpuStat r;
+        r.total = clamp(100.0*(1.0-(double)dIdle/dT));
+        r.sys   = clamp(100.0*(double)dSys /dT);
+        r.user  = clamp(100.0*(double)dUser/dT);
+        r.wait  = clamp(100.0*(double)dWait/dT);
+        return r;
 #endif
     }
 
@@ -191,13 +217,10 @@ private:
     }
 
     std::string getLocalIp() {
-        char hostname[256] = {};
 #ifdef _WIN32
+        char hostname[256] = {};
         DWORD sz = sizeof(hostname);
         GetComputerNameA(hostname, &sz);
-#else
-        gethostname(hostname, sizeof(hostname));
-#endif
         addrinfo hints{}, *res = nullptr;
         hints.ai_family   = AF_INET;
         hints.ai_socktype = SOCK_STREAM;
@@ -208,11 +231,28 @@ private:
                 ip, sizeof(ip));
             freeaddrinfo(res);
             std::string s(ip);
-            // 跳过回环地址
             if (!s.empty() && s != "127.0.0.1") return s;
+            return "127.0.0.1";
         }
         if (res) freeaddrinfo(res);
         return "127.0.0.1";
+#else
+        struct ifaddrs* ifap = nullptr;
+        if (getifaddrs(&ifap) != 0) return "127.0.0.1";
+        std::string result = "127.0.0.1";
+        for (auto* p = ifap; p; p = p->ifa_next) {
+            if (!p->ifa_addr || p->ifa_addr->sa_family != AF_INET) continue;
+            if (std::string(p->ifa_name) == "lo") continue;
+            char ip[INET_ADDRSTRLEN] = {};
+            inet_ntop(AF_INET,
+                &reinterpret_cast<sockaddr_in*>(p->ifa_addr)->sin_addr,
+                ip, sizeof(ip));
+            result = ip;
+            break;
+        }
+        freeifaddrs(ifap);
+        return result;
+#endif
     }
 
     std::string getCurrentDir() {
@@ -222,8 +262,48 @@ private:
         return buf;
 #else
         char buf[1024] = {};
-        getcwd(buf, sizeof(buf));
-        return buf;
+        if (getcwd(buf, sizeof(buf))) return buf;
+        return ".";
+#endif
+    }
+
+    static std::string getCompilerVersion() {
+#if defined(__clang__)
+        return "C++17 / Clang " + std::string(__clang_version__);
+#elif defined(__GNUC__)
+        return "C++17 / GCC " + std::string(__VERSION__);
+#elif defined(_MSC_VER)
+        return "C++17 / MSVC " + std::to_string(_MSC_VER);
+#else
+        return "C++17";
+#endif
+    }
+
+    std::string getOsName() {
+#ifdef _WIN32
+        return "Windows";
+#else
+        std::ifstream f("/etc/os-release");
+        std::string line;
+        while (std::getline(f, line)) {
+            if (line.rfind("PRETTY_NAME=", 0) == 0) {
+                std::string v = line.substr(12);
+                if (!v.empty() && v.front() == '"') v = v.substr(1);
+                if (!v.empty() && v.back()  == '"') v.pop_back();
+                return v;
+            }
+        }
+        return "Linux";
+#endif
+    }
+
+    std::string getOsArch() {
+#ifdef _WIN32
+        return sizeof(void*) == 8 ? "x86_64" : "x86";
+#else
+        struct utsname info{};
+        if (uname(&info) == 0) return info.machine;
+        return "x86_64";
 #endif
     }
 
@@ -261,14 +341,17 @@ private:
             std::string root = std::string(1, c) + ":\\";
             ULARGE_INTEGER totalBytes{}, freeBytes{};
             if (!GetDiskFreeSpaceExA(root.c_str(), nullptr, &totalBytes, &freeBytes)) continue;
-            double totalG = (double)totalBytes.QuadPart / 1024.0 / 1024.0 / 1024.0;
-            double freeG  = (double)freeBytes.QuadPart  / 1024.0 / 1024.0 / 1024.0;
+            double totalG = (double)totalBytes.QuadPart / 1073741824.0;
+            double freeG  = (double)freeBytes.QuadPart  / 1073741824.0;
             double usedG  = totalG - freeG;
-            if (totalG < 0.01) continue;  // 跳过极小驱动器
+            if (totalG < 0.01) continue;
+            char fsName[MAX_PATH]={}, volName[MAX_PATH]={};
+            GetVolumeInformationA(root.c_str(), volName, MAX_PATH,
+                nullptr, nullptr, nullptr, fsName, MAX_PATH);
             Json::Value d;
             d["dirName"]     = root;
-            d["sysTypeName"] = "NTFS";
-            d["typeName"]    = "本地硬盘";
+            d["sysTypeName"] = fsName[0]  ? std::string(fsName)  : "NTFS";
+            d["typeName"]    = volName[0] ? std::string(volName) : "本地硬盘";
             d["total"]       = toGB(totalG);
             d["free"]        = toGB(freeG);
             d["used"]        = toGB(usedG);
@@ -276,22 +359,48 @@ private:
             arr.append(d);
         }
 #else
-        // Linux 读取磁盘信息
-        struct statvfs st;
-        if (statvfs("/", &st) == 0) {
-            double totalG = (double)st.f_blocks * st.f_frsize / 1024.0 / 1024.0 / 1024.0;
-            double freeG  = (double)st.f_bavail * st.f_frsize / 1024.0 / 1024.0 / 1024.0;
-            double usedG  = totalG - freeG;
+        static const std::set<std::string> kVirt = {
+            "proc","sysfs","devtmpfs","devpts","tmpfs","cgroup","cgroup2",
+            "pstore","securityfs","debugfs","tracefs","hugetlbfs",
+            "mqueue","overlay","nsfs","binfmt_misc","autofs","squashfs"
+        };
+        auto addRoot = [&]() {
+            struct statvfs st;
+            if (statvfs("/", &st) != 0 || st.f_blocks == 0) return;
+            double tG=(double)st.f_blocks*st.f_frsize/1073741824.0;
+            double fG=(double)st.f_bavail*st.f_frsize/1073741824.0;
             Json::Value d;
-            d["dirName"]     = "/";
-            d["sysTypeName"] = "ext4";
-            d["typeName"]    = "本地硬盘";
-            d["total"]       = toGB(totalG);
-            d["free"]        = toGB(freeG);
-            d["used"]        = toGB(usedG);
-            d["usage"]       = round2(usedG / totalG * 100.0);
+            d["dirName"]="/"; d["sysTypeName"]="ext4"; d["typeName"]="本地磁盘";
+            d["total"]=toGB(tG); d["free"]=toGB(fG); d["used"]=toGB(tG-fG);
+            d["usage"]=round2((tG-fG)/tG*100.0);
+            arr.append(d);
+        };
+        FILE* fp = setmntent("/proc/mounts", "r");
+        if (!fp) { addRoot(); return arr; }
+        std::set<std::string> seenDev;
+        struct mntent* me;
+        while ((me = getmntent(fp)) != nullptr) {
+            if (kVirt.count(me->mnt_type)) continue;
+            std::string dev(me->mnt_fsname);
+            if (dev.rfind("/dev/", 0) != 0) continue;
+            if (!seenDev.insert(dev).second) continue;
+            struct statvfs st;
+            if (statvfs(me->mnt_dir, &st) != 0 || st.f_blocks == 0) continue;
+            double tG=(double)st.f_blocks*st.f_frsize/1073741824.0;
+            double fG=(double)st.f_bavail*st.f_frsize/1073741824.0;
+            if (tG < 0.01) continue;
+            Json::Value d;
+            d["dirName"]     = me->mnt_dir;
+            d["sysTypeName"] = me->mnt_type;
+            d["typeName"]    = dev;
+            d["total"]       = toGB(tG);
+            d["free"]        = toGB(fG);
+            d["used"]        = toGB(tG - fG);
+            d["usage"]       = round2((tG - fG) / tG * 100.0);
             arr.append(d);
         }
+        endmntent(fp);
+        if (arr.empty()) addRoot();
 #endif
         return arr;
     }
