@@ -317,6 +317,8 @@ struct Process {
 // ── 主循环 ──────────────────────────────────────────────────────────────────
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
     SetConsoleCtrlHandler(ctrlHandler, TRUE);
 #else
     signal(SIGINT,  sigHandler);
