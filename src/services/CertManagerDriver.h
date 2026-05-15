@@ -50,6 +50,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -382,6 +383,64 @@ public:
         std::string err; Json::Value data;
         if (!CertManagerDriver::parseResult(r.c_str(), data, err)) return Json::Value(Json::arrayValue);
         return data;
+    }
+
+    // 供控制器调用：直接申请（不经过调度线程）
+    Json::Value obtainCertJson(const std::string& email, const std::string& domainList,
+                               const std::string& dnsProvider, const std::string& envVarsJson,
+                               const std::string& keyType, int bundle) {
+        if (!drv_.loaded() || !drv_.ObtainCert) return Json::Value();
+        std::lock_guard<std::mutex> lk(mu_);
+        CertManagerDriver::AutoStr r; r.drv = &drv_;
+        r.p = drv_.ObtainCert(email.c_str(), domainList.c_str(), dnsProvider.c_str(),
+                               envVarsJson.c_str(), keyType.c_str(), bundle);
+        std::string err; Json::Value data;
+        Json::Value root;
+        Json::CharReaderBuilder rb; std::istringstream ss(r.c_str()); std::string e;
+        if (Json::parseFromStream(rb, ss, &root, &e)) return root;
+        return Json::Value();
+    }
+
+    // 供控制器调用：直接续期
+    Json::Value renewCertJson(const std::string& certId, int bundle) {
+        if (!drv_.loaded() || !drv_.RenewCert) return Json::Value();
+        std::lock_guard<std::mutex> lk(mu_);
+        CertManagerDriver::AutoStr r; r.drv = &drv_;
+        r.p = drv_.RenewCert(certId.c_str(), bundle);
+        Json::Value root; Json::CharReaderBuilder rb;
+        std::istringstream ss(r.c_str()); std::string e;
+        if (Json::parseFromStream(rb, ss, &root, &e)) return root;
+        return Json::Value();
+    }
+
+    // 供控制器调用：吊销
+    Json::Value revokeCertJson(const std::string& certId) {
+        if (!drv_.loaded() || !drv_.RevokeCert) return Json::Value();
+        std::lock_guard<std::mutex> lk(mu_);
+        CertManagerDriver::AutoStr r; r.drv = &drv_;
+        r.p = drv_.RevokeCert(certId.c_str());
+        Json::Value root; Json::CharReaderBuilder rb;
+        std::istringstream ss(r.c_str()); std::string e;
+        if (Json::parseFromStream(rb, ss, &root, &e)) return root;
+        return Json::Value();
+    }
+
+    // 供控制器调用：列出 DNS 提供商
+    Json::Value listDNSProvidersJson() {
+        if (!drv_.loaded() || !drv_.ListDNSProviders) return Json::Value(Json::arrayValue);
+        std::lock_guard<std::mutex> lk(mu_);
+        CertManagerDriver::AutoStr r; r.drv = &drv_;
+        r.p = drv_.ListDNSProviders();
+        std::string err; Json::Value data;
+        if (!CertManagerDriver::parseResult(r.c_str(), data, err)) return Json::Value(Json::arrayValue);
+        return data;
+    }
+
+    // 供控制器调用：版本字符串
+    std::string version() {
+        if (!drv_.loaded() || !drv_.Version) return "";
+        char* v = drv_.Version();
+        return v ? std::string(v) : "";
     }
 
 private:

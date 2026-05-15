@@ -78,6 +78,7 @@
 #include "system/controllers/NotifyCtrl.h"
 #include "system/controllers/SysEmailConfigCtrl.h"
 #include "system/controllers/SysSslConfigCtrl.h"
+#include "system/controllers/SysCertManagerCtrl.h"
 #include "system/controllers/SysTotpCtrl.h"
 #include "system/controllers/OAuth2Ctrl.h"
 #include "system/controllers/SysMonitorConfigCtrl.h"
