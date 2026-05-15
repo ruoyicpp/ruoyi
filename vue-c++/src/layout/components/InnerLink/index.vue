@@ -3,7 +3,7 @@
     <iframe
       :id="iframeId"
       style="width: 100%; height: 100%"
-      :src="src"
+      :src="iframeSrc"
       frameborder="no"
     ></iframe>
   </div>
@@ -18,6 +18,11 @@ export default {
     },
     iframeId: {
       type: String
+    }
+  },
+  computed: {
+    iframeSrc() {
+      return this.src || '/'
     }
   },
   data() {

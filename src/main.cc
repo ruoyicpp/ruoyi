@@ -622,7 +622,14 @@ int main(int argc, char* argv[]) {
         static std::string feApiPrefix;
         static std::string feIndexPath;
         try {
-            const auto& cfgRoot = drogon::app().getCustomConfig();
+            Json::Value cfgRoot;
+            {
+                std::ifstream _fcf(configFile);
+                if (_fcf.is_open()) {
+                    Json::CharReaderBuilder _rb; std::string _err;
+                    Json::parseFromStream(_rb, _fcf, &cfgRoot, &_err);
+                }
+            }
             bool extEnabled = cfgRoot.isMember("frontend") &&
                               cfgRoot["frontend"].get("enabled", false).asBool();
             bool embEnabled = cfgRoot.isMember("embedded_frontend") &&
@@ -812,8 +819,11 @@ int main(int argc, char* argv[]) {
         drogon::app().setCustomErrorHandler(
             [](drogon::HttpStatusCode code,
                const drogon::HttpRequestPtr &req) -> drogon::HttpResponsePtr {
-                // 404 SPA 回退：仅对前端路由路径生效，避免误伤 API typo
-                if (code == drogon::k404NotFound && feHosted && feSpaMode) {
+                // 404/405 SPA 回退：仅对前端路由路径生效，避免误伤 API typo
+                // 405 也需要回退：drogon 对无扩展名路径可能因方法不匹配返回 405
+                bool isSpaCode = (code == drogon::k404NotFound ||
+                                  code == drogon::k405MethodNotAllowed);
+                if (isSpaCode && feHosted && feSpaMode) {
                     std::string p = req->path();
                     bool isApi = !feApiPrefix.empty() && feApiPrefix != "/" &&
                                  p.rfind(feApiPrefix, 0) == 0;
@@ -1568,17 +1578,59 @@ load();
                 }
 
                 // ── 全量 InnerLink 菜单 ID → 路径后缀 ────────────────────────
+                // 带 api_prefix 的菜单（通过前端代理访问的 API 页面）
                 static const std::pair<int, const char*> kMenuSuffixes[] = {
                     {120,  "/monitor/logfile/page"},
                     {130,  "/monitor/restart/page"},
                     {131,  "/system/apikey/page"},
                     {132,  "/system/notify/channel/page"},
                     {133,  "/api/license/page"},
+                };
+                // 直接后端路由（不经过 api_prefix，只用 scheme://host:port）
+                static const std::pair<int, const char*> kDirectSuffixes[] = {
                     {1100, "/ssl-config"},
                     {2100, "/ai/page"},
                 };
+
+                // baseUrlDirect：去掉 api_prefix，用于直接后端路由
+                std::string baseUrlDirect;
+                if (!baseUrl.empty()) {
+                    if (explicitUrl) {
+                        // 显式指定了 api_base_url，去掉末尾的 apiPrefix 部分
+                        std::string ap;
+                        if (mroot.isMember("frontend")
+                            && mroot["frontend"].get("enabled", false).asBool())
+                            ap = mroot["frontend"].get("api_prefix", "/prod-api").asString();
+                        else if (mroot.isMember("embedded_frontend")
+                                 && mroot["embedded_frontend"].get("enabled", false).asBool())
+                            ap = mroot["embedded_frontend"].get("api_prefix", "/prod-api").asString();
+                        if (!ap.empty() && ap != "/" && baseUrl.size() > ap.size()
+                            && baseUrl.compare(baseUrl.size() - ap.size(), ap.size(), ap) == 0)
+                            baseUrlDirect = baseUrl.substr(0, baseUrl.size() - ap.size());
+                        else
+                            baseUrlDirect = baseUrl; // 无前缀或无法剥离，直接用
+                    } else {
+                        // 自动推断：baseUrl 已含 apiPrefix，取 scheme://host:port 部分
+                        auto pos = baseUrl.find("://");
+                        if (pos != std::string::npos) {
+                            auto slash = baseUrl.find('/', pos + 3);
+                            baseUrlDirect = (slash != std::string::npos)
+                                ? baseUrl.substr(0, slash) : baseUrl;
+                        } else {
+                            baseUrlDirect = baseUrl;
+                        }
+                    }
+                }
+
+                auto updateMenu = [&](int mid, const std::string& url) {
+                    DatabaseService::instance().execParams(
+                        "UPDATE sys_menu SET path=$1 WHERE menu_id=$2",
+                        {url, std::to_string(mid)});
+                    LOG_INFO << "[Menu] 菜单 " << mid << " URL 已校正: " << url;
+                    std::cout << "[Menu] " << mid << " -> " << url << std::endl;
+                };
+
                 for (auto& [mid, suffix] : kMenuSuffixes) {
-                    // logfile_external_url 兼容旧配置：menu_id=120 单独覆盖（优先级高于 baseUrl）
                     std::string url;
                     if (mid == 120
                         && mroot.isMember("menu")
@@ -1588,13 +1640,13 @@ load();
                     } else if (!baseUrl.empty()) {
                         url = baseUrl + suffix;
                     } else {
-                        continue; // 内网地址推断结果，跳过此菜单，保留数据库现有值
+                        continue;
                     }
-                    DatabaseService::instance().execParams(
-                        "UPDATE sys_menu SET path=$1 WHERE menu_id=$2",
-                        {url, std::to_string(mid)});
-                    LOG_INFO << "[Menu] 菜单 " << mid << " URL 已校正: " << url;
-                    std::cout << "[Menu] " << mid << " -> " << url << std::endl;
+                    updateMenu(mid, url);
+                }
+                for (auto& [mid, suffix] : kDirectSuffixes) {
+                    if (baseUrlDirect.empty()) continue;
+                    updateMenu(mid, baseUrlDirect + suffix);
                 }
             } catch (const std::exception& e) {
                 LOG_WARN << "[Menu] 校正菜单 URL 失败: " << e.what();
