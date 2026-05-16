@@ -974,7 +974,8 @@ int main(int argc, char* argv[]) {
 
                 // 引导接口、重置接口、健康检查、版本接口完全放行
                 if (path == "/challenge" || path == "/resetPassword" || path == "/forgotPassword"
-                    || path == "/health" || path == "/version" || path == "/ssl-config") {
+                    || path == "/health" || path == "/version" || path == "/ssl-config"
+                    || path == "/acme-config") {
                     accb(); return;
                 }
                 // certmanager API：handler 内部自行鉴权（localhost 无 token 也可用）
@@ -1420,6 +1421,294 @@ load();
                 cb(resp);
             }, {drogon::Get});
 
+        // ── ACME 证书管理页（调用 /api/ssl/* 后端，无需 19443 端口）─────────
+        drogon::app().registerHandler("/acme-config",
+            [](const drogon::HttpRequestPtr& req,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                // 鉴权：Cookie Admin-Token / query param token / localhost
+                auto token = SecurityUtils::getToken(req);
+                if (token.empty()) {
+                    const std::string& cookieHdr = req->getHeader("cookie");
+                    const std::string key = "Admin-Token=";
+                    auto pos = cookieHdr.find(key);
+                    if (pos != std::string::npos) {
+                        pos += key.size();
+                        auto end = cookieHdr.find(';', pos);
+                        token = cookieHdr.substr(pos, end == std::string::npos ? end : end - pos);
+                    }
+                }
+                if (token.empty()) token = req->getParameter("token");
+                bool ok = false;
+                if (!token.empty()) {
+                    try {
+                        auto uuid    = JwtUtils::parseUuid(token);
+                        auto userKey = SecurityUtils::getTokenKey(uuid);
+                        ok = (bool)TokenCache::instance().get(userKey);
+                    } catch (...) {}
+                }
+                if (!ok) {
+                    const auto& peer = req->getPeerAddr().toIp();
+                    ok = (peer == "127.0.0.1" || peer == "::1" || peer == "0.0.0.0");
+                }
+                if (!ok) {
+                    auto r = drogon::HttpResponse::newHttpResponse();
+                    r->setStatusCode(drogon::k401Unauthorized);
+                    r->setContentTypeCode(drogon::CT_TEXT_HTML);
+                    r->setBody("<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
+                               "<h2>&#128274; 请先登录后携带 token 访问</h2>"
+                               "<p>示例：/acme-config?token=eyJhbG...</p></body></html>");
+                    cb(r); return;
+                }
+                std::string tok = token;
+                std::string html = R"html(<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ACME 自动证书管理</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#0f1117;color:#e2e8f0;padding:16px}
+h1{font-size:1.4rem;margin-bottom:20px;color:#7dd3fc;display:flex;align-items:center;gap:8px}
+h2{font-size:.9rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:20px}
+.card{background:#1e2330;border-radius:12px;padding:20px;border:1px solid #2d3748}
+label{display:block;font-size:.83rem;color:#94a3b8;margin:10px 0 3px}
+input[type=text],input[type=email],select,textarea{width:100%;padding:8px 10px;background:#0f1117;
+  border:1px solid #374151;border-radius:6px;color:#e2e8f0;font-size:.88rem}
+textarea{resize:vertical;min-height:72px;font-family:monospace}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.75rem;font-weight:600}
+.ok{background:#065f46;color:#6ee7b7}.warn{background:#78350f;color:#fcd34d}.fail{background:#7f1d1d;color:#fca5a5}
+button{padding:8px 18px;border-radius:7px;border:none;cursor:pointer;font-size:.85rem;font-weight:600;transition:.15s}
+.btn-p{background:#3b82f6;color:#fff}.btn-p:hover{background:#2563eb}
+.btn-s{background:#059669;color:#fff}.btn-s:hover{background:#047857}
+.btn-w{background:#d97706;color:#fff}.btn-w:hover{background:#b45309}
+.btn-d{background:#dc2626;color:#fff}.btn-d:hover{background:#b91c1c}
+.btn-g{background:#374151;color:#9ca3af}.btn-g:hover{background:#4b5563;color:#fff}
+.actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+#log{background:#0a0d14;border:1px solid #1e2d3d;border-radius:8px;padding:12px;
+  font-family:monospace;font-size:.78rem;color:#67e8f9;min-height:80px;max-height:220px;
+  overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+table{width:100%;border-collapse:collapse;font-size:.83rem}
+th{text-align:left;padding:7px 10px;color:#64748b;border-bottom:1px solid #1e293b;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid #1a2235;vertical-align:middle}
+tr:hover td{background:#1a2235}
+.hint{font-size:.76rem;color:#475569;margin-top:6px}
+.ver{font-size:.75rem;color:#475569;margin-bottom:16px}
+#toastWrap{position:fixed;top:16px;right:16px;z-index:999;display:flex;flex-direction:column;gap:8px}
+.toast{padding:10px 16px;border-radius:8px;font-size:.85rem;font-weight:600;opacity:0;
+  transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}.toast.ok-t{background:#065f46;color:#6ee7b7}
+.toast.err-t{background:#7f1d1d;color:#fca5a5}
+</style>
+</head>
+<body>
+<div id="toastWrap"></div>
+<h1>&#127760; ACME 自动证书管理</h1>
+<div class="ver" id="ver">DLL 版本：加载中...</div>
+
+<div class="grid">
+  <!-- 申请新证书 -->
+  <div class="card">
+    <h2>&#128195; 申请新证书</h2>
+    <label>邮箱（ACME 账户）</label>
+    <input type="email" id="email" placeholder="admin@example.com">
+    <label>域名（多个用逗号或换行分隔）</label>
+    <textarea id="domains" placeholder="example.com&#10;www.example.com"></textarea>
+    <label>DNS 提供商</label>
+    <select id="provider"></select>
+    <label>密钥类型</label>
+    <select id="keyType">
+      <option value="EC256" selected>EC256（推荐）</option>
+      <option value="EC384">EC384</option>
+      <option value="RSA2048">RSA2048</option>
+      <option value="RSA4096">RSA4096</option>
+    </select>
+    <label>DNS 提供商环境变量（JSON，如 {"CF_API_TOKEN":"xxx"}）</label>
+    <textarea id="envVars" placeholder='{"CF_API_TOKEN":"your-token"}'>{}</textarea>
+    <p class="hint">&#8505;&#65039; 申请过程可能需要 30-120 秒，请耐心等待</p>
+    <div class="actions">
+      <button class="btn-s" onclick="obtainCert()">&#128640; 开始申请</button>
+      <button class="btn-g" onclick="loadCerts()">&#8635; 刷新列表</button>
+    </div>
+  </div>
+
+  <!-- 日志输出 -->
+  <div class="card">
+    <h2>&#128221; 操作日志</h2>
+    <div id="log">等待操作...</div>
+    <div class="actions" style="margin-top:10px">
+      <button class="btn-g" style="font-size:.78rem;padding:5px 12px" onclick="document.getElementById('log').textContent=''">清空</button>
+    </div>
+  </div>
+</div>
+
+<!-- 证书列表 -->
+<div class="card">
+  <h2>&#128196; 已申请证书</h2>
+  <div id="certTable"><div style="color:#475569;padding:20px 0">加载中...</div></div>
+</div>
+
+<script>
+function getCookie(n){const m=document.cookie.match(new RegExp('(?:^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[1]):'';}
+const TOKEN = getCookie('Admin-Token') || new URLSearchParams(location.search).get('token') || '';
+const AUTH = {'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'};
+
+function log(msg, cls=''){
+  const el = document.getElementById('log');
+  const t = new Date().toLocaleTimeString('zh-CN');
+  el.textContent += '['+t+'] '+msg+'\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+function toast(msg, ok=true){
+  const w = document.getElementById('toastWrap');
+  const d = document.createElement('div');
+  d.className = 'toast '+(ok?'ok-t':'err-t');
+  d.textContent = msg; w.appendChild(d);
+  requestAnimationFrame(()=>d.classList.add('show'));
+  setTimeout(()=>{ d.classList.remove('show'); setTimeout(()=>d.remove(),400); }, 3000);
+}
+
+async function apiFetch(url, method='GET', body=null){
+  const opts = {method, headers: AUTH};
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+async function loadVersion(){
+  try {
+    const d = await apiFetch('/api/ssl/version');
+    document.getElementById('ver').textContent = 'DLL 版本：' + (d.version||'未知');
+  } catch(e) { document.getElementById('ver').textContent = 'DLL 版本：获取失败'; }
+}
+
+async function loadProviders(){
+  try {
+    const d = await apiFetch('/api/ssl/providers');
+    const sel = document.getElementById('provider');
+    sel.innerHTML = '';
+    const list = d.data || [];
+    if (list.length === 0) sel.innerHTML = '<option value="">（无可用提供商）</option>';
+    list.forEach(p => {
+      const o = document.createElement('option');
+      o.value = typeof p === 'string' ? p : (p.id||p.name||JSON.stringify(p));
+      o.textContent = typeof p === 'string' ? p : (p.name||p.id||JSON.stringify(p));
+      sel.appendChild(o);
+    });
+  } catch(e) { log('加载 DNS 提供商失败: '+e.message, 'err'); }
+}
+
+function fmtDate(ts){
+  if (!ts) return '-';
+  const d = new Date(typeof ts==='number' ? ts*1000 : ts);
+  return isNaN(d)?ts:d.toLocaleDateString('zh-CN');
+}
+
+function daysLeft(ts){
+  if (!ts) return null;
+  const d = new Date(typeof ts==='number' ? ts*1000 : ts);
+  const diff = Math.round((d-Date.now())/86400000);
+  return diff;
+}
+
+async function loadCerts(){
+  try {
+    const d = await apiFetch('/api/ssl/certs');
+    const list = d.data || [];
+    const wrap = document.getElementById('certTable');
+    if (!Array.isArray(list) || list.length === 0){
+      wrap.innerHTML = '<div style="color:#475569;padding:16px 0">暂无证书，请申请新证书</div>';
+      return;
+    }
+    let rows = list.map(c => {
+      const id = c.id || c.domain || JSON.stringify(c);
+      const domain = c.domain || c.domains || id;
+      const exp = c.expiry || c.expires || c.not_after || null;
+      const dl = daysLeft(exp);
+      const cls = dl===null?'':'(dl>30?\'ok\':(dl>7?\'warn\':\'fail\'))';
+      const badge = dl===null?'':`<span class="badge ${dl>30?'ok':dl>7?'warn':'fail'}">${dl}天</span>`;
+      return `<tr>
+        <td>${domain}</td>
+        <td>${fmtDate(exp)} ${badge}</td>
+        <td>${c.key_type||c.keyType||'-'}</td>
+        <td>${c.provider||'-'}</td>
+        <td>
+          <button class="btn-w" style="font-size:.75rem;padding:4px 10px" onclick="renewCert('${id}')">续期</button>
+          <button class="btn-d" style="font-size:.75rem;padding:4px 10px;margin-left:4px" onclick="deleteCert('${id}','${domain}')">删除</button>
+        </td>
+      </tr>`;
+    }).join('');
+    wrap.innerHTML = `<table>
+      <thead><tr><th>域名</th><th>到期日</th><th>密钥类型</th><th>DNS 提供商</th><th>操作</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  } catch(e) { log('加载证书列表失败: '+e.message); }
+}
+
+async function obtainCert(){
+  const email = document.getElementById('email').value.trim();
+  const rawDomains = document.getElementById('domains').value.trim();
+  const provider = document.getElementById('provider').value;
+  const keyType = document.getElementById('keyType').value;
+  let envVars = {};
+  try { envVars = JSON.parse(document.getElementById('envVars').value||'{}'); } catch(e){ toast('env_vars JSON 格式错误',false); return; }
+  if (!email){ toast('请填写邮箱',false); return; }
+  if (!rawDomains){ toast('请填写域名',false); return; }
+  const domains = rawDomains.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+  log('开始申请证书: '+domains.join(', ')+' ['+provider+'/'+keyType+']');
+  try {
+    const d = await apiFetch('/api/ssl/obtain','POST',{email,domains,provider,key_type:keyType,env_vars:envVars});
+    if (d.code===200||d.ok||d.success){
+      log('申请成功！'+JSON.stringify(d));
+      toast('证书申请成功');
+      loadCerts();
+    } else {
+      log('申请失败: '+(d.msg||d.error||JSON.stringify(d)));
+      toast('申请失败: '+(d.msg||d.error||'见日志'), false);
+    }
+  } catch(e){ log('请求异常: '+e.message); toast('请求异常',false); }
+}
+
+async function renewCert(id){
+  log('开始续期: '+id);
+  try {
+    const d = await apiFetch('/api/ssl/renew/'+encodeURIComponent(id),'POST');
+    if (d.code===200||d.ok||d.success){
+      log('续期成功: '+JSON.stringify(d)); toast('续期成功'); loadCerts();
+    } else {
+      log('续期失败: '+(d.msg||d.error||JSON.stringify(d)));
+      toast('续期失败: '+(d.msg||d.error||'见日志'), false);
+    }
+  } catch(e){ log('请求异常: '+e.message); toast('请求异常',false); }
+}
+
+async function deleteCert(id, domain){
+  if (!confirm('确认删除证书: '+domain+'?')) return;
+  log('删除证书: '+id);
+  try {
+    const d = await apiFetch('/api/ssl/cert/'+encodeURIComponent(id),'DELETE');
+    if (d.code===200||d.ok||d.success){
+      log('删除成功'); toast('已删除'); loadCerts();
+    } else {
+      log('删除失败: '+(d.msg||d.error||JSON.stringify(d)));
+      toast('删除失败', false);
+    }
+  } catch(e){ log('请求异常: '+e.message); toast('请求异常',false); }
+}
+
+loadVersion();
+loadProviders();
+loadCerts();
+</script>
+</body></html>)html";
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setContentTypeCode(drogon::CT_TEXT_HTML);
+                resp->setBody(html);
+                cb(resp);
+            }, {drogon::Get});
+
         // ── certmanager REST API（直接封装 DLL，无需开 web_ui_addr 端口）─────
         // GET  /api/ssl/version         → DLL 版本
         // GET  /api/ssl/providers       → 支持的 DNS 提供商列表
@@ -1755,6 +2044,7 @@ load();
                 // 直接后端路由（不经过 api_prefix，只用 scheme://host:port）
                 static const std::pair<int, const char*> kDirectSuffixes[] = {
                     {1100, "/ssl-config"},
+                    {1101, "/acme-config"},
                     {2100, "/ai/page"},
                 };
 
