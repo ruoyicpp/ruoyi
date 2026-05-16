@@ -328,6 +328,7 @@ int main(int argc, char* argv[]) {
                 std::filesystem::create_directories(logDir, ec);
             }
             JsonLogger::instance().init(logDir, logBase, maxSizeBytes, keepFiles);
+            ErrorLogger::instance().init(logDir, 10 * 1024 * 1024, keepFiles);
         }
 
         // ── 控制台输出重定向（默认重定向到 logs/console.log）──────────────────
@@ -2484,11 +2485,13 @@ load();
         try { NginxEmbedded::instance().stop(); } catch (...) {}
     } catch (const std::exception &e) {
         std::cerr << "[致命错误] " << e.what() << std::endl;
+        ELOG_FATAL("main", std::string("未捕获异常: ") + e.what());
         std::cout << "按回车键退出..." << std::endl;
         std::cin.get();
         return 1;
     } catch (...) {
         std::cerr << "[致命错误] 未知异常" << std::endl;
+        ELOG_FATAL("main", "未捕获未知异常");
         std::cout << "按回车键退出..." << std::endl;
         std::cin.get();
         return 1;

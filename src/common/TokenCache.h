@@ -1,4 +1,5 @@
 #pragma once
+#include "ErrorLogger.h"
 #include <string>
 #include <unordered_map>
 #include <mutex>
@@ -176,8 +177,15 @@ namespace {
         } else {
             r = (redisReply *)redisCommand(c, "SET %s %b", k.c_str(), val.data(), (size_t)val.size());
         }
-        if (!r) { rc.markBad(); return false; }
-        bool ok = (r->type == REDIS_REPLY_STATUS);
+        if (!r) {
+            rc.markBad();
+            ELOG_ERROR("Redis", "SETEX failed (null reply), key=" + key);
+            return false;
+        }
+        // type=5(STATUS "+OK") 或 type=1(STRING "OK") 均视为成功；type=6 才是真实错误
+        bool ok = (r->type != REDIS_REPLY_ERROR);
+        if (!ok) ELOG_ERROR("Redis", std::string("SETEX error: ")
+                            + (r->str ? r->str : "unknown") + " key=" + key);
         freeReplyObject(r);
         return ok;
     }
@@ -425,6 +433,7 @@ public:
         if (RedisConn::instance().available()) {
             auto s = redisGet(pk);
             if (s) return s;
+            // Redis 可用但 key 不存在（半死状态写失败），fallback 到内存
         } else if (VramCache::instance().available()) {
             auto s = VramCache::instance().getString(pk);
             if (s) return s;

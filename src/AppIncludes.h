@@ -36,6 +36,7 @@
 #include "common/RateLimiter.h"
 #include "common/SignUtils.h"
 #include "common/JsonLogger.h"
+#include "common/ErrorLogger.h"
 #include "common/SslManager.h"
 #include "common/RequestTracing.h"
 #include "common/DataMaskUtils.h"
