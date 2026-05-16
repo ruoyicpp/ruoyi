@@ -443,6 +443,40 @@ public:
         return v ? std::string(v) : "";
     }
 
+    // 供控制器调用：列出账户
+    Json::Value listAccountsJson() {
+        if (!drv_.loaded() || !drv_.ListAccounts) return Json::Value(Json::arrayValue);
+        std::lock_guard<std::mutex> lk(mu_);
+        CertManagerDriver::AutoStr r; r.drv = &drv_;
+        r.p = drv_.ListAccounts();
+        std::string err; Json::Value data;
+        if (!CertManagerDriver::parseResult(r.c_str(), data, err)) return Json::Value(Json::arrayValue);
+        return data;
+    }
+
+    // 供控制器调用：注册账户
+    Json::Value registerAccountJson(const std::string& email, const std::string& keyType) {
+        if (!drv_.loaded() || !drv_.RegisterAccount) return Json::Value();
+        std::lock_guard<std::mutex> lk(mu_);
+        CertManagerDriver::AutoStr r; r.drv = &drv_;
+        r.p = drv_.RegisterAccount(email.c_str(), keyType.c_str());
+        Json::Value root; Json::CharReaderBuilder rb;
+        std::istringstream ss(r.c_str()); std::string e;
+        if (Json::parseFromStream(rb, ss, &root, &e)) return root;
+        return Json::Value();
+    }
+
+    // 供控制器调用：读取证书文件内容（cert/key/issuer 等）
+    std::string readCertFileContent(const std::string& certId, const std::string& fileType) {
+        if (!drv_.loaded() || !drv_.ReadCertFile) return "";
+        std::lock_guard<std::mutex> lk(mu_);
+        CertManagerDriver::AutoStr r; r.drv = &drv_;
+        r.p = drv_.ReadCertFile(certId.c_str(), fileType.c_str());
+        std::string err; Json::Value data;
+        if (!CertManagerDriver::parseResult(r.c_str(), data, err)) return "";
+        return data.isString() ? data.asString() : data.toStyledString();
+    }
+
 private:
     CertManagerAcme()  = default;
     ~CertManagerAcme() { stop(); }
