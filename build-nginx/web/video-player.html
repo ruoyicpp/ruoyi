@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>随机视频</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0d0d;display:flex;flex-direction:column;align-items:center;
+     justify-content:center;min-height:100vh;font-family:sans-serif;color:#fff}
+h2{margin-bottom:16px;font-size:1.2rem;opacity:.7;letter-spacing:2px}
+.wrap{position:relative;width:min(420px,95vw);background:#1a1a1a;border-radius:16px;
+      overflow:hidden;box-shadow:0 8px 40px #0008}
+video{width:100%;display:block;max-height:75vh;background:#000;object-fit:contain}
+.ctrl{display:flex;gap:12px;padding:12px;background:#111}
+button{flex:1;padding:10px;border:none;border-radius:8px;cursor:pointer;
+       font-size:.95rem;font-weight:600;transition:.2s}
+#btnNext{background:#e94560;color:#fff}
+#btnNext:hover{background:#c73652}
+#btnDl{background:#2a2a2a;color:#aaa}
+#btnDl:hover{background:#3a3a3a;color:#fff}
+#status{font-size:.75rem;opacity:.5;padding:4px 12px 8px;text-align:center}
+</style>
+</head>
+<body>
+<h2>随机视频</h2>
+<div class="wrap">
+  <video id="v" autoplay playsinline muted loop></video>
+  <div class="ctrl">
+    <button id="btnNext" onclick="next()">▶ 下一个</button>
+    <button id="btnDl" onclick="dl()">⬇ 下载</button>
+  </div>
+  <div id="status">加载中...</div>
+</div>
+<script>
+let cur='';
+async function next(){
+  document.getElementById('status').textContent='加载中...';
+  try{
+    const r=await fetch('/api/video/random');
+    const d=await r.json();
+    if(d.ok&&d.url){
+      cur=d.url;
+      const v=document.getElementById('v');
+      v.src=cur;
+      v.load();
+      v.play().catch(()=>{});
+      document.getElementById('status').textContent='';
+    }else{
+      document.getElementById('status').textContent='获取失败，请重试';
+    }
+  }catch(e){
+    document.getElementById('status').textContent='网络错误: '+e.message;
+  }
+}
+function dl(){
+  if(!cur)return;
+  const a=document.createElement('a');
+  a.href=cur;a.download='video.mp4';a.target='_blank';a.click();
+}
+next();
+</script>
+</body>
+</html>

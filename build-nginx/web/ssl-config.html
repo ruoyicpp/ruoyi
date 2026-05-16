@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HTTPS / SSL 配置</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#0f1117;color:#e2e8f0;padding:16px}
+h1{font-size:1.4rem;margin-bottom:20px;color:#7dd3fc;display:flex;align-items:center;gap:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:20px}
+.card{background:#1e2330;border-radius:12px;padding:20px;border:1px solid #2d3748}
+.card h2{font-size:.95rem;color:#94a3b8;margin-bottom:14px;text-transform:uppercase;letter-spacing:.05em}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:.8rem;font-weight:600}
+.ok{background:#065f46;color:#6ee7b7}.fail{background:#7f1d1d;color:#fca5a5}
+label{display:block;font-size:.85rem;color:#94a3b8;margin-bottom:4px;margin-top:10px}
+input[type=text],input[type=number]{width:100%;padding:8px 10px;background:#0f1117;border:1px solid #374151;
+  border-radius:6px;color:#e2e8f0;font-size:.9rem}
+input[type=file]{width:100%;padding:6px;background:#0f1117;border:1px solid #374151;
+  border-radius:6px;color:#94a3b8;font-size:.85rem}
+.toggle{display:flex;align-items:center;gap:10px;margin-top:10px}
+.toggle input{width:40px;height:22px;accent-color:#3b82f6;cursor:pointer}
+btn,button{display:inline-block;padding:9px 20px;border-radius:8px;border:none;cursor:pointer;font-size:.88rem;font-weight:600;transition:.2s}
+.btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb}
+.btn-success{background:#059669;color:#fff}.btn-success:hover{background:#047857}
+.btn-warn{background:#d97706;color:#fff}.btn-warn:hover{background:#b45309}
+.actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+#msg{margin-top:14px;padding:10px 14px;border-radius:8px;display:none;font-size:.88rem}
+.msg-ok{background:#065f46;color:#6ee7b7;display:block!important}
+.msg-err{background:#7f1d1d;color:#fca5a5;display:block!important}
+.hint{font-size:.78rem;color:#64748b;margin-top:6px}
+pre{background:#0f1117;padding:10px;border-radius:6px;font-size:.75rem;color:#6ee7b7;overflow-x:auto;margin-top:6px;max-height:80px}
+</style>
+</head>
+<body>
+<h1>&#128274; HTTPS / SSL 证书管理</h1>
+<div class="grid" id="statusGrid">
+  <div class="card"><h2>当前状态</h2><div id="statusHtml">加载中...</div></div>
+  <div class="card"><h2>证书预览</h2><pre id="certPreview">-</pre></div>
+</div>
+<div class="grid">
+  <div class="card">
+    <h2>上传证书 (.pem / .crt / .cer)</h2>
+    <input type="file" id="certFile" accept=".pem,.crt,.cer">
+    <div class="actions"><button class="btn-primary" onclick="uploadCert()">上传证书</button></div>
+  </div>
+  <div class="card">
+    <h2>上传私钥 (.pem / .key)</h2>
+    <input type="file" id="keyFile" accept=".pem,.key">
+    <div class="actions"><button class="btn-primary" onclick="uploadKey()">上传私钥</button></div>
+  </div>
+</div>
+<div class="card" style="max-width:560px">
+  <h2>配置</h2>
+  <label>HTTP 端口</label>
+  <input type="number" id="httpPort" value="18080" min="1" max="65535">
+  <label>HTTPS 端口</label>
+  <input type="number" id="httpsPort" value="18443" min="1" max="65535">
+  <div class="toggle">
+    <label style="margin:0">启用 HTTPS</label>
+    <input type="checkbox" id="enabled">
+  </div>
+  <div class="toggle">
+    <label style="margin:0">强制 HTTP → HTTPS 跳转</label>
+    <input type="checkbox" id="forceHttps">
+  </div>
+  <div id="msg"></div>
+  <div class="actions">
+    <button class="btn-success" onclick="saveConfig()">保存配置</button>
+  </div>
+  <p class="hint">&#9888;&#65039; 配置保存后需<b>重启后端服务</b>方可生效</p>
+</div>
+<script>
+function getCookie(n){const m=document.cookie.match(new RegExp('(?:^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[1]):'';}
+const TOKEN = getCookie('Admin-Token') || new URLSearchParams(location.search).get('token') || '';
+const H = {'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'};
+async function api(url,method,body){
+  const r=await fetch(url+'?token='+TOKEN,{method,headers:method==='GET'?{}:H,body:body?JSON.stringify(body):undefined});
+  return r.json();
+}
+async function load(){
+  const d=await api('/system/ssl/config','GET');
+  if(d.code!==200){document.getElementById('statusHtml').innerHTML='<span class="badge fail">查询失败</span>';return;}
+  const c=d.data;
+  document.getElementById('httpPort').value=c.httpPort||18080;
+  document.getElementById('httpsPort').value=c.httpsPort||18443;
+  document.getElementById('enabled').checked=c.enabled;
+  document.getElementById('forceHttps').checked=c.forceHttps;
+  document.getElementById('certPreview').textContent=c.certPreview||'（未上传）';
+  document.getElementById('statusHtml').innerHTML=`
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+      <span class="badge ${c.enabled?'ok':'fail'}">${c.enabled?'HTTPS 已启用':'HTTPS 未启用'}</span>
+      <span class="badge ${c.certExists?'ok':'fail'}">${c.certExists?'证书已上传':'证书未上传'}</span>
+      <span class="badge ${c.certInDb?'ok':'fail'}">${c.certInDb?'DB: cert ✓':'DB: cert 无'}</span>
+      <span class="badge ${c.keyInDb?'ok':'fail'}">${c.keyInDb?'DB: key ✓':'DB: key 无'}</span>
+    </div>
+    <div class="hint">HTTP:${c.httpPort} / HTTPS:${c.httpsPort}${c.forceHttps?' | 强制跳转':''}</div>`;
+}
+function showMsg(txt,ok){
+  const el=document.getElementById('msg');
+  el.textContent=txt;el.className=ok?'msg-ok':'msg-err';
+  setTimeout(()=>el.className='',4000);
+}
+async function uploadCert(){
+  const f=document.getElementById('certFile').files[0];
+  if(!f){showMsg('请选择证书文件',false);return;}
+  const fd=new FormData();fd.append('file',f);
+  const r=await fetch('/system/ssl/uploadCert?token='+TOKEN,{method:'POST',body:fd});
+  const d=await r.json();
+  showMsg(d.msg,d.code===200);if(d.code===200)load();
+}
+async function uploadKey(){
+  const f=document.getElementById('keyFile').files[0];
+  if(!f){showMsg('请选择私钥文件',false);return;}
+  const fd=new FormData();fd.append('file',f);
+  const r=await fetch('/system/ssl/uploadKey?token='+TOKEN,{method:'POST',body:fd});
+  const d=await r.json();
+  showMsg(d.msg,d.code===200);if(d.code===200)load();
+}
+async function saveConfig(){
+  const body={
+    enabled:document.getElementById('enabled').checked,
+    httpsPort:parseInt(document.getElementById('httpsPort').value),
+    httpPort:parseInt(document.getElementById('httpPort').value),
+    forceHttps:document.getElementById('forceHttps').checked
+  };
+  const d=await api('/system/ssl/config','PUT',body);
+  showMsg(d.msg,d.code===200);
+}
+load();
+</script>
+</body></html>
