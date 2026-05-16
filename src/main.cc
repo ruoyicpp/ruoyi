@@ -8,12 +8,6 @@
 #include "services/WorkerOrchestrator.h"
 #include "services/AcmeManager.h"
 #include "services/CertManagerDriver.h"
-#include "common/FrontendState.h"
-#include "middleware/SecurityMiddleware.h"
-#include "routes/CommonRoutes.h"
-#include "routes/VideoRoutes.h"
-#include "routes/SslRoutes.h"
-#include "routes/CertManagerRoutes.h"
 #ifdef _WIN32
 #  include <io.h>      // _isatty / _fileno
 #endif
@@ -650,6 +644,14 @@ int main(int argc, char* argv[]) {
         //   模式 A: "frontend"           — 外部 ./web 目录（方便热更新）
         //   模式 B: "embedded_frontend"  — 编译进 exe（单文件分发，需 cmake -DRUOYI_EMBED_FRONTEND=ON）
         // 共享状态供后续错误处理器/限流器使用：
+        //   feHosted=true  → 启用 SPA 404 回退 + 限流跳过静态资源
+        //   feApiPrefix    → 用于区分 API 与静态资源
+        //   feIndexPath    → 外部模式下的 index.html 绝对路径
+        static bool        feHosted    = false;
+        static bool        feSpaMode   = false;
+        static bool        feEmbedded  = false;
+        static std::string feApiPrefix;
+        static std::string feIndexPath;
         try {
             Json::Value cfgRoot;
             {
@@ -789,15 +791,920 @@ int main(int argc, char* argv[]) {
             LOG_WARN << "[NginxLike] 加载失败: " << e.what();
         }
 
-        registerSecurityMiddleware();
+        // ── IP 限流 (DDoS 防御) ─────────────────────────────────────────────────
+        // 当合并部署托管前端时，跳过静态资源（带扩展名且非 API 前缀），
+        // 避免单个用户加载几十个 JS/CSS 触发 200/min 限流误封。
+        drogon::app().registerPreRoutingAdvice(
+            [](const drogon::HttpRequestPtr &req,
+               drogon::AdviceCallback &&acb,
+               drogon::AdviceChainCallback &&accb) {
+                if (feHosted) {
+                    std::string p = req->path();
+                    bool isApi = !feApiPrefix.empty() && feApiPrefix != "/" &&
+                                 p.rfind(feApiPrefix, 0) == 0;
+                    // 静态资源：路径含扩展名且非 API
+                    auto slash = p.find_last_of('/');
+                    auto seg   = (slash == std::string::npos) ? p : p.substr(slash + 1);
+                    bool hasExt = seg.find('.') != std::string::npos;
+                    if (!isApi && hasExt) { accb(); return; }
+                }
+                std::string ip = IpUtils::getIpAddr(req);
+                if (!RateLimiter::instance().allow(ip)) {
+                    MetricsCollector::instance().onRateLimited();
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode((drogon::HttpStatusCode)429);
+                    resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                    resp->setBody("{\"code\":429,\"msg\":\"请求过于频繁，请稍后重试\"}");
+                    resp->addHeader("Retry-After", "300");
+                    acb(resp);
+                    return;
+                }
+                accb();
+            });
 
-        registerCommonRoutes();
+        // ── Bot UA 拦截（绕过 nginx 直连后端时的第二道防线）─────────────────────
+        drogon::app().registerPreRoutingAdvice(
+            [](const drogon::HttpRequestPtr &req,
+               drogon::AdviceCallback &&acb,
+               drogon::AdviceChainCallback &&accb) {
+                // OPTIONS 预检请求放行
+                if (req->method() == drogon::Options) { accb(); return; }
+                std::string ua = req->getHeader("User-Agent");
+                if (isBotUserAgent(ua)) {
+                    LOG_WARN << "[Security] Bot UA blocked (global): "
+                             << ua.substr(0, 80) << " ip=" << IpUtils::getIpAddr(req)
+                             << " path=" << req->path();
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k403Forbidden);
+                    resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                    resp->setBody("{\"code\":403,\"msg\":\"非法请求\"}");
+                    acb(resp);
+                    return;
+                }
+                accb();
+            });
 
-        registerVideoRoutes();
+        // ── 自定义默认错误响应：404/405/500 等也走 AjaxResult JSON 格式 ──
+        // 否则 drogon 默认返回 HTML，前端 axios 解析失败后报"未知错误"
+        // 同时支持 SPA fallback：托管前端时，非 API 且无扩展名路径回退到 index.html
+        drogon::app().setCustomErrorHandler(
+            [](drogon::HttpStatusCode code,
+               const drogon::HttpRequestPtr &req) -> drogon::HttpResponsePtr {
+                // 404/405 SPA 回退：仅对前端路由路径生效，避免误伤 API typo
+                // 405 也需要回退：drogon 对无扩展名路径可能因方法不匹配返回 405
+                bool isSpaCode = (code == drogon::k404NotFound ||
+                                  code == drogon::k405MethodNotAllowed);
+                if (isSpaCode && feHosted && feSpaMode) {
+                    std::string p = req->path();
+                    bool isApi = !feApiPrefix.empty() && feApiPrefix != "/" &&
+                                 p.rfind(feApiPrefix, 0) == 0;
+                    auto slash = p.find_last_of('/');
+                    auto seg   = (slash == std::string::npos) ? p : p.substr(slash + 1);
+                    bool hasExt = seg.find('.') != std::string::npos;
+                    // 非 API + 无扩展名 → 视作 vue-router 前端路径，回退 index.html
+                    if (!isApi && !hasExt) {
+                        if (!feEmbedded && !feIndexPath.empty()) {
+                            return drogon::HttpResponse::newFileResponse(feIndexPath);
+                        }
+                        // 嵌入式：EmbeddedFrontend 的 advice 已处理，几乎不会到这里；
+                        // 兜底返回简单 200 让前端继续加载（极少触发）
+                    }
+                }
+                std::string msg;
+                int bodyCode = (int)code;
+                switch (code) {
+                    case drogon::k400BadRequest:          msg = "请求参数错误";   break;
+                    case drogon::k401Unauthorized:        msg = "认证失败";       break;
+                    case drogon::k403Forbidden:           msg = "无权限访问";     break;
+                    case drogon::k404NotFound:            msg = "资源不存在";     break;
+                    case drogon::k405MethodNotAllowed:    msg = "方法不允许";     break;
+                    case drogon::k413RequestEntityTooLarge: msg = "请求体过大"; break;
+                    case drogon::k500InternalServerError: msg = "服务器内部错误"; break;
+                    case drogon::k502BadGateway:          msg = "网关错误";       break;
+                    case drogon::k503ServiceUnavailable:  msg = "服务不可用";     break;
+                    default:                               msg = "请求失败";      break;
+                }
+                Json::Value j;
+                j["code"] = bodyCode;
+                j["msg"]  = msg;
+                auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                resp->setStatusCode(code);
+                return resp;
+            });
 
-        registerSslRoutes();
+        // ── 安全响应头（XSS/点击劫持/内容嗅探防御）────────────────────────────
+        drogon::app().registerPostHandlingAdvice(
+            [](const drogon::HttpRequestPtr& req,
+               const drogon::HttpResponsePtr& resp) {
+                resp->addHeader("X-Content-Type-Options",  "nosniff");
+                resp->addHeader("X-XSS-Protection",        "1; mode=block");
+                resp->addHeader("Referrer-Policy",         "strict-origin-when-cross-origin");
+                // /ai/* 页面允许被跨域 iframe 嵌入（前端内嵌 AI 会话页）
+                const std::string& p = req->path();
+                bool isAiPage = (p == "/ai" || p == "/ai/" ||
+                                 (p.size() > 4 && p.compare(0, 4, "/ai/") == 0));
+                bool isCertmgrPage = (p == "/certmanager" ||
+                                      p.rfind("/certmanager/", 0) == 0);
+                if (!isAiPage && !isCertmgrPage) {
+                    resp->addHeader("X-Frame-Options", "SAMEORIGIN");
+                    resp->addHeader("Content-Security-Policy",
+                        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                        "style-src 'self' 'unsafe-inline'; img-src 'self' data:");
+                } else if (isCertmgrPage) {
+                    // certmanager UI 依赖 tailwindcss/jsdelivr CDN，放宽 CSP
+                    resp->addHeader("X-Frame-Options", "SAMEORIGIN");
+                    resp->addHeader("Content-Security-Policy",
+                        "default-src 'self'; "
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+                            "https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
+                        "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com "
+                            "https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+                        "font-src 'self' https://fonts.gstatic.com; "
+                        "img-src 'self' data:;");
+                }
+            });
 
-        registerCertManagerRoutes();
+        // ── XSS 过滤（POST/PUT 请求 JSON body 净化）──────────────────────────
+        drogon::app().registerPreHandlingAdvice(
+            [](const drogon::HttpRequestPtr& req,
+               drogon::AdviceCallback&&,
+               drogon::AdviceChainCallback&& accb) {
+                if (req->method() == drogon::Post || req->method() == drogon::Put) {
+                    auto body = req->getJsonObject();
+                    if (body) {
+                        // SQL 注入特征告警（不阻断，已有参数化查询防御）
+                        auto& bv = *body;
+                        for (auto& key : bv.getMemberNames()) {
+                            if (bv[key].isString()) {
+                                const std::string& val = bv[key].asString();
+                                if (XssUtils::hasSqlSignature(val)) {
+                                    LOG_WARN << "[SQLi] suspicious input key=" << key
+                                             << " ip=" << req->peerAddr().toIp()
+                                             << " path=" << req->path();
+                                }
+                            }
+                        }
+                    }
+                }
+                accb();
+            });
+
+        // ── 接口验证（公开接口 + server-to-server）────────────────────────────
+        // 规则：
+        //   /challenge /forgotPassword /resetPassword → 完全放行（自带鉴权机制）
+        //   公开接口(/login /captchaImage /register /forgotPassword)：
+        //     浏览器客户端 → 必须携带 X-Challenge-Token（后端颁发，60s 一次性）
+        //     server-to-server → 携带 X-App-Id + X-Sign（HMAC-SHA256）
+        //   其他接口携带 X-App-Id → server-to-server 验签
+        //   其他接口不带任何签名头 → 走 JWT 中间件
+        drogon::app().registerPreHandlingAdvice(
+            [](const drogon::HttpRequestPtr& req,
+               drogon::AdviceCallback&& acb,
+               drogon::AdviceChainCallback&& accb) {
+                auto& sv = SignUtils::instance();
+                const std::string& path = req->path();
+
+                // ── WebSocket 路径早期 token 预检 ──────────────────────
+                // drogon 框架在 router 匹配后才回调 handleNewConnection，
+                // 此时 HTTP 已完成 WS 升级。若到 handleNewConnection 才发现
+                // 缺 token 再 shutdown，攻击者可借机消耗 socket/内存资源。
+                // 这里在 PreHandling 阶段先拒掉缺 token 的 WS 请求。
+                // /ws/ticket 是普通 HTTP 接口（签发 WS 票据），走正常 JWT 流程
+                // 只对真正的 WebSocket 升级路径（/ws/notify 等）做 token 参数预检
+                if (path.size() >= 4 && path.compare(0, 4, "/ws/") == 0
+                    && path != "/ws/ticket") {
+                    if (req->getParameter("token").empty()
+                        && req->getParameter("ticket").empty()) {
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode(drogon::k401Unauthorized);
+                        resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                        resp->setBody(R"({"code":401,"msg":"缺少 token/ticket 参数"})");
+                        acb(resp); return;
+                    }
+                    // 有 token/ticket 时继续走 WebSocketController 流程
+                    accb(); return;
+                }
+
+                // 引导接口、重置接口、健康检查、版本接口完全放行
+                if (path == "/challenge" || path == "/resetPassword" || path == "/forgotPassword"
+                    || path == "/health" || path == "/version" || path == "/ssl-config") {
+                    accb(); return;
+                }
+                // certmanager API + Web UI：handler 内部自行鉴权
+                if (path.rfind("/api/ssl/", 0) == 0) { accb(); return; }
+                if (path == "/certmanager" || path.rfind("/certmanager/", 0) == 0) { accb(); return; }
+                // AI 内置助手页 + AI 健康检查 + AI 聊天后端：放行
+                // /ai/page 是 InnerLink iframe 嵌入的内置 HTML 页面
+                // /ai/chat 由该页面 fetch 调用，已通过 fallback 集成讯飞星火外部 API
+                if (path == "/ai/page" || path == "/ai/chat"
+                    || path == "/ai/health" || path == "/ai/generate") {
+                    accb(); return;
+                }
+
+                std::string appId          = req->getHeader("X-App-Id");
+                std::string challengeToken = req->getHeader("X-Challenge-Token");
+                bool isPublicRoute = (path == "/login" || path == "/captchaImage"
+                                   || path == "/register" || path == "/sendRegCode");
+                bool hasSignHeader = !appId.empty();
+                bool hasChallengeToken = !challengeToken.empty();
+
+                // 公开接口验证
+                if (isPublicRoute) {
+                    // 方式1：浏览器挑战令牌
+                    if (hasChallengeToken) {
+                        auto cacheKey = "challenge:" + challengeToken;
+                        auto cached   = MemCache::instance().getString(cacheKey);
+                        if (!cached) {
+                            auto resp = drogon::HttpResponse::newHttpResponse();
+                            resp->setStatusCode(drogon::k403Forbidden);
+                            resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                            resp->setBody("{\"code\":403,\"msg\":\"挑战令牌无效或已过期\"}");
+                            acb(resp); return;
+                        }
+                        MemCache::instance().remove(cacheKey); // 一次性使用
+                        accb(); return;
+                    }
+                    // 方式2：server-to-server HMAC 签名
+                    if (sv.hasApps() && hasSignHeader) {
+                        std::string errMsg;
+                        if (!sv.verify(req, errMsg)) {
+                            LOG_WARN << "[Sign] 验签失败: " << errMsg << " path=" << path
+                                     << " ip=" << IpUtils::getIpAddr(req);
+                            auto resp = drogon::HttpResponse::newHttpResponse();
+                            resp->setStatusCode(drogon::k403Forbidden);
+                            resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                            resp->setBody("{\"code\":403,\"msg\":\"" + errMsg + "\"}");
+                            acb(resp); return;
+                        }
+                        accb(); return;
+                    }
+                    // 没有配置任何 server-to-server 应用时，公开接口直接放行
+                    if (!sv.hasApps()) { accb(); return; }
+                    // 两种方式都没有 → 拒绝
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k403Forbidden);
+                    resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                    resp->setBody("{\"code\":403,\"msg\":\"缺少访问凭证 (X-Challenge-Token 或 X-App-Id)\"}");
+                    acb(resp); return;
+                }
+
+                // 非公开接口：带 X-App-Id → server-to-server 验签，否则放行走 JWT
+                if (!hasSignHeader || !sv.hasApps()) { accb(); return; }
+                std::string errMsg;
+                if (!sv.verify(req, errMsg)) {
+                    LOG_WARN << "[Sign] 验签失败: " << errMsg << " path=" << path
+                             << " ip=" << IpUtils::getIpAddr(req);
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k403Forbidden);
+                    resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                    resp->setBody("{\"code\":403,\"msg\":\"" + errMsg + "\"}");
+                    acb(resp); return;
+                }
+                accb();
+            });
+
+        // ── 定期清理限流器过期记录（每2分钟）────────────────────────────────
+        drogon::app().getLoop()->runEvery(120.0, []{
+            RateLimiter::instance().cleanup();
+        });
+
+        // 静态文件服务：/profile/{dir}/{file} → uploads/{dir}/{file}
+        // 用于头像(/profile/avatar/xxx)、通用上传(/profile/upload/xxx)等
+        auto serveUpload = [](const drogon::HttpRequestPtr &,
+                              std::function<void(const drogon::HttpResponsePtr &)> &&cb,
+                              const std::string &dir, const std::string &file) {
+            std::string filePath = "uploads/" + dir + "/" + file;
+            if (!std::filesystem::exists(filePath) || std::filesystem::is_directory(filePath)) {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setStatusCode(drogon::k404NotFound);
+                cb(resp);
+                return;
+            }
+            cb(drogon::HttpResponse::newFileResponse(filePath));
+        };
+        drogon::app().registerHandler("/profile/{dir}/{file}", serveUpload, {drogon::Get});
+
+
+        // ── iconfont 字体文件路由 ──────────────────────────────────────
+        drogon::app().registerHandler("/iconfont-sys.woff2",
+            [](const drogon::HttpRequestPtr&,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                static std::string fontData;
+                static std::once_flag once;
+                std::call_once(once, []() {
+                    std::ifstream f("iconfont-sys.woff2", std::ios::binary);
+                    if (f) fontData = std::string(std::istreambuf_iterator<char>(f), {});
+                });
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                if (fontData.empty()) {
+                    resp->setStatusCode(drogon::k404NotFound);
+                } else {
+                    resp->setContentTypeString("font/woff2");
+                    resp->addHeader("Cache-Control", "public,max-age=86400");
+                    resp->setBody(fontData);
+                }
+                cb(resp);
+            }, {drogon::Get});
+
+        // ── /health 健康检查（nginx upstream_check / k8s liveness probe）──────
+        drogon::app().registerHandler("/health",
+            [](const drogon::HttpRequestPtr&,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                auto& db = DatabaseService::instance();
+                bool dbOk = db.isConnected() || db.isUsingSqlite();
+                Json::Value j;
+                j["status"] = dbOk ? "UP" : "DEGRADED";
+                j["db"]     = db.backendInfo();
+                j["cache"]  = MemCache::backendInfo();
+                auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                resp->setStatusCode(dbOk ? drogon::k200OK : drogon::k503ServiceUnavailable);
+                cb(resp);
+            }, {drogon::Get});
+
+        // ── /version 版本信息 ──────────────────────────────────────────────
+        drogon::app().registerHandler("/version",
+            [](const drogon::HttpRequestPtr&,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                Json::Value j;
+                j["app"]     = "ruoyi-cpp";
+                j["version"] = "1.0.0";
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        // ── 随机视频开关（无需登录，前端用于决定是否显示菜单）──────────────
+        // GET /api/video/enabled → {"enabled":true}
+        drogon::app().registerHandler("/api/video/enabled",
+            [](const drogon::HttpRequestPtr&,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                auto& db = DatabaseService::instance();
+                auto res = db.queryParams(
+                    "SELECT config_value FROM sys_config WHERE config_key=$1 LIMIT 1",
+                    {"sys.video.enabled"});
+                bool enabled = true;
+                if (res.ok() && res.rows() > 0) {
+                    std::string val = res.str(0, 0);
+                    enabled = !(val == "false" || val == "0");
+                }
+                Json::Value j;
+                j["enabled"] = enabled;
+                auto r = drogon::HttpResponse::newHttpJsonResponse(j);
+                r->addHeader("Access-Control-Allow-Origin", "*");
+                cb(r);
+            }, {drogon::Get});
+
+        // ── 随机视频接口 ───────────────────────────────────────────────────
+        // GET /api/video/random  → {"url":"https://...mp4"}
+        drogon::app().registerHandler("/api/video/random",
+            [](const drogon::HttpRequestPtr&,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                // 用 drogon HttpClient 跟随外部 API 的 302 跳转，取最终 mp4 URL
+                auto client = drogon::HttpClient::newHttpClient("http://api.yujn.cn");
+                auto extReq = drogon::HttpRequest::newHttpRequest();
+                extReq->setPath("/api/zzxjj.php");
+                extReq->setParameter("type", "video");
+                extReq->setMethod(drogon::Get);
+                client->sendRequest(extReq,
+                    [cb](drogon::ReqResult result, const drogon::HttpResponsePtr& resp) {
+                        Json::Value j;
+                        if (result == drogon::ReqResult::Ok) {
+                            // 302 Location 就是 mp4 直链
+                            std::string url = resp->getHeader("location");
+                            if (url.empty()) url = std::string(resp->body());
+                            j["url"] = url;
+                            j["ok"]  = true;
+                        } else {
+                            j["ok"]  = false;
+                            j["url"] = "";
+                        }
+                        auto r = drogon::HttpResponse::newHttpJsonResponse(j);
+                        r->addHeader("Access-Control-Allow-Origin", "*");
+                        cb(r);
+                    });
+            }, {drogon::Get});
+
+        // GET /api/video/player  → 内嵌 HTML 播放器页面
+        drogon::app().registerHandler("/api/video/player",
+            [](const drogon::HttpRequestPtr&,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                static const std::string html = R"html(<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>随机视频</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0d0d;display:flex;flex-direction:column;align-items:center;
+     justify-content:center;min-height:100vh;font-family:sans-serif;color:#fff}
+h2{margin-bottom:16px;font-size:1.2rem;opacity:.7;letter-spacing:2px}
+.wrap{position:relative;width:min(420px,95vw);background:#1a1a1a;border-radius:16px;
+      overflow:hidden;box-shadow:0 8px 40px #0008}
+video{width:100%;display:block;max-height:75vh;background:#000;object-fit:contain}
+.ctrl{display:flex;gap:12px;padding:12px;background:#111}
+button{flex:1;padding:10px;border:none;border-radius:8px;cursor:pointer;
+       font-size:.95rem;font-weight:600;transition:.2s}
+#btnNext{background:#e94560;color:#fff}
+#btnNext:hover{background:#c73652}
+#btnDl{background:#2a2a2a;color:#aaa}
+#btnDl:hover{background:#3a3a3a;color:#fff}
+#status{font-size:.75rem;opacity:.5;padding:4px 12px 8px;text-align:center}
+</style>
+</head>
+<body>
+<h2>随机视频</h2>
+<div class="wrap">
+  <video id="v" autoplay playsinline muted loop></video>
+  <div class="ctrl">
+    <button id="btnNext" onclick="next()">▶ 下一个</button>
+    <button id="btnDl" onclick="dl()">⬇ 下载</button>
+  </div>
+  <div id="status">加载中...</div>
+</div>
+<script>
+let cur='';
+async function next(){
+  document.getElementById('status').textContent='加载中...';
+  try{
+    const r=await fetch('/api/video/random');
+    const d=await r.json();
+    if(d.ok&&d.url){
+      cur=d.url;
+      const v=document.getElementById('v');
+      v.src=cur;
+      v.load();
+      v.play().catch(()=>{});
+      document.getElementById('status').textContent='';
+    }else{
+      document.getElementById('status').textContent='获取失败，请重试';
+    }
+  }catch(e){
+    document.getElementById('status').textContent='网络错误: '+e.message;
+  }
+}
+function dl(){
+  if(!cur)return;
+  const a=document.createElement('a');
+  a.href=cur;a.download='video.mp4';a.target='_blank';a.click();
+}
+next();
+</script>
+</body>
+</html>)html";
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setContentTypeCode(drogon::CT_TEXT_HTML);
+                resp->setBody(html);
+                cb(resp);
+            }, {drogon::Get});
+
+        // ── SSL/HTTPS 配置管理页（无需前端，浏览器直接访问）─────────────────
+        drogon::app().registerHandler("/ssl-config",
+            [](const drogon::HttpRequestPtr& req,
+               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                // 鉴权：Authorization header / Cookie Admin-Token / query param / localhost
+                auto token = SecurityUtils::getToken(req);
+                if (token.empty()) {
+                    // 标准 RuoYi Vue2 前端将 JWT 存在 Cookie 'Admin-Token'
+                    const std::string& cookieHdr = req->getHeader("cookie");
+                    const std::string key = "Admin-Token=";
+                    auto pos = cookieHdr.find(key);
+                    if (pos != std::string::npos) {
+                        pos += key.size();
+                        auto end = cookieHdr.find(';', pos);
+                        token = cookieHdr.substr(pos, end == std::string::npos ? end : end - pos);
+                    }
+                }
+                if (token.empty()) token = req->getParameter("token");
+                bool ok = false;
+                if (!token.empty()) {
+                    try {
+                        auto uuid    = JwtUtils::parseUuid(token);
+                        auto userKey = SecurityUtils::getTokenKey(uuid);
+                        ok = (bool)TokenCache::instance().get(userKey);
+                    } catch (...) {}
+                }
+                if (!ok) {
+                    const auto& peer = req->getPeerAddr().toIp();
+                    ok = (peer == "127.0.0.1" || peer == "::1" || peer == "0.0.0.0");
+                }
+                if (!ok) {
+                    auto r = drogon::HttpResponse::newHttpResponse();
+                    r->setStatusCode(drogon::k401Unauthorized);
+                    r->setContentTypeCode(drogon::CT_TEXT_HTML);
+                    r->setBody("<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
+                               "<h2>&#128274; 请先登录后携带 token 访问</h2>"
+                               "<p>示例：/ssl-config?token=eyJhbG...</p></body></html>");
+                    cb(r); return;
+                }
+                std::string tok = token;
+                std::string html = R"html(<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HTTPS / SSL 配置</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#0f1117;color:#e2e8f0;padding:16px}
+h1{font-size:1.4rem;margin-bottom:20px;color:#7dd3fc;display:flex;align-items:center;gap:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:20px}
+.card{background:#1e2330;border-radius:12px;padding:20px;border:1px solid #2d3748}
+.card h2{font-size:.95rem;color:#94a3b8;margin-bottom:14px;text-transform:uppercase;letter-spacing:.05em}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:.8rem;font-weight:600}
+.ok{background:#065f46;color:#6ee7b7}.fail{background:#7f1d1d;color:#fca5a5}
+label{display:block;font-size:.85rem;color:#94a3b8;margin-bottom:4px;margin-top:10px}
+input[type=text],input[type=number]{width:100%;padding:8px 10px;background:#0f1117;border:1px solid #374151;
+  border-radius:6px;color:#e2e8f0;font-size:.9rem}
+input[type=file]{width:100%;padding:6px;background:#0f1117;border:1px solid #374151;
+  border-radius:6px;color:#94a3b8;font-size:.85rem}
+.toggle{display:flex;align-items:center;gap:10px;margin-top:10px}
+.toggle input{width:40px;height:22px;accent-color:#3b82f6;cursor:pointer}
+btn,button{display:inline-block;padding:9px 20px;border-radius:8px;border:none;cursor:pointer;font-size:.88rem;font-weight:600;transition:.2s}
+.btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb}
+.btn-success{background:#059669;color:#fff}.btn-success:hover{background:#047857}
+.btn-warn{background:#d97706;color:#fff}.btn-warn:hover{background:#b45309}
+.actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+#msg{margin-top:14px;padding:10px 14px;border-radius:8px;display:none;font-size:.88rem}
+.msg-ok{background:#065f46;color:#6ee7b7;display:block!important}
+.msg-err{background:#7f1d1d;color:#fca5a5;display:block!important}
+.hint{font-size:.78rem;color:#64748b;margin-top:6px}
+pre{background:#0f1117;padding:10px;border-radius:6px;font-size:.75rem;color:#6ee7b7;overflow-x:auto;margin-top:6px;max-height:80px}
+</style>
+</head>
+<body>
+<h1>&#128274; HTTPS / SSL 证书管理</h1>
+<div class="grid" id="statusGrid">
+  <div class="card"><h2>当前状态</h2><div id="statusHtml">加载中...</div></div>
+  <div class="card"><h2>证书预览</h2><pre id="certPreview">-</pre></div>
+</div>
+<div class="grid">
+  <div class="card">
+    <h2>上传证书 (.pem / .crt / .cer)</h2>
+    <input type="file" id="certFile" accept=".pem,.crt,.cer">
+    <div class="actions"><button class="btn-primary" onclick="uploadCert()">上传证书</button></div>
+  </div>
+  <div class="card">
+    <h2>上传私钥 (.pem / .key)</h2>
+    <input type="file" id="keyFile" accept=".pem,.key">
+    <div class="actions"><button class="btn-primary" onclick="uploadKey()">上传私钥</button></div>
+  </div>
+</div>
+<div class="card" style="max-width:560px">
+  <h2>配置</h2>
+  <label>HTTP 端口</label>
+  <input type="number" id="httpPort" value="18080" min="1" max="65535">
+  <label>HTTPS 端口</label>
+  <input type="number" id="httpsPort" value="18443" min="1" max="65535">
+  <div class="toggle">
+    <label style="margin:0">启用 HTTPS</label>
+    <input type="checkbox" id="enabled">
+  </div>
+  <div class="toggle">
+    <label style="margin:0">强制 HTTP → HTTPS 跳转</label>
+    <input type="checkbox" id="forceHttps">
+  </div>
+  <div id="msg"></div>
+  <div class="actions">
+    <button class="btn-success" onclick="saveConfig()">保存配置</button>
+  </div>
+  <p class="hint">&#9888;&#65039; 配置保存后需<b>重启后端服务</b>方可生效</p>
+</div>
+<script>
+function getCookie(n){const m=document.cookie.match(new RegExp('(?:^|; )'+n+'=([^;]*)'));return m?decodeURIComponent(m[1]):'';}
+const TOKEN = getCookie('Admin-Token') || new URLSearchParams(location.search).get('token') || '';
+const H = {'Authorization':'Bearer '+TOKEN,'Content-Type':'application/json'};
+async function api(url,method,body){
+  const r=await fetch(url+'?token='+TOKEN,{method,headers:method==='GET'?{}:H,body:body?JSON.stringify(body):undefined});
+  return r.json();
+}
+async function load(){
+  const d=await api('/system/ssl/config','GET');
+  if(d.code!==200){document.getElementById('statusHtml').innerHTML='<span class="badge fail">查询失败</span>';return;}
+  const c=d.data;
+  document.getElementById('httpPort').value=c.httpPort||18080;
+  document.getElementById('httpsPort').value=c.httpsPort||18443;
+  document.getElementById('enabled').checked=c.enabled;
+  document.getElementById('forceHttps').checked=c.forceHttps;
+  document.getElementById('certPreview').textContent=c.certPreview||'（未上传）';
+  document.getElementById('statusHtml').innerHTML=`
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+      <span class="badge ${c.enabled?'ok':'fail'}">${c.enabled?'HTTPS 已启用':'HTTPS 未启用'}</span>
+      <span class="badge ${c.certExists?'ok':'fail'}">${c.certExists?'证书已上传':'证书未上传'}</span>
+      <span class="badge ${c.certInDb?'ok':'fail'}">${c.certInDb?'DB: cert ✓':'DB: cert 无'}</span>
+      <span class="badge ${c.keyInDb?'ok':'fail'}">${c.keyInDb?'DB: key ✓':'DB: key 无'}</span>
+    </div>
+    <div class="hint">HTTP:${c.httpPort} / HTTPS:${c.httpsPort}${c.forceHttps?' | 强制跳转':''}</div>`;
+}
+function showMsg(txt,ok){
+  const el=document.getElementById('msg');
+  el.textContent=txt;el.className=ok?'msg-ok':'msg-err';
+  setTimeout(()=>el.className='',4000);
+}
+async function uploadCert(){
+  const f=document.getElementById('certFile').files[0];
+  if(!f){showMsg('请选择证书文件',false);return;}
+  const fd=new FormData();fd.append('file',f);
+  const r=await fetch('/system/ssl/uploadCert?token='+TOKEN,{method:'POST',body:fd});
+  const d=await r.json();
+  showMsg(d.msg,d.code===200);if(d.code===200)load();
+}
+async function uploadKey(){
+  const f=document.getElementById('keyFile').files[0];
+  if(!f){showMsg('请选择私钥文件',false);return;}
+  const fd=new FormData();fd.append('file',f);
+  const r=await fetch('/system/ssl/uploadKey?token='+TOKEN,{method:'POST',body:fd});
+  const d=await r.json();
+  showMsg(d.msg,d.code===200);if(d.code===200)load();
+}
+async function saveConfig(){
+  const body={
+    enabled:document.getElementById('enabled').checked,
+    httpsPort:parseInt(document.getElementById('httpsPort').value),
+    httpPort:parseInt(document.getElementById('httpPort').value),
+    forceHttps:document.getElementById('forceHttps').checked
+  };
+  const d=await api('/system/ssl/config','PUT',body);
+  showMsg(d.msg,d.code===200);
+}
+load();
+</script>
+</body></html>)html";
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setContentTypeCode(drogon::CT_TEXT_HTML);
+                resp->setBody(html);
+                cb(resp);
+            }, {drogon::Get});
+
+        // ── certmanager Web UI（原版前端 + DLL API，单端口，无需 19443）────────
+        // 访问：GET /certmanager  → 读取 certmanager-web/index.html（JWT 认证）
+        // API：/certmanager/api/* → 直接调 DLL 函数
+        auto cmAuth = [](const drogon::HttpRequestPtr& req) -> bool {
+            auto token = SecurityUtils::getToken(req);
+            if (token.empty()) {
+                const std::string& ck = req->getHeader("cookie");
+                const std::string key = "Admin-Token=";
+                auto pos = ck.find(key);
+                if (pos != std::string::npos) {
+                    pos += key.size(); auto end = ck.find(';', pos);
+                    token = ck.substr(pos, end == std::string::npos ? end : end - pos);
+                }
+            }
+            if (token.empty()) token = req->getParameter("token");
+            if (!token.empty()) {
+                try {
+                    auto uuid = JwtUtils::parseUuid(token);
+                    auto userKey = SecurityUtils::getTokenKey(uuid);
+                    if (TokenCache::instance().get(userKey)) return true;
+                } catch (...) {}
+            }
+            const auto& peer = req->getPeerAddr().toIp();
+            return (peer == "127.0.0.1" || peer == "::1" || peer == "0.0.0.0");
+        };
+        auto cm401 = []() {
+            Json::Value e; e["error"] = "Unauthorized";
+            return drogon::HttpResponse::newHttpJsonResponse(e);
+        };
+
+        // UI 页面
+        drogon::app().registerHandler("/certmanager",
+            [cmAuth](const drogon::HttpRequestPtr& req,
+                     std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) {
+                    auto r = drogon::HttpResponse::newHttpResponse();
+                    r->setStatusCode(drogon::k401Unauthorized);
+                    r->setContentTypeCode(drogon::CT_TEXT_HTML);
+                    r->setBody("<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
+                               "<h2>&#128274; 请先登录后携带 token 访问</h2>"
+                               "<p>示例：/certmanager?token=eyJhbG...</p></body></html>");
+                    cb(r); return;
+                }
+                std::ifstream f("certmanager-web/index.html", std::ios::binary);
+                if (!f.is_open()) {
+                    auto r = drogon::HttpResponse::newHttpResponse();
+                    r->setStatusCode(drogon::k404NotFound);
+                    r->setBody("certmanager-web/index.html not found in working directory");
+                    cb(r); return;
+                }
+                std::string html((std::istreambuf_iterator<char>(f)), {});
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setContentTypeCode(drogon::CT_TEXT_HTML);
+                resp->setBody(html);
+                cb(resp);
+            }, {drogon::Get});
+
+        // API: GET /certmanager/api/info
+        drogon::app().registerHandler("/certmanager/api/info",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                Json::Value j; j["version"] = CertManagerAcme::instance().version();
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        // API: GET /certmanager/api/certificates
+        drogon::app().registerHandler("/certmanager/api/certificates",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().listCertsJson()));
+            }, {drogon::Get});
+
+        // API: GET /certmanager/api/accounts
+        drogon::app().registerHandler("/certmanager/api/accounts",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().listAccountsJson()));
+            }, {drogon::Get});
+
+        // API: POST /certmanager/api/accounts
+        drogon::app().registerHandler("/certmanager/api/accounts",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                auto body = req->getJsonObject();
+                std::string email   = body ? (*body).get("email",   "").asString() : "";
+                std::string keyType = body ? (*body).get("keyType", "EC256").asString() : "EC256";
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().registerAccountJson(email, keyType)));
+            }, {drogon::Post});
+
+        // API: GET /certmanager/api/dns-providers
+        drogon::app().registerHandler("/certmanager/api/dns-providers",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().listDNSProvidersJson()));
+            }, {drogon::Get});
+
+        // API: GET /certmanager/api/credentials（DLL无此功能，返回空数组）
+        drogon::app().registerHandler("/certmanager/api/credentials",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                cb(drogon::HttpResponse::newHttpJsonResponse(Json::Value(Json::arrayValue)));
+            }, {drogon::Get});
+
+        // API: POST /certmanager/api/certificates/obtain
+        drogon::app().registerHandler("/certmanager/api/certificates/obtain",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                auto body = req->getJsonObject();
+                if (!body) { Json::Value e; e["error"] = "need JSON body";
+                    cb(drogon::HttpResponse::newHttpJsonResponse(e)); return; }
+                std::string email    = (*body).get("email",       "").asString();
+                std::string keyType  = (*body).get("keyType",     "EC256").asString();
+                std::string provider = (*body).get("dnsProvider", "").asString();
+                int bundle = (*body).get("bundle", 1).asInt();
+                std::string domainList;
+                for (auto& d : (*body)["domains"])
+                    domainList += (domainList.empty() ? "" : ",") + d.asString();
+                std::string envJson = "{}";
+                if (body->isMember("envVars")) {
+                    Json::StreamWriterBuilder wb; wb["indentation"] = "";
+                    envJson = Json::writeString(wb, (*body)["envVars"]);
+                }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().obtainCertJson(
+                        email, domainList, provider, envJson, keyType, bundle)));
+            }, {drogon::Post});
+
+        // API: POST /certmanager/api/certificates/renew
+        drogon::app().registerHandler("/certmanager/api/certificates/renew",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                auto body = req->getJsonObject();
+                std::string certId = body ? (*body).get("certId", "").asString() : "";
+                int bundle = body ? (*body).get("bundle", 1).asInt() : 1;
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().renewCertJson(certId, bundle)));
+            }, {drogon::Post});
+
+        // API: POST /certmanager/api/certificates/revoke
+        drogon::app().registerHandler("/certmanager/api/certificates/revoke",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                auto body = req->getJsonObject();
+                std::string certId = body ? (*body).get("certId", "").asString() : "";
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().revokeCertJson(certId)));
+            }, {drogon::Post});
+
+        // API: GET /certmanager/api/certificates/{id}/download/{type}
+        drogon::app().registerHandler("/certmanager/api/certificates/{id}/download/{type}",
+            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+                            std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                            const std::string& certId, const std::string& fileType) {
+                if (!cmAuth(req)) { cb(cm401()); return; }
+                std::string content = CertManagerAcme::instance().readCertFileContent(certId, fileType);
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setBody(content);
+                resp->setContentTypeCode(drogon::CT_TEXT_PLAIN);
+                resp->addHeader("Content-Disposition",
+                    "attachment; filename=\"" + certId + "." + fileType + ".pem\"");
+                cb(resp);
+            }, {drogon::Get});
+
+        // ── certmanager REST API（直接封装 DLL，无需开 web_ui_addr 端口）─────
+        // GET  /api/ssl/version         → DLL 版本
+        // GET  /api/ssl/providers       → 支持的 DNS 提供商列表
+        // GET  /api/ssl/certs           → 已申请证书列表
+        // GET  /api/ssl/cert/{id}       → 单个证书详情
+        // POST /api/ssl/obtain          → 申请新证书 body:{email,domains,provider,env_vars,key_type}
+        // POST /api/ssl/renew/{id}      → 续期证书
+        // DELETE /api/ssl/cert/{id}     → 吊销证书
+        auto sslAuth = [](const drogon::HttpRequestPtr& req) -> bool {
+            // 完整验证 JWT 并要求管理员角色
+            auto user = TokenService::instance().getLoginUser(req);
+            return user.has_value() && SecurityUtils::isAdmin(user->userId);
+        };
+        auto ssl401 = []() {
+            Json::Value e; e["code"] = 401; e["msg"] = "未授权";
+            return drogon::HttpResponse::newHttpJsonResponse(e);
+        };
+
+        drogon::app().registerHandler("/api/ssl/version",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                Json::Value j; j["version"] = CertManagerAcme::instance().version();
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        drogon::app().registerHandler("/api/ssl/providers",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                Json::Value j; j["data"] = CertManagerAcme::instance().listDNSProvidersJson();
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        drogon::app().registerHandler("/api/ssl/certs",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                Json::Value j; j["data"] = CertManagerAcme::instance().listCertsJson();
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        drogon::app().registerHandler("/api/ssl/cert/{id}",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                              const std::string& id) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                Json::Value j; j["data"] = CertManagerAcme::instance().getCertInfoJson(id);
+                cb(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, {drogon::Get});
+
+        drogon::app().registerHandler("/api/ssl/cert/{id}",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                              const std::string& id) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().revokeCertJson(id)));
+            }, {drogon::Delete});
+
+        drogon::app().registerHandler("/api/ssl/renew/{id}",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                              const std::string& id) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().renewCertJson(id, 0)));
+            }, {drogon::Post});
+
+        drogon::app().registerHandler("/api/ssl/obtain",
+            [sslAuth, ssl401](const drogon::HttpRequestPtr& req,
+                              std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+                if (!sslAuth(req)) { cb(ssl401()); return; }
+                auto body = req->getJsonObject();
+                if (!body) {
+                    Json::Value e; e["code"] = 400; e["msg"] = "需要 JSON body";
+                    cb(drogon::HttpResponse::newHttpJsonResponse(e)); return;
+                }
+                std::string email    = (*body).get("email",    "").asString();
+                std::string provider = (*body).get("provider", "").asString();
+                std::string keyType  = (*body).get("key_type", "EC256").asString();
+                // domains: ["a.com","b.com"] → "a.com,b.com"
+                std::string domainList;
+                for (auto& d : (*body)["domains"])
+                    domainList += (domainList.empty() ? "" : ",") + d.asString();
+                // env_vars: {key:val} → JSON 字符串
+                std::string envJson = "{}";
+                if (body->isMember("env_vars")) {
+                    Json::StreamWriterBuilder wb; wb["indentation"] = "";
+                    envJson = Json::writeString(wb, (*body)["env_vars"]);
+                }
+                cb(drogon::HttpResponse::newHttpJsonResponse(
+                    CertManagerAcme::instance().obtainCertJson(
+                        email, domainList, provider, envJson, keyType, 0)));
+            }, {drogon::Post});
 
         // 数据库就绪后初始化
         drogon::app().registerBeginningAdvice([configFile, cfgLoader, isPrimary]() {
