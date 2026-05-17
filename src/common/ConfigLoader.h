@@ -36,6 +36,10 @@ public:
 
         if (!val.empty()) return val;
 
+        // 尝试环境变量：RUOYI_DATABASE_PASSWD 格式（全大写，section_key）
+        val = getEnv("RUOYI_" + toUpper(section) + "_" + toUpper(key));
+        if (!val.empty()) return val;
+
         // 尝试 Vault
         if (vault_.enabled) {
             std::string vaultField = section + "_" + key;
@@ -61,6 +65,16 @@ public:
     bool vaultEnabled() const { return vault_.enabled; }
 
 private:
+    static std::string getEnv(const std::string& name) {
+        const char* v = std::getenv(name.c_str());
+        return v ? std::string(v) : "";
+    }
+    static std::string toUpper(const std::string& s) {
+        std::string out = s;
+        for (auto& c : out) c = (char)std::toupper((unsigned char)c);
+        return out;
+    }
+
     Json::Value          root_;
     VaultClient::Config  vault_;
     std::string          secretPath_;

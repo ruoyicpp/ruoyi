@@ -52,6 +52,14 @@ namespace {
     }
 
     class RedisConn {
+        static constexpr int POOL_SIZE = 4;  // 连接池大小
+
+        struct Slot {
+            std::mutex           mu;
+            redisContext*        ctx = nullptr;
+            std::chrono::steady_clock::time_point nextRetryAt{};
+        };
+
     public:
         static RedisConn &instance() {
             static RedisConn inst;
@@ -63,19 +71,18 @@ namespace {
             return cfg.enabled;
         }
 
-        // True only when config enables redis AND a connection is available.
-        // If redis is down, we fall back to memory cache.
         bool available() {
             if (!enabledByConfig()) return false;
-            bool ok = ctx() != nullptr;
+            // 尝试任意一个 slot 能连上即可
+            auto& slot = pickSlot();
+            std::lock_guard<std::mutex> lk(slot.mu);
+            ensureConnected(slot);
+            bool ok = (slot.ctx != nullptr);
             int cur = ok ? 1 : 0;
             int prev = lastAvail_.exchange(cur);
             if (prev != -1 && prev != cur) {
-                if (ok) {
-                    std::cout << "[Cache] Redis is available, switch to redis" << std::endl;
-                } else {
-                    std::cout << "[Cache] Redis is unavailable, fallback to memory" << std::endl;
-                }
+                if (ok) std::cout << "[Cache] Redis is available, switch to redis" << std::endl;
+                else    std::cout << "[Cache] Redis is unavailable, fallback to memory" << std::endl;
             }
             return ok;
         }
@@ -86,103 +93,106 @@ namespace {
             return cfg.keyPrefix + key;
         }
 
-        redisContext *ctx() {
-            std::lock_guard<std::mutex> lock(mutex_);
-            ensureConnectedLocked();
-            return ctx_;
+        // 线程安全：round-robin 选连接，锁内执行命令
+        template<typename... Args>
+        redisReply* command(const char* fmt, Args&&... args) {
+            auto& slot = pickSlot();
+            std::lock_guard<std::mutex> lk(slot.mu);
+            ensureConnected(slot);
+            if (!slot.ctx) return nullptr;
+            return (redisReply*)redisCommand(slot.ctx, fmt, std::forward<Args>(args)...);
         }
 
-        // Best-effort reconnect on error.
+        // 旧接口兼容（尽量不用）
+        redisContext *ctx() {
+            auto& slot = pickSlot();
+            std::lock_guard<std::mutex> lk(slot.mu);
+            ensureConnected(slot);
+            return slot.ctx;
+        }
+
         void markBad() {
-            std::lock_guard<std::mutex> lock(mutex_);
-            closeLocked();
+            // 关闭所有连接，触发重连
+            for (auto& slot : pool_) {
+                std::lock_guard<std::mutex> lk(slot.mu);
+                closeSlot(slot);
+            }
         }
 
     private:
         RedisConn() = default;
-        ~RedisConn() { closeLocked(); }
+        ~RedisConn() {
+            for (auto& slot : pool_) closeSlot(slot);
+        }
         RedisConn(const RedisConn&) = delete;
         RedisConn& operator=(const RedisConn&) = delete;
 
-        void closeLocked() {
-            if (ctx_) {
-                redisFree(ctx_);
-                ctx_ = nullptr;
-            }
+        Slot& pickSlot() {
+            auto idx = robin_.fetch_add(1, std::memory_order_relaxed) % POOL_SIZE;
+            return pool_[idx];
         }
 
-        void ensureConnectedLocked() {
-            if (ctx_ && ctx_->err == 0) return;
-            closeLocked();
+        static void closeSlot(Slot& s) {
+            if (s.ctx) { redisFree(s.ctx); s.ctx = nullptr; }
+        }
+
+        void ensureConnected(Slot& slot) {
+            if (slot.ctx && slot.ctx->err == 0) return;
+            closeSlot(slot);
 
             auto cfg = loadRedisConfig();
             if (!cfg.enabled) return;
 
-    // Token 缓存（内存）
             auto now = std::chrono::steady_clock::now();
-            if (now < nextRetryAt_) return;
+            if (now < slot.nextRetryAt) return;
 
-    // Token 缓存（内存）
-            timeval tv;
-            tv.tv_sec = 0;
-            tv.tv_usec = 200 * 1000; // 200ms
-            ctx_ = redisConnectWithTimeout(cfg.host.c_str(), cfg.port, tv);
-            if (!ctx_ || ctx_->err) {
-                nextRetryAt_ = now + std::chrono::seconds(2);
-                closeLocked();
+            timeval tv; tv.tv_sec = 0; tv.tv_usec = 200 * 1000;
+            slot.ctx = redisConnectWithTimeout(cfg.host.c_str(), cfg.port, tv);
+            if (!slot.ctx || slot.ctx->err) {
+                slot.nextRetryAt = now + std::chrono::seconds(2);
+                closeSlot(slot);
                 return;
             }
-
-    // Token 缓存（内存）
-            redisSetTimeout(ctx_, tv);
+            redisSetTimeout(slot.ctx, tv);
 
             if (!cfg.password.empty()) {
-                auto *r = (redisReply *)redisCommand(ctx_, "AUTH %s", cfg.password.c_str());
+                auto *r = (redisReply *)redisCommand(slot.ctx, "AUTH %s", cfg.password.c_str());
                 if (!r || r->type == REDIS_REPLY_ERROR) {
                     if (r) freeReplyObject(r);
-                    nextRetryAt_ = now + std::chrono::seconds(2);
-                    closeLocked();
-                    return;
+                    slot.nextRetryAt = now + std::chrono::seconds(2);
+                    closeSlot(slot); return;
                 }
                 freeReplyObject(r);
             }
-
             if (cfg.db != 0) {
-                auto *r = (redisReply *)redisCommand(ctx_, "SELECT %d", cfg.db);
+                auto *r = (redisReply *)redisCommand(slot.ctx, "SELECT %d", cfg.db);
                 if (!r || r->type == REDIS_REPLY_ERROR) {
                     if (r) freeReplyObject(r);
-                    nextRetryAt_ = now + std::chrono::seconds(2);
-                    closeLocked();
-                    return;
+                    slot.nextRetryAt = now + std::chrono::seconds(2);
+                    closeSlot(slot); return;
                 }
                 freeReplyObject(r);
             }
         }
 
-        redisContext *ctx_ = nullptr;
-        std::mutex mutex_;
+        Slot pool_[POOL_SIZE];
+        std::atomic<unsigned> robin_{0};
         std::atomic<int> lastAvail_{-1};
-        std::chrono::steady_clock::time_point nextRetryAt_{};
     };
 
     inline bool redisSetEx(const std::string &key, const std::string &val, int expireSeconds) {
         auto &rc = RedisConn::instance();
-        auto *c = rc.ctx();
-        if (!c) return false;
         const auto k = rc.prefixKey(key);
-
         redisReply *r = nullptr;
-        if (expireSeconds > 0) {
-            r = (redisReply *)redisCommand(c, "SETEX %s %d %b", k.c_str(), expireSeconds, val.data(), (size_t)val.size());
-        } else {
-            r = (redisReply *)redisCommand(c, "SET %s %b", k.c_str(), val.data(), (size_t)val.size());
-        }
+        if (expireSeconds > 0)
+            r = rc.command("SETEX %s %d %b", k.c_str(), expireSeconds, val.data(), (size_t)val.size());
+        else
+            r = rc.command("SET %s %b", k.c_str(), val.data(), (size_t)val.size());
         if (!r) {
             rc.markBad();
             ELOG_ERROR("Redis", "SETEX failed (null reply), key=" + key);
             return false;
         }
-        // type=5(STATUS "+OK") 或 type=1(STRING "OK") 均视为成功；type=6 才是真实错误
         bool ok = (r->type != REDIS_REPLY_ERROR);
         if (!ok) ELOG_ERROR("Redis", std::string("SETEX error: ")
                             + (r->str ? r->str : "unknown") + " key=" + key);
@@ -192,11 +202,9 @@ namespace {
 
     inline std::optional<std::string> redisGet(const std::string &key) {
         auto &rc = RedisConn::instance();
-        auto *c = rc.ctx();
-        if (!c) return std::nullopt;
         const auto k = rc.prefixKey(key);
 
-        auto *r = (redisReply *)redisCommand(c, "GET %s", k.c_str());
+        auto *r = rc.command("GET %s", k.c_str());
         if (!r) { rc.markBad(); return std::nullopt; }
         if (r->type == REDIS_REPLY_NIL) { freeReplyObject(r); return std::nullopt; }
         if (r->type != REDIS_REPLY_STRING) { freeReplyObject(r); return std::nullopt; }
@@ -207,10 +215,8 @@ namespace {
 
     inline void redisDel(const std::string &key) {
         auto &rc = RedisConn::instance();
-        auto *c = rc.ctx();
-        if (!c) return;
         const auto k = rc.prefixKey(key);
-        auto *r = (redisReply *)redisCommand(c, "DEL %s", k.c_str());
+        auto *r = rc.command("DEL %s", k.c_str());
         if (!r) { rc.markBad(); return; }
         freeReplyObject(r);
     }
@@ -218,13 +224,11 @@ namespace {
     inline std::vector<std::string> redisKeysByPrefix(const std::string &prefix) {
         std::vector<std::string> out;
         auto &rc = RedisConn::instance();
-        auto *c = rc.ctx();
-        if (!c) return out;
 
         // Note: KEYS is fine for small deployments; for large scale use SCAN.
         const auto pfx = rc.prefixKey(prefix);
         std::string pattern = pfx + "*";
-        auto *r = (redisReply *)redisCommand(c, "KEYS %s", pattern.c_str());
+        auto *r = rc.command("KEYS %s", pattern.c_str());
         if (!r) { rc.markBad(); return out; }
         if (r->type != REDIS_REPLY_ARRAY) { freeReplyObject(r); return out; }
         auto cfg = loadRedisConfig();

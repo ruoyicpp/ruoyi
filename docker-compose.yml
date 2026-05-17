@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  ruoyi-cpp:
+    build: .
+    container_name: ruoyi-cpp
+    ports:
+      - "18080:18080"
+    environment:
+      TZ: Asia/Shanghai
+      # 敏感配置通过环境变量注入，config.json 中对应字段留空即可
+      RUOYI_DATABASE_HOST: postgres
+      RUOYI_DATABASE_PASSWD: ${DB_PASSWORD:-ruoyi123}
+      RUOYI_REDIS_HOST: redis
+    volumes:
+      - ./config.json:/opt/ruoyi-cpp/config.json:ro
+      - ruoyi_uploads:/opt/ruoyi-cpp/upload
+      - ruoyi_logs:/opt/ruoyi-cpp/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: ruoyi-postgres
+    environment:
+      POSTGRES_DB: ruoyi.c
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ruoyi123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ruoyi.c"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ruoyi-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
+  ruoyi_uploads:
+  ruoyi_logs:

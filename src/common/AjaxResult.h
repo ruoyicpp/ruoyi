@@ -126,9 +126,16 @@ public:
 
 #define RESP_MSG(cb, msg)    (cb)(drogon::HttpResponse::newHttpJsonResponse(AjaxResult::success(std::string(msg))))
 
-#define RESP_ERR(cb, msg)    (cb)(drogon::HttpResponse::newHttpJsonResponse(AjaxResult::error(std::string(msg))))
+#define RESP_ERR(cb, msg)    do { \
+    auto __re = drogon::HttpResponse::newHttpJsonResponse(AjaxResult::error(std::string(msg))); \
+    __re->addHeader("X-Business-Code", "500"); \
+    (cb)(__re); } while(0)
 
-#define RESP_401(cb)         (cb)(drogon::HttpResponse::newHttpJsonResponse(AjaxResult::error(401,"授权失败")))
+#define RESP_401(cb)         do { \
+    auto __re = drogon::HttpResponse::newHttpJsonResponse(AjaxResult::error(401,"授权失败")); \
+    __re->setStatusCode(drogon::k401Unauthorized); \
+    __re->addHeader("X-Business-Code", "401"); \
+    (cb)(__re); } while(0)
 
 #define RESP_JSON(cb, json)  (cb)(drogon::HttpResponse::newHttpJsonResponse(json))
 

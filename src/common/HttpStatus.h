@@ -169,9 +169,13 @@ namespace HttpResult {
 // 扩展宏（原有 RESP_OK / RESP_ERR / RESP_401 / RESP_MSG 完全保留不变）
 // ════════════════════════════════════════════════════════════════════════════
 
-// 语义化状态码响应（JSON body code = 业务码，HTTP 层统一 200）
+// 语义化状态码响应（HTTP 层 200，JSON body code = 业务码，X-Business-Code 头 F12 可见）
 #define RESP_CODE(cb, code, msg) \
-    (cb)(drogon::HttpResponse::newHttpJsonResponse(HttpResult::make((code), std::string(msg))))
+    do { \
+        auto __rc = drogon::HttpResponse::newHttpJsonResponse(HttpResult::make((code), std::string(msg))); \
+        __rc->addHeader("X-Business-Code", std::to_string(code)); \
+        (cb)(__rc); \
+    } while(0)
 
 // 带 data 的语义化响应
 #define RESP_CODE_DATA(cb, code, msg, data) \
@@ -185,13 +189,14 @@ namespace HttpResult {
         (cb)(__r); \
     } while(0)
 
-// 常用快捷宏
-#define RESP_400(cb, msg)  RESP_CODE(cb, HttpStatus::BAD_REQUEST,      msg)
-#define RESP_403(cb)       RESP_CODE(cb, HttpStatus::FORBIDDEN,        "无操作权限")
-#define RESP_404(cb, msg)  RESP_CODE(cb, HttpStatus::NOT_FOUND,        msg)
-#define RESP_422(cb, msg)  RESP_CODE(cb, HttpStatus::UNPROCESSABLE,    msg)
-#define RESP_429(cb)       RESP_CODE(cb, HttpStatus::TOO_MANY_REQUESTS,"请求过于频繁")
-#define RESP_500(cb, msg)  RESP_CODE(cb, HttpStatus::INTERNAL_ERROR,   msg)
+// 常用快捷宏（HTTP 层统一 200，前端 success handler 读 JSON body code/msg）
+// 若需 F12 显示真实 HTTP 状态码，改用 RESP_HTTP 宏（仅适用于纯 RESTful 接口）
+#define RESP_400(cb, msg)  RESP_CODE(cb, HttpStatus::BAD_REQUEST,       msg)
+#define RESP_403(cb)       RESP_CODE(cb, HttpStatus::FORBIDDEN,         "无操作权限")
+#define RESP_404(cb, msg)  RESP_CODE(cb, HttpStatus::NOT_FOUND,         msg)
+#define RESP_422(cb, msg)  RESP_CODE(cb, HttpStatus::UNPROCESSABLE,     msg)
+#define RESP_429(cb)       RESP_CODE(cb, HttpStatus::TOO_MANY_REQUESTS, "请求过于频繁")
+#define RESP_500(cb, msg)  RESP_CODE(cb, HttpStatus::INTERNAL_ERROR,    msg)
 #define RESP_503(cb)       RESP_CODE(cb, HttpStatus::SERVICE_UNAVAILABLE,"服务暂不可用")
 #define RESP_201(cb, data) RESP_CODE_DATA(cb, HttpStatus::CREATED, "创建成功", data)
 
