@@ -345,13 +345,24 @@ private:
             double freeG  = (double)freeBytes.QuadPart  / 1073741824.0;
             double usedG  = totalG - freeG;
             if (totalG < 0.01) continue;
-            char fsName[MAX_PATH]={}, volName[MAX_PATH]={};
-            GetVolumeInformationA(root.c_str(), volName, MAX_PATH,
-                nullptr, nullptr, nullptr, fsName, MAX_PATH);
+            wchar_t fsNameW[MAX_PATH]={}, volNameW[MAX_PATH]={};
+            std::wstring wroot(root.begin(), root.end());
+            GetVolumeInformationW(wroot.c_str(), volNameW, MAX_PATH,
+                nullptr, nullptr, nullptr, fsNameW, MAX_PATH);
+            auto wToUtf8 = [](const wchar_t* ws) -> std::string {
+                if (!ws || !ws[0]) return "";
+                int n = WideCharToMultiByte(CP_UTF8, 0, ws, -1, nullptr, 0, nullptr, nullptr);
+                if (n <= 1) return "";
+                std::string s(n - 1, '\0');
+                WideCharToMultiByte(CP_UTF8, 0, ws, -1, &s[0], n, nullptr, nullptr);
+                return s;
+            };
+            std::string fsName  = wToUtf8(fsNameW);
+            std::string volName = wToUtf8(volNameW);
             Json::Value d;
             d["dirName"]     = root;
-            d["sysTypeName"] = fsName[0]  ? std::string(fsName)  : "NTFS";
-            d["typeName"]    = volName[0] ? std::string(volName) : "本地硬盘";
+            d["sysTypeName"] = !fsName.empty()  ? fsName  : "NTFS";
+            d["typeName"]    = !volName.empty() ? volName : "本地硬盘";
             d["total"]       = toGB(totalG);
             d["free"]        = toGB(freeG);
             d["used"]        = toGB(usedG);
