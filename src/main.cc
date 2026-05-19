@@ -2201,6 +2201,9 @@ load();
             std::cout << "[Cluster] worker 模式，跳过 JobScheduler/Nginx/DDNSGo/KoboldCpp" << std::endl;
         }
 
+        // ── 启动时从 DB 加载 IoT 设备 ──────────────────────────────────────────
+        IotCtrl::loadFromDb();
+
         // ── 启动时从 sys_token 恢复在线会话（Token 持久化）────────────────────
         {
             auto& db = DatabaseService::instance();

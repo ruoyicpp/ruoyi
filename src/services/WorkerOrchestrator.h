@@ -21,6 +21,7 @@
 #pragma once
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -68,12 +69,16 @@ private:
         std::chrono::steady_clock::time_point lastStartedAt{};
 #ifdef _WIN32
         HANDLE hProc = nullptr;
+        HANDLE hStopEvent = nullptr;  // 命名事件：通知子进程优雅退出
         DWORD  pid   = 0;
 #else
         int pid = 0;
 #endif
         bool   isAlive() const;
     };
+
+    // 子进程调用：监听父进程发来的退出事件，触发时调用 callback
+    static void watchStopEvent(std::function<void()> callback);
 
     bool spawnWorker(WorkerSlot& slot);
     bool killWorker(WorkerSlot& slot, bool graceful, int waitMs);
@@ -86,5 +91,6 @@ private:
 
 #ifdef _WIN32
     HANDLE              hJob_ = nullptr;
+    static std::string stopEventName(DWORD pid);
 #endif
 };

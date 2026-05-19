@@ -360,6 +360,7 @@ public:
         if (info.tableName.empty()) { RESP_ERR(cb, "表不存在"); return; }
         Json::Value data;
         data["vue/index.vue"]                                = genVue(info);
+        data["vue3/index.vue"]                               = genVue3(info);
         data["src/controller/" + info.className + "Ctrl.h"]  = genController(info);
         data["src/service/"    + info.className + "Service.h"] = genService(info);
         data["sql/"            + info.tableName + ".sql"]     = genSql(info);
@@ -958,6 +959,120 @@ private:
         o << "    handleExport() {\n";
         o << "      this.$modal.confirm('确认导出所有数据项？').then(() => export" << Cls << "(this.queryParams))\n    }\n";
         o << "  }\n}\n</script>\n";
+        return o.str();
+    }
+
+    // ── Vue 3 Composition API 模板 ──────────────────────────────────────────────
+    std::string genVue3(const TableInfo& t) {
+        std::ostringstream o;
+        std::string pk   = t.pkCol() ? t.pkCol()->javaField : "id";
+        std::string Cls  = t.className;
+        std::string perm = t.moduleName + ":" + t.businessName;
+
+        std::vector<const ColInfo*> queryFields, editFields, listFields;
+        for (auto& c : t.columns) {
+            if (c.isQuery && !c.isPk) queryFields.push_back(&c);
+            if (c.isEdit  && !c.isPk) editFields.push_back(&c);
+            if (c.isList  && !c.isPk) listFields.push_back(&c);
+        }
+
+        // template
+        o << "<template>\n  <div class=\"app-container\">\n";
+        if (!queryFields.empty()) {
+            o << "    <el-form :model=\"queryParams\" ref=\"queryFormRef\" :inline=\"true\">\n";
+            for (auto* c : queryFields) {
+                o << "      <el-form-item label=\"" << c->colComment << "\" prop=\"" << c->javaField << "\">\n";
+                o << "        <el-input v-model=\"queryParams." << c->javaField
+                  << "\" placeholder=\"请输入" << c->colComment << "\" clearable @keyup.enter=\"handleQuery\" />\n";
+                o << "      </el-form-item>\n";
+            }
+            o << "      <el-form-item>\n";
+            o << "        <el-button type=\"primary\" :icon=\"Search\" @click=\"handleQuery\">搜索</el-button>\n";
+            o << "        <el-button :icon=\"Refresh\" @click=\"resetQuery\">重置</el-button>\n";
+            o << "      </el-form-item>\n";
+            o << "    </el-form>\n";
+        }
+        // toolbar
+        o << "    <el-row :gutter=\"10\" class=\"mb8\">\n";
+        o << "      <el-col :span=\"1.5\"><el-button type=\"primary\" plain :icon=\"Plus\" @click=\"handleAdd\" v-hasPermi=\"['" << perm << ":add']\">新增</el-button></el-col>\n";
+        o << "    </el-row>\n";
+        // table
+        o << "    <el-table v-loading=\"loading\" :data=\"list\">\n";
+        o << "      <el-table-column type=\"selection\" width=\"55\" align=\"center\" />\n";
+        for (auto* c : listFields)
+            o << "      <el-table-column prop=\"" << c->javaField << "\" label=\"" << c->colComment << "\" align=\"center\" />\n";
+        o << "      <el-table-column label=\"操作\" align=\"center\" width=\"200\">\n";
+        o << "        <template #default=\"{ row }\">\n";
+        o << "          <el-button link type=\"primary\" :icon=\"Edit\" @click=\"handleUpdate(row)\" v-hasPermi=\"['" << perm << ":edit']\">修改</el-button>\n";
+        o << "          <el-button link type=\"primary\" :icon=\"Delete\" @click=\"handleDelete(row)\" v-hasPermi=\"['" << perm << ":remove']\">删除</el-button>\n";
+        o << "        </template>\n";
+        o << "      </el-table-column>\n";
+        o << "    </el-table>\n";
+        o << "    <pagination v-show=\"total > 0\" :total=\"total\" v-model:page=\"queryParams.pageNum\" v-model:limit=\"queryParams.pageSize\" @pagination=\"getList\" />\n";
+        // dialog
+        o << "    <el-dialog :title=\"title\" v-model=\"open\" width=\"500px\" append-to-body>\n";
+        o << "      <el-form ref=\"formRef\" :model=\"form\" :rules=\"rules\" label-width=\"100px\">\n";
+        for (auto* c : editFields) {
+            o << "        <el-form-item label=\"" << c->colComment << "\" prop=\"" << c->javaField << "\">\n";
+            if (!c->dictType.empty()) {
+                o << "          <el-select v-model=\"form." << c->javaField << "\" placeholder=\"请选择" << c->colComment << "\">\n";
+                o << "            <el-option v-for=\"d in " << c->dictType << "\" :key=\"d.value\" :label=\"d.label\" :value=\"d.value\" />\n";
+                o << "          </el-select>\n";
+            } else if (c->htmlType == "textarea") {
+                o << "          <el-input v-model=\"form." << c->javaField << "\" type=\"textarea\" placeholder=\"请输入" << c->colComment << "\" />\n";
+            } else {
+                o << "          <el-input v-model=\"form." << c->javaField << "\" placeholder=\"请输入" << c->colComment << "\" />\n";
+            }
+            o << "        </el-form-item>\n";
+        }
+        o << "      </el-form>\n";
+        o << "      <template #footer>\n";
+        o << "        <el-button type=\"primary\" @click=\"submitForm\">确 定</el-button>\n";
+        o << "        <el-button @click=\"open = false\">取 消</el-button>\n";
+        o << "      </template>\n";
+        o << "    </el-dialog>\n";
+        o << "  </div>\n</template>\n\n";
+
+        // script setup
+        o << "<script setup>\n";
+        o << "import { ref, reactive, onMounted } from 'vue'\n";
+        o << "import { Search, Refresh, Plus, Edit, Delete } from '@element-plus/icons-vue'\n";
+        o << "import { list" << Cls << ", get" << Cls << ", add" << Cls
+          << ", update" << Cls << ", del" << Cls << " } from '@/api/" << t.moduleName << "/" << t.businessName << "'\n";
+        o << "import { ElMessage, ElMessageBox } from 'element-plus'\n\n";
+        o << "const loading = ref(false)\n";
+        o << "const total = ref(0)\n";
+        o << "const list = ref([])\n";
+        o << "const open = ref(false)\n";
+        o << "const title = ref('')\n";
+        o << "const queryFormRef = ref(null)\n";
+        o << "const formRef = ref(null)\n\n";
+        o << "const queryParams = reactive({ pageNum: 1, pageSize: 10";
+        for (auto* c : queryFields) o << ", " << c->javaField << ": undefined";
+        o << " })\n";
+        o << "const form = ref({})\n";
+        o << "const rules = reactive({\n";
+        bool first = true;
+        for (auto& c : t.columns) {
+            if (!c.isEdit || c.isPk) continue;
+            if (!first) o << ",\n"; first = false;
+            o << "  " << c.javaField << ": [{ required: true, message: '请输入" << c.colComment << "', trigger: 'blur' }]";
+        }
+        o << "\n})\n\n";
+        // methods
+        o << "function getList() {\n  loading.value = true\n";
+        o << "  list" << Cls << "(queryParams).then(res => {\n    list.value = res.rows\n    total.value = res.total\n    loading.value = false\n  })\n}\n\n";
+        o << "function handleQuery() { queryParams.pageNum = 1; getList() }\n";
+        o << "function resetQuery() { queryFormRef.value?.resetFields(); handleQuery() }\n";
+        o << "function handleAdd() { form.value = {}; open.value = true; title.value = '新增" << t.tableComment << "' }\n";
+        o << "function handleUpdate(row) {\n  get" << Cls << "(row." << pk << ").then(res => {\n    form.value = res.data\n    open.value = true\n    title.value = '修改" << t.tableComment << "'\n  })\n}\n";
+        o << "function submitForm() {\n  formRef.value?.validate(valid => {\n    if (!valid) return\n";
+        o << "    const fn = form.value." << pk << " ? update" << Cls << " : add" << Cls << "\n";
+        o << "    fn(form.value).then(() => {\n      ElMessage.success(form.value." << pk << " ? '修改成功' : '新增成功')\n      open.value = false\n      getList()\n    })\n  })\n}\n";
+        o << "function handleDelete(row) {\n  ElMessageBox.confirm('确认删除选中数据项？').then(() =>\n";
+        o << "    del" << Cls << "(row." << pk << ").then(() => { getList(); ElMessage.success('删除成功') }))\n}\n\n";
+        o << "onMounted(() => getList())\n";
+        o << "</script>\n";
         return o.str();
     }
 

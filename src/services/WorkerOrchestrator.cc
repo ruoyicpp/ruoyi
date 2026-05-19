@@ -124,6 +124,11 @@ bool WorkerOrchestrator::spawnWorker(WorkerSlot& slot) {
     CloseHandle(pi.hThread);
     slot.hProc = pi.hProcess;
     slot.pid   = pi.dwProcessId;
+
+    // 创建命名事件用于优雅退出通知
+    std::string evName = stopEventName(slot.pid);
+    slot.hStopEvent = CreateEventA(nullptr, TRUE, FALSE, evName.c_str());
+
     LOG_INFO << "[Orchestrator] worker[" << slot.index << "] spawned pid=" << slot.pid;
     std::cout << "[Orchestrator] worker[" << slot.index << "] spawned pid=" << slot.pid << std::endl;
     return true;
@@ -152,15 +157,21 @@ bool WorkerOrchestrator::spawnWorker(WorkerSlot& slot) {
 bool WorkerOrchestrator::killWorker(WorkerSlot& slot, bool graceful, int waitMs) {
 #ifdef _WIN32
     if (!slot.hProc) return true;
-    if (graceful) {
-        // Windows 没有信号，给子进程发 CTRL_BREAK 是受 process group 限制的
-        // 简化：直接 TerminateProcess（drogon 会在 dtor 中清理）
-        // 高级方案：设置一个命名事件让子进程主动 quit（留 TODO）
-        TerminateProcess(slot.hProc, 0);
+    if (graceful && slot.hStopEvent) {
+        // 通过命名事件通知子进程优雅退出
+        SetEvent(slot.hStopEvent);
+        DWORD rc = WaitForSingleObject(slot.hProc, waitMs);
+        if (rc == WAIT_TIMEOUT) {
+            LOG_WARN << "[Orchestrator] worker[" << slot.index
+                     << "] did not exit gracefully, force kill";
+            TerminateProcess(slot.hProc, 1);
+            WaitForSingleObject(slot.hProc, 1000);
+        }
     } else {
         TerminateProcess(slot.hProc, 1);
+        WaitForSingleObject(slot.hProc, waitMs);
     }
-    WaitForSingleObject(slot.hProc, waitMs);
+    if (slot.hStopEvent) { CloseHandle(slot.hStopEvent); slot.hStopEvent = nullptr; }
     CloseHandle(slot.hProc);
     slot.hProc = nullptr;
     slot.pid = 0;
@@ -265,4 +276,32 @@ int WorkerOrchestrator::run(const Config& cfg) {
 
     LOG_INFO << "[Orchestrator] all workers stopped, exiting";
     return 0;
+}
+
+#ifdef _WIN32
+std::string WorkerOrchestrator::stopEventName(DWORD pid) {
+    return "Global\\RUOYI_WORKER_STOP_" + std::to_string(pid);
+}
+#endif
+
+void WorkerOrchestrator::watchStopEvent(std::function<void()> callback) {
+#ifdef _WIN32
+    DWORD myPid = GetCurrentProcessId();
+    std::string evName = "Global\\RUOYI_WORKER_STOP_" + std::to_string(myPid);
+    HANDLE hEv = OpenEventA(SYNCHRONIZE, FALSE, evName.c_str());
+    if (!hEv) {
+        // 如果事件还不存在（非编排器启动），创建它以便后续可以被 signal
+        hEv = CreateEventA(nullptr, TRUE, FALSE, evName.c_str());
+    }
+    if (!hEv) return;
+
+    std::thread([hEv, cb = std::move(callback)]() {
+        WaitForSingleObject(hEv, INFINITE);
+        CloseHandle(hEv);
+        if (cb) cb();
+    }).detach();
+#else
+    // Linux 用 SIGTERM，已在信号处理中覆盖，无需额外操作
+    (void)callback;
+#endif
 }

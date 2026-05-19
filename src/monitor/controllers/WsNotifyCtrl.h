@@ -2,6 +2,8 @@
 #include <drogon/WebSocketController.h>
 #include <drogon/HttpRequest.h>
 #include <algorithm>
+#include <chrono>
+#include <deque>
 #include <unordered_map>
 #include <vector>
 #include <mutex>
@@ -30,6 +32,23 @@ public:
     // ── 新连接建立 ──────────────────────────────────────────────────────────
     void handleNewConnection(const drogon::HttpRequestPtr &req,
                              const drogon::WebSocketConnectionPtr &conn) override {
+        // ── rate limit：同一 IP 每分钟最多 10 次 WS 握手 ──────────────────
+        {
+            std::string ip = req->peerAddr().toIp();
+            std::lock_guard<std::mutex> lk(rateMu());
+            auto &rec = wsRate()[ip];
+            auto now = std::chrono::steady_clock::now();
+            // 清除超过 60s 的记录
+            while (!rec.empty() && (now - rec.front()) > std::chrono::seconds(60))
+                rec.pop_front();
+            if (rec.size() >= 10) {
+                conn->send("{\"type\":\"error\",\"msg\":\"连接过于频繁，请稍后再试\"}");
+                conn->shutdown();
+                return;
+            }
+            rec.push_back(now);
+        }
+
         long userId = 0;
         std::string uuid;
 
@@ -117,6 +136,11 @@ private:
         long        userId;
         ConnCtx(std::string u, long i) : tokenUuid(std::move(u)), userId(i) {}
     };
+
+    // ── WS 握手 rate limit（per-IP 滑动窗口）────────────────────────────────
+    using RateMap = std::unordered_map<std::string, std::deque<std::chrono::steady_clock::time_point>>;
+    static RateMap& wsRate()   { static RateMap m; return m; }
+    static std::mutex& rateMu() { static std::mutex m; return m; }
 
     // ── 连接池（userId → weak_ptr 列表，支持多端登录）──────────────────────
     using ConnMap = std::unordered_map<long, std::vector<std::weak_ptr<drogon::WebSocketConnection>>>;

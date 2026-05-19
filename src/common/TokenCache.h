@@ -29,8 +29,6 @@ namespace {
     inline RedisConfig loadRedisConfig() {
         RedisConfig cfg;
         try {
-    // Token 缓存（内存）
-    // Token 缓存（内存）
             std::ifstream cfgFile("config.json");
             if (!cfgFile.is_open()) return cfg;
             Json::Value root;
@@ -45,9 +43,17 @@ namespace {
             cfg.password = rc.get("password", "").asString();
             cfg.db = rc.get("db", 0).asInt();
             cfg.keyPrefix = rc.get("key_prefix", "").asString();
-        } catch (...) {
-            // ignore config errors and fall back to memory cache
-        }
+        } catch (...) {}
+
+        // 环境变量覆盖敏感字段（优先级高于 config.json）
+        auto envOr = [](const char* name, std::string& out) {
+            const char* v = std::getenv(name);
+            if (v && *v) out = v;
+        };
+        envOr("RUOYI_REDIS_PASSWORD", cfg.password);
+        envOr("RUOYI_REDIS_HOST",     cfg.host);
+        const char* ep = std::getenv("RUOYI_REDIS_PORT");
+        if (ep && *ep) try { cfg.port = std::stoi(ep); } catch(...) {}
         return cfg;
     }
 
@@ -81,8 +87,12 @@ namespace {
             int cur = ok ? 1 : 0;
             int prev = lastAvail_.exchange(cur);
             if (prev != -1 && prev != cur) {
-                if (ok) std::cout << "[Cache] Redis is available, switch to redis" << std::endl;
-                else    std::cout << "[Cache] Redis is unavailable, fallback to memory" << std::endl;
+                if (ok) {
+                    std::cout << "[Cache] Redis is available, switch to redis" << std::endl;
+                    needSync_.store(true);
+                } else {
+                    std::cout << "[Cache] Redis is unavailable, fallback to memory" << std::endl;
+                }
             }
             return ok;
         }
@@ -178,6 +188,11 @@ namespace {
         Slot pool_[POOL_SIZE];
         std::atomic<unsigned> robin_{0};
         std::atomic<int> lastAvail_{-1};
+        std::atomic<bool> needSync_{false};
+
+    public:
+        // Redis 恢复后是否需要回写内存数据
+        bool consumeNeedSync() { return needSync_.exchange(false); }
     };
 
     inline bool redisSetEx(const std::string &key, const std::string &val, int expireSeconds) {
@@ -292,6 +307,8 @@ public:
             return LoginUser::fromJson(v);
         };
         if (RedisConn::instance().available()) {
+            // Redis 恢复时回写内存中的 token
+            if (RedisConn::instance().consumeNeedSync()) syncToRedis();
             auto s = redisGet(key);
             if (s) return parseJson(*s);
         } else if (VramCache::instance().available()) {
@@ -390,6 +407,28 @@ public:
     }
 
 private:
+    void syncToRedis() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto now = std::chrono::steady_clock::now();
+        Json::FastWriter w;
+        int synced = 0;
+        for (auto it = store_.begin(); it != store_.end(); ) {
+            if (now > it->second.expireAt) {
+                it = store_.erase(it);
+                continue;
+            }
+            auto remainSec = (int)std::chrono::duration_cast<std::chrono::seconds>(
+                it->second.expireAt - now).count();
+            if (remainSec > 0) {
+                redisSetEx(it->first, w.write(it->second.json), remainSec);
+                ++synced;
+            }
+            ++it;
+        }
+        if (synced > 0)
+            std::cout << "[TokenCache] synced " << synced << " tokens to Redis" << std::endl;
+    }
+
     struct Entry {
         Json::Value json;
         std::chrono::steady_clock::time_point expireAt;

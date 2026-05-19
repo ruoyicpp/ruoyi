@@ -42,11 +42,8 @@ public:
             RESP_ERR(cb, "不支持的provider"); return;
         }
         auto [url, state] = OAuth2Manager::instance().buildAuthUrl(provider);
-        // 存 state（60s 过期）
-        drogon::app().getLoop()->runAfter(60.0, [state](){
-            // state 自动失效（简单实现用 MemCache）
-        });
-        stateCache_[state] = provider;
+        // 存 state（60s 过期，通过 MemCache 支持 Redis 持久化）
+        MemCache::instance().setString("oauth2:state:" + state, provider, 60);
 
         Json::Value data; data["url"] = url; data["state"] = state;
         Json::Value r = AjaxResult::success(); r["data"] = data;
@@ -60,12 +57,12 @@ public:
         std::string code  = req->getParameter("code");
         std::string state = req->getParameter("state");
 
-        // 验证 state
-        auto it = stateCache_.find(state);
-        if (it == stateCache_.end() || it->second != provider) {
+        // 验证 state（从 MemCache/Redis 读取）
+        auto cached = MemCache::instance().getString("oauth2:state:" + state);
+        if (!cached || *cached != provider) {
             RESP_ERR(cb, "state验证失败，请重新登录"); return;
         }
-        stateCache_.erase(it);
+        MemCache::instance().remove("oauth2:state:" + state);
 
         if (code.empty()) { RESP_ERR(cb, "授权码为空"); return; }
 
@@ -210,6 +207,4 @@ private:
         return out;
     }
 
-    // 简单 state 缓存（生产环境应用 MemCache/Redis）
-    static inline std::map<std::string, std::string> stateCache_;
 };

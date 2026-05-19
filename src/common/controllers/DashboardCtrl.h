@@ -31,7 +31,7 @@ public:
 #else
         localtime_r(&tt, &tm_buf);
 #endif
-        char today[16];
+        char today[32];
         snprintf(today, sizeof(today), "%04d-%02d-%02d",
                  tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday);
 
