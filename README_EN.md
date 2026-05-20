@@ -4,7 +4,7 @@ English | [中文](README.md)
 
 # RuoYi-Cpp
 
-**A High-Performance C++ Version of the RuoYi Management Framework**
+**A High-Performance C++ Version of the RuoYi Management Framework** · `v1.3.0`
 
 Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% compatible with the RuoYi-Vue frontend
 
@@ -26,6 +26,16 @@ Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% 
 [![OAuth2](https://img.shields.io/badge/OAuth2-GitHub%20%7C%20Google%20%7C%20DingTalk%20%7C%20Feishu-4A90E2.svg)]()
 
 </div>
+
+---
+
+## Live Demo
+
+🌐 **v1.3.0 Demo**: [https://ruoyi1.mymq.site:20443](https://ruoyi1.mymq.site:20443)
+
+🌐 **v1.2.x Demo**: [https://ruoyi.mymq.site](https://ruoyi.mymq.site)
+
+> Default credentials: `admin` / `admin123`
 
 ---
 
@@ -534,7 +544,32 @@ Issues and Pull Requests are welcome!
 
 ## Changelog
 
-### v1.2.0 (current)
+### v1.3.0 (current)
+
+- **Domain / HTTPS access**: new `_listeners_https_example` in `config.json` covering local / public HTTP / public HTTPS listener modes; manual certificates (`.crt` + `.key`) from cloud providers (Tencent Cloud, etc.) mounted directly in listeners, zero extra dependencies
+- **InnerLink menu URL auto-replacement** (`menu.api_base_url`): on startup, automatically replaces all `localhost` URLs in InnerLink menus with the configured public domain — no manual menu editing needed
+- **ACME certificate notes**: full comments in `acme` config block clarifying that port 80 must use `https=false` (HTTP-01 challenge), while 443/custom ports enable HTTPS
+- **Deployment guide** (`build-nginx/部署说明.md`): covers local / public HTTP / HTTPS modes, SSL certificate format selection, frontend build & deploy, common ports
+- **Fix disk volume label garbled text + heap crash** (`ServerCtrl.h`): `GetVolumeInformationA` → `GetVolumeInformationW` + `WideCharToMultiByte(CP_UTF8)`, fixing GBK mojibake on Chinese Windows and eliminating jsoncpp heap corruption on non-UTF8 bytes
+- **WebSocket auto-reconnect** (`App.vue`): exponential backoff (2s → 4s → ... → 30s max), auto-resubscribe after disconnect
+- **Swagger API docs expansion**: added OpenAPI tags and paths for IoT devices, AI/ONNX inference, SM2/SM3/SM4 crypto, OAuth2, code generation, dashboard modules
+- **IoT device startup loading** (`main.cc`): calls `IotCtrl::loadFromDb()` on startup to restore device list from database
+- **New unit tests**: `test_token_cache` (set/get/remove/update/size), `test_rate_limiter` (normal/block/whitelist/disable), integrated into `RUOYI_BUILD_HEAVY_TESTS`
+- **DashboardCtrl fix**: `char today[16]` → `char today[32]`, eliminating Linux glibc fortify buffer overflow warning
+
+### v1.2.1
+- **Restart service management page**: `GET /monitor/restart` — pure backend-rendered HTML page; admin can check online user count before confirming restart; token auto-read from same-origin iframe `sessionStorage`
+- **Fix HTTP_HIDE production 404 bug**: removed `HTTP_HIDE` macro from `SysRestartCtrl` that caused restart endpoints to return 404 in Release builds
+- **Notification center** (f15): DingTalk / Feishu / WeCom Webhook (HMAC-SHA256 signed) + in-app messages
+- **API Key management** (f16): `/system/apikey/**` CRUD, 48-char random key, `X-API-Key` header or `?apiKey=` query param auth
+- **Audit enhancement** (f17): `sys_oper_log` gains `before_data`/`after_data` fields; `diffJson()` records only changed fields
+- **SQLite dual-layer encryption**: page-level (sqlite3mc) + file-level (RYENC1 AES-256-GCM) fallback; see `docs/SQLITE_ENCRYPTION.md`
+- **SQLite cipher CLI tool**: encrypt / decrypt / rekey / check / selftest subcommands
+- **Unread notice badge API**: `sys_notice_read` table + `GET /system/notice/unreadCount`
+- **Graceful shutdown**: `POST /actuator/shutdown` (loopback only)
+- **Unit tests + CI**: `test_sqlite_file_cipher` 10 cases / 57 assertions; GitHub Actions 3-platform CI
+
+### v1.2.0
 - **OAuth2 third-party login**: GitHub / Google / WeCom / DingTalk / Feishu / QQ; CSRF-state protection; auto-register on first login; bind/unbind for existing accounts (`sys_user_oauth` table)
 - **TOTP two-factor auth**: Google/Microsoft Authenticator, RFC 6238, pure OpenSSL
 - **LDAP/AD authentication**: enterprise SSO with `fallback_local` support
