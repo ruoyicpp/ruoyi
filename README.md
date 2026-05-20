@@ -4,7 +4,7 @@
 
 # RuoYi-Cpp
 
-**RuoYi 管理框架的 C++ 高性能版本**
+**RuoYi 管理框架的 C++ 高性能版本** · `v1.3.0`
 
 基于 [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL，与 RuoYi-Vue 前端 100% 兼容
 
@@ -31,7 +31,9 @@
 
 ## 在线演示
 
-🌐 **演示地址**：[https://ruoyi.mymq.site](https://ruoyi.mymq.site)
+🌐 **v1.3.0 演示地址**：[https://ruoyi1.mymq.site:20443](https://ruoyi1.mymq.site:20443)
+
+🌐 **v1.2.x 演示地址**：[https://ruoyi.mymq.site](https://ruoyi.mymq.site)
 
 > 默认账号：`admin` / `admin123`
 
@@ -589,7 +591,20 @@ location /ws/ {
 
 ## 更新日志
 
-### v1.2.1（当前）
+### v1.3.0（当前）
+
+- **域名 / HTTPS 访问支持**：`config.json` 新增 `_listeners_https_example` 示例配置，说明本地/公网 HTTP/HTTPS 三种监听模式；腾讯云等云服务商手动证书（`.crt`+`.key`）直接挂载到 listeners，零额外依赖
+- **InnerLink 菜单 URL 自动替换**（`menu.api_base_url`）：部署到公网后程序启动时自动将数据库中所有 InnerLink 菜单的 `localhost` 地址批量替换为配置的公网域名，无需手动逐一修改菜单
+- **ACME 自动证书说明**：新增 `acme` 配置块完整注释，明确 80 端口必须 `https=false`（HTTP-01 验证），443/自定义端口开 HTTPS，防误配崩溃
+- **部署说明文档**（`build-nginx/部署说明.md`）：完整覆盖本地/公网 HTTP/HTTPS 三种模式、SSL 证书格式选择、前端打包部署、常用端口说明
+- **修复磁盘卷标乱码 + 堆崩溃**（`ServerCtrl.h`）：`GetVolumeInformationW` + `WideCharToMultiByte` 宽字节正确转换，替换原 `GetVolumeInformationA` 窄字节调用，消除非 ASCII 卷标下的堆损坏
+- **WebSocket 断线自动重连**（`App.vue`）：指数退避重连策略（最大 30s），连接断开后自动恢复订阅
+- **Swagger 接口文档补全**：新增 IoT 设备、AI/ONNX 推理、国密（SM2/SM3/SM4）、OAuth2、代码生成、仪表盘等模块的 OpenAPI 标签和路径描述
+- **IoT 设备启动加载**（`main.cc`）：启动时调用 `IotCtrl::loadFromDb()` 从数据库恢复设备列表，支持持久化
+- **新增单元测试**：`test_token_cache`（set/get/remove/update/size）、`test_rate_limiter`（正常请求/超限封禁/白名单/禁用），集成到 `RUOYI_BUILD_HEAVY_TESTS`
+- **DashboardCtrl 修复**：`char today[16]` → `char today[32]`，消除 Linux glibc fortify 缓冲区警告
+
+### v1.2.1
 - **重启服务管理页**：`GET /monitor/restart` 纯后端渲染 HTML 页面，管理员可查询在线人数后二次确认重启后端进程；token 从同源 iframe 的 `sessionStorage` 自动读取，无需 Vue 组件
 - **修复 HTTP_HIDE 生产 404 Bug**：`SysRestartCtrl` 原 `HTTP_HIDE` 宏在 Release 构建下将重启接口全部返回 404，已移除
 - **消息通知中心**（f15）：钉钉 / 飞书 / 企业微信 Webhook（HMAC-SHA256 签名）+ 站内消息，`/system/notify/channel/**` + `/system/message/**`
