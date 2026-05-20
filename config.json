@@ -1,0 +1,336 @@
+﻿{
+    "_listeners_comment": "访问模式说明：① 本地/局域网: port=18080, https=false → http://localhost:18080  ② 公网域名不带HTTPS: port=80, https=false → http://yourdomain.com  ③ 公网域名HTTPS: 保留80(ACME验证)+443或自定义端口, https=true, 同时启用 acme 块 → https://yourdomain.com",
+    "listeners":  [
+                      {
+                          "address":  "0.0.0.0",
+                          "port":  18080,
+                          "https":  false
+                      }
+                  ],
+    "_listeners_https_example":  [
+                                     {
+                                         "address":  "0.0.0.0",
+                                         "port":  80,
+                                         "https":  false,
+                                         "_comment":  "ACME HTTP-01 验证专用，证书申请成功后可关闭"
+                                     },
+                                     {
+                                         "address":  "0.0.0.0",
+                                         "port":  18080,
+                                         "https":  true,
+                                         "cert":  "nginx/ssl/server.crt",
+                                         "key":  "nginx/ssl/server.key"
+                                     }
+                                 ],
+    "ui":  {
+               "animated_banner":  true
+           },
+    "app":  {
+                "threads_num":  4,
+                "enable_session":  false,
+                "session_timeout":  0,
+                "document_root":  "./",
+                "upload_path":  "./upload",
+                "enable_server_header":  false,
+                "enable_date_header":  true,
+                "_reuse_port_comment":  "false=单进程多线程（默认推荐）。true=SO_REUSEPORT 多进程模式：可同时启动多份 ruoyi-cpp.exe，OS 内核分发连接。需 Windows 10 1809+/Linux 3.9+，且 nginx.conf 的 listen 行需带 reuseport。",
+                "reuse_port":  false,
+                "client_max_body_size":  "20M",
+                "client_max_memory_body_size":  "1M",
+                "keepalive_requests_number":  0,
+                "pipelining_requests_number":  0,
+                "log":  {
+                            "comment":  "log_path 设为空字符串以禁用 drogon 内置 AsyncFileLogger，由 JsonLogger 接管",
+                            "log_path":  "",
+                            "logfile_base_name":  "ruoyi",
+                            "log_size_limit":  104857600,
+                            "log_keep_files":  5,
+                            "log_level":  "INFO"
+                        }
+            },
+    "database":  {
+                     "host":  "127.0.0.1",
+                     "port":  5432,
+                     "dbname":  "ruoyi.c",
+                     "user":  "postgres",
+                     "passwd":  "0619LiuXinjie",
+                     "sqlite_path":  ""
+                 },
+    "sqlite":  {
+                   "enabled":  true,
+                   "path":  ""
+               },
+    "ruoyi":  {
+                  "name":  "RuoYi-Cpp",
+                  "version":  "1.0.0",
+                  "demo_enabled":  false,
+                  "profile":  "./upload",
+                  "address_enabled":  false
+              },
+    "jwt":  {
+                "secret":  "Z$7H5g#\u0026\u0026#uxzv6DyVxS%aJ%P4q*G$7uwM#Z",
+                "issuer":  "ruoyi.cpp.issuer",
+                "audience":  "ruoyi.cpp.audience",
+                "expire_minutes":  30,
+                "jwt_expire_days":  7
+            },
+    "user":  {
+                 "max_retry_count":  5,
+                 "lock_time_minutes":  15,
+                 "password_min_length":  5,
+                 "password_max_length":  20,
+                 "username_min_length":  2,
+                 "username_max_length":  20
+             },
+    "captcha":  {
+                    "enabled":  true,
+                    "expire_seconds":  120
+                },
+    "redis":  {
+                  "enabled":  true,
+                  "host":  "127.0.0.1",
+                  "port":  6379,
+                  "password":  "",
+                  "db":  0,
+                  "key_prefix":  ""
+              },
+    "ddns":  {
+                 "enabled":  false,
+                 "exe_path":  "ddns-go/ddns-go.exe",
+                 "config_path":  ".ddns_go_config.yaml",
+                 "frequency":  300,
+                 "listen":  ":39876",
+                 "no_web":  false,
+                 "skip_verify":  false,
+                 "show_window":  false
+             },
+    "nginx":  {
+                  "enabled":  false,
+                  "port":  18081,
+                  "exe_path":  "nginx/nginx.exe",
+                  "prefix":  "nginx/"
+              },
+    "koboldcpp":  {
+                      "enabled":  false,
+                      "launch_cmd":  "",
+                      "python":  "python",
+                      "work_dir":  "",
+                      "script":  "koboldcpp.py",
+                      "model_path":  "",
+                      "whisper_model":  "",
+                      "port":  5001,
+                      "threads":  4,
+                      "context_size":  2048,
+                      "blas_batch":  512,
+                      "use_gpu":  false,
+                      "gpu_layers":  0,
+                      "show_window":  false
+                  },
+    "upload":  {
+                   "max_file_mb":  10,
+                   "max_avatar_mb":  2
+               },
+    "frontend":  {
+                     "_comment":  "External-directory frontend hosting (dist_path). Disable when nginx reverse-proxies the frontend independently.",
+                     "enabled":  true,
+                     "dist_path":  "./web",
+                     "spa_mode":  true,
+                     "api_prefix":  "/prod-api",
+                     "cache_seconds":  3600
+                 },
+    "embedded_frontend":  {
+                              "_comment":  "Mutually exclusive with frontend.enabled. Requires cmake -DRUOYI_EMBED_FRONTEND=ON to compile frontend into exe.",
+                              "enabled":  false,
+                              "spa_mode":  true,
+                              "api_prefix":  "/prod-api"
+                          },
+    "menu":  {
+                 "_comment":  "Optional explicit override for the \u0027log viewer\u0027 menu URL. Empty = auto-derived from frontend/embedded_frontend at startup; dev-separate falls back to http://localhost:3000/dev-api/monitor/logfile/page.",
+                 "logfile_external_url":  ""
+             },
+    "nginx_embedded":  {
+                           "_comment":  "In-process nginx via static-linked libnginx.a (requires CMake -DRUOYI_USE_NGINX=ON). nginx fronts 80/443 with reverse_proxy to drogon backend. Independent of legacy \u0027nginx\u0027 subprocess config above.",
+                           "enabled":  false,
+                           "prefix":  "./nginx",
+                           "conf_file":  "conf/nginx.conf",
+                           "stop_timeout_ms":  5000,
+                           "_watchdog_comment":  "Watchdog thread: auto-restart nginx if it dies; auto-reload nginx.conf on file change. Polls every watch_interval_ms.",
+                           "auto_restart":  true,
+                           "max_restart_count":  5,
+                           "restart_backoff_ms":  3000,
+                           "watch_interval_ms":  2000,
+                           "auto_reload_on_change":  true,
+                           "reload_debounce_ms":  1500
+                       },
+    "acme":  {
+                 "_comment":  "Auto-renew TLS certificates via ACME (Let\u0027s Encrypt). Calls external win-acme.exe (Windows) or acme.sh (Linux) every check_interval_hours; renews when cert has \u003c renew_days_before days left, then triggers nginx reload. Domain must point to this server\u0027s public IP and port 80 must be reachable for HTTP-01 challenge.",
+                 "enabled":  false,
+                 "domains":  [
+                                 "yourdomain.com"
+                             ],
+                 "email":  "admin@yourdomain.com",
+                 "acme_bin":  "win-acme/wacs.exe",
+                 "staging":  false,
+                 "renew_days_before":  30,
+                 "check_interval_hours":  24,
+                 "cert_out":  "nginx/ssl/server.crt",
+                 "key_out":  "nginx/ssl/server.key",
+                 "reload_nginx_after":  true,
+                 "work_dir":  "win-acme"
+             },
+    "nginx_like":  {
+                       "_comment":  "Native in-process implementation of common nginx features. All disabled by default; enable individually.",
+                       "limit_conn":  {
+                                          "_comment":  "Per-IP concurrent connection cap. Rejects 429 when exceeded.",
+                                          "enabled":  false,
+                                          "max_per_ip":  50
+                                      },
+                       "ip_acl":  {
+                                      "_comment":  "Global IP whitelist/blacklist. CIDR supported (e.g. 10.0.0.0/8). default=allow|deny when no rule matches.",
+                                      "enabled":  false,
+                                      "default":  "allow",
+                                      "deny":  [
+
+                                               ],
+                                      "allow":  [
+
+                                                ]
+                                  },
+                       "proxy_pass":  [
+
+                                      ],
+                       "_proxy_pass_example":  [
+                                                   {
+                                                       "path_prefix":  "/upstream/api/",
+                                                       "upstream":  "http://127.0.0.1:9001",
+                                                       "strip_prefix":  true
+                                                   }
+                                               ],
+                       "access_log":  {
+                                          "_comment":  "nginx-combined format access log. Parse with GoAccess/AWStats.",
+                                          "enabled":  false,
+                                          "path":  "logs/access.log"
+                                      }
+                   },
+    "cors":  {
+                 "allow_origins":  [
+                                       "http://yourdomain.com:18080",
+                                       "http://localhost:18081",
+                                       "http://localhost:3000"
+                                   ],
+                 "allow_methods":  [
+                                       "GET",
+                                       "POST",
+                                       "PUT",
+                                       "DELETE",
+                                       "OPTIONS"
+                                   ],
+                 "allow_headers":  [
+                                       "Authorization",
+                                       "Content-Type",
+                                       "X-App-Id",
+                                       "X-Challenge-Token",
+                                       "X-Requested-With"
+                                   ],
+                 "expose_headers":  [
+                                        "access-token",
+                                        "x-access-token"
+                                    ],
+                 "allow_credentials":  true
+             },
+    "security":  {
+                     "hardware_bind":  {
+                                           "admin_unlock_key":  "RuoYi@Unlock#2026!ChangeMe"
+                                       },
+                     "license":  {
+                                     "expiry_check":  false
+                                 },
+                     "rate_limit":  {
+                                        "enabled":  true,
+                                        "max_requests":  200,
+                                        "window_seconds":  60,
+                                        "ban_seconds":  300,
+                                        "whitelist":  [
+                                                          "127.0.0.1",
+                                                          "::1",
+                                                          "0.0.0.0"
+                                                      ]
+                                    },
+                     "token_binding":  {
+                                           "check_ip":  false,
+                                           "check_ua":  true
+                                       },
+                     "sign_verify":  {
+                                         "enabled":  true,
+                                         "timestamp_tolerance":  300,
+                                         "apps":  [
+                                                      {
+                                                          "app_id":  "ruoyi-app",
+                                                          "secret":  "qnNLPXUDalDc0K33VfAEU5n8lIdegEXbcNlIWHRASg91aCJ8BKdtEkxMOvJaJS6d"
+                                                      }
+                                                  ]
+                                     },
+                     "xss_filter":  {
+                                        "enabled":  true,
+                                        "log_sql_injection":  true
+                                    },
+                     "sqlite":  {
+                                    "encryption":  {
+                                                       "enabled":  false,
+                                                       "source":  "hwid",
+                                                       "key":  "",
+                                                       "env_var":  "RUOYI_SQLITE_KEY",
+                                                       "vault_field":  "sqlite_key",
+                                                       "vault_salt_field":  "sqlite_salt",
+                                                       "pbkdf2_iter":  64000,
+                                                       "page_size":  4096,
+                                                       "cipher_kdf_iter":  256000,
+                                                       "allow_vault_fallback":  true
+                                                   }
+                                }
+                 },
+    "vram":  {
+                 "enabled":  false,
+                 "comment":  "GPU VRAM cache tier. Set enabled=false to skip CUDA detection."
+             },
+    "vault":  {
+                  "enabled":  true,
+                  "exe_path":  "g:\\back\\recovered\\ruoyi-cpp\\vault-main\\vault.exe",
+                  "config_file":  "g:\\back\\recovered\\ruoyi-cpp\\vault-main\\vault-config.json",
+                  "addr":  "http://127.0.0.1:8200",
+                  "token":  "hvs.AlZty5EA5W2O8Nljdh5tj7FN",
+                  "unseal_key":  "",
+                  "psql_exe":  "H:\\msys64\\msys64\\mingw64\\bin\\psql.exe",
+                  "unseal_keys":  [
+                                      "Ij9ZzbmxY0bXdZYMtyP9Ke6Sq6NEycTD99eaRbgEZyem",
+                                      "9p8+yFT/pcYK0JjDpSeIfel2lJUAZW9VemB3wJJ30ZJ0",
+                                      "N+VMTS88pX48D76p97Cv4/h4ONFr4A78O20CERQCLgQ9"
+                                  ],
+                  "auto_init":  false
+              },
+    "ai_fallback":  {
+                        "_comment":  "外部 AI fallback 链：按顺序依次尝试，第一个成功就用",
+                        "enabled":  true,
+                        "timeout_ms":  15000,
+                        "providers":  [
+                                          {
+                                              "name":  "turing",
+                                              "_comment":  "图灵机器人 (210ms, QPS 50/s)",
+                                              "url":  "https://v2.xxapi.cn",
+                                              "path":  "/api/turing",
+                                              "param":  "msg",
+                                              "answer_path":  "data",
+                                              "tokens_path":  ""
+                                          },
+                                          {
+                                              "name":  "spark-lite-1.5",
+                                              "_comment":  "讯飞星火 Lite (~4s, 质量好)",
+                                              "url":  "https://api.pearapi.ai",
+                                              "path":  "/api/xfai/",
+                                              "param":  "message",
+                                              "answer_path":  "data.answer",
+                                              "tokens_path":  "data.total_tokens"
+                                          }
+                                      ]
+                    }
+}
