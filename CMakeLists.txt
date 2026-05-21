@@ -48,6 +48,7 @@ if(WIN32)
     find_library(SSL_LIB      NAMES ssl     libssl     PATHS ${VCPKG_LIB_DIR} NO_DEFAULT_PATH)
     find_library(CRYPTO_LIB   NAMES crypto  libcrypto  PATHS ${VCPKG_LIB_DIR} NO_DEFAULT_PATH)
     find_library(HIREDIS_LIB  NAMES hiredis libhiredis PATHS ${VCPKG_LIB_DIR} NO_DEFAULT_PATH)
+    find_library(CURL_LIB     NAMES curl    libcurl    PATHS ${VCPKG_LIB_DIR} NO_DEFAULT_PATH)
     # c-ares：trantor 启用 TLS 重编后引入此依赖（异步 DNS 解析）
     # 优先匹配静态库 .a 避免运行时 DLL 依赖
     unset(CARES_LIB CACHE)
@@ -83,6 +84,7 @@ else()
     find_library(SQLITE3_LIB NAMES sqlite3)
     find_library(ZLIB_LIB    NAMES z)
     find_library(UUID_LIB    NAMES uuid)
+    find_library(CURL_LIB    NAMES curl)
     find_library(BROTLIENC_LIB    NAMES brotlienc)
     find_library(BROTLIDEC_LIB    NAMES brotlidec)
     find_library(BROTLICOMMON_LIB NAMES brotlicommon)
@@ -271,11 +273,12 @@ if(WIN32)
         ${JSONCPP_LIB}
         ${SSL_LIB}
         ${CRYPTO_LIB}
+        ${CURL_LIB}
         ${BROTLIENC_LIB}
         ${BROTLIDEC_LIB}
         ${BROTLICOMMON_LIB}
         ${ZLIB_LIB}
-        ws2_32 wsock32 crypt32 secur32 bcrypt
+        ws2_32 wsock32 crypt32 secur32 bcrypt winhttp
         iphlpapi userenv rpcrt4 shlwapi winpthread psapi dbghelp
     )
     # nginx 静态库（启用时追加；放在 SSL_LIB 之后让 nginx 自带 OpenSSL 优先）
@@ -386,6 +389,7 @@ else()
         $<IF:$<BOOL:${RUOYI_SQLITE3MC_ENABLED}>,sqlite3mc,${SQLITE3_LIB}>
         ${JSONCPP_LIBRARIES}
         ssl crypto
+        ${CURL_LIB}
         ${ZLIB_LIB}
         ${UUID_LIB}
         cares pthread dl

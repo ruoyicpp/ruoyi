@@ -137,13 +137,15 @@ namespace OperLogUtils {
         e.operName      = PermissionChecker::getUserName(req);
         e.url           = std::string(req->getPath());
         e.ip            = IpUtils::getIpAddr(req);
-        e.location      = IpUtils::getIpLocation(e.ip);
         e.param         = operParam.empty() ? getOperParam(req) : truncate(operParam);
         e.result        = truncate(jsonResult);
         e.errorMsg      = errorMsg;
         e.status        = status;
         e.costTime      = costTime;
-        AsyncQueue::instance().push(std::move(e));
+        IpUtils::getIpLocationAsync(e.ip, [e = std::move(e)](std::string loc) mutable {
+            e.location = std::move(loc);
+            AsyncQueue::instance().push(std::move(e));
+        });
     }
 
     //  审计增强：依靠 diffJson() 计算的 before/after 只记变更字段 ────
@@ -160,12 +162,14 @@ namespace OperLogUtils {
         e.operName      = PermissionChecker::getUserName(req);
         e.url           = std::string(req->getPath());
         e.ip            = IpUtils::getIpAddr(req);
-        e.location      = IpUtils::getIpLocation(e.ip);
         e.param         = getOperParam(req);
         e.beforeData    = truncate(beforeData, 4000);
         e.afterData     = truncate(afterData,  4000);
         e.costTime      = costTime;
-        AsyncQueue::instance().push(std::move(e));
+        IpUtils::getIpLocationAsync(e.ip, [e = std::move(e)](std::string loc) mutable {
+            e.location = std::move(loc);
+            AsyncQueue::instance().push(std::move(e));
+        });
     }
 
     // ── diffJson()：计算两个 JSON 对象的差异，返回 {field: [old, new]} 格式 ──

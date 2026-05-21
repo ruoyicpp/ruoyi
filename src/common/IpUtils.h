@@ -1,6 +1,13 @@
 #pragma once
 #include <drogon/drogon.h>
 #include <string>
+#include <thread>
+#include <sstream>
+#ifdef _WIN32
+#  include <windows.h>
+#  include <winhttp.h>
+#  pragma comment(lib, "winhttp.lib")
+#endif
 
 class IpUtils {
 public:
@@ -39,54 +46,148 @@ public:
         return "XX XX";
     }
 
-    // 异步获取 IP 位置：优先 pearktrue 高精度 API（3s 超时），失败降级本地
-    // callback(location)，在 Drogon IO 线程回调
+    // 异步获取 IP 位置：pearapi.ai → ip-api.com → pconline → "XX XX"
+#ifdef _WIN32
+    // Windows: WinHTTP 同步请求跑在 detached 线程，绕过 Drogon event-loop 兼容问题
+    static std::string winHttpGet(const std::wstring &host, const std::wstring &path, bool https) {
+        HINTERNET hS = WinHttpOpen(L"Mozilla/5.0",
+            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (!hS) return "";
+        INTERNET_PORT port = https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
+        HINTERNET hC = WinHttpConnect(hS, host.c_str(), port, 0);
+        if (!hC) { WinHttpCloseHandle(hS); return ""; }
+        HINTERNET hR = WinHttpOpenRequest(hC, L"GET", path.c_str(),
+            nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, https ? WINHTTP_FLAG_SECURE : 0);
+        if (!hR) { WinHttpCloseHandle(hC); WinHttpCloseHandle(hS); return ""; }
+        if (https) {
+            DWORD sf = SECURITY_FLAG_IGNORE_UNKNOWN_CA | SECURITY_FLAG_IGNORE_CERT_WRONG_USAGE
+                     | SECURITY_FLAG_IGNORE_CERT_CN_INVALID | SECURITY_FLAG_IGNORE_CERT_DATE_INVALID;
+            WinHttpSetOption(hR, WINHTTP_OPTION_SECURITY_FLAGS, &sf, sizeof(sf));
+        }
+        if (!WinHttpSendRequest(hR, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+            !WinHttpReceiveResponse(hR, nullptr)) {
+            WinHttpCloseHandle(hR); WinHttpCloseHandle(hC); WinHttpCloseHandle(hS); return "";
+        }
+        std::string body; DWORD avail = 0;
+        while (WinHttpQueryDataAvailable(hR, &avail) && avail > 0) {
+            std::string buf(avail, '\0'); DWORD rd = 0;
+            WinHttpReadData(hR, &buf[0], avail, &rd);
+            body.append(buf.data(), rd);
+        }
+        WinHttpCloseHandle(hR); WinHttpCloseHandle(hC); WinHttpCloseHandle(hS);
+        return body;
+    }
+
+    static std::string queryIpLocationBlocking(const std::string &ip) {
+        // 1. pearapi.ai
+        try {
+            std::wstring path = L"/api/ip/high/?ip=" + std::wstring(ip.begin(), ip.end());
+            std::string body = winHttpGet(L"api.pearapi.ai", path, true);
+            if (!body.empty()) {
+                Json::Value j; Json::CharReaderBuilder rb; std::string e;
+                std::istringstream ss(body);
+                if (Json::parseFromStream(rb, ss, &j, &e) && j["code"].asInt() == 200) {
+                    auto &d = j["data"];
+                    std::string pro = d.get("province","").asString();
+                    std::string city= d.get("city","").asString();
+                    std::string dist= d.get("district","").asString();
+                    std::string loc;
+                    if (!pro.empty())  loc = pro;
+                    if (!city.empty() && city != pro)  { if (!loc.empty()) loc+=" "; loc+=city; }
+                    if (!dist.empty() && dist != city && dist != pro) { if (!loc.empty()) loc+=" "; loc+=dist; }
+                    if (!loc.empty()) return loc;
+                }
+            }
+        } catch (...) {}
+        // 2. ip-api.com (HTTP)
+        try {
+            std::wstring path = L"/json/" + std::wstring(ip.begin(), ip.end()) + L"?lang=zh-CN&fields=status,regionName,city";
+            std::string body = winHttpGet(L"ip-api.com", path, false);
+            if (!body.empty()) {
+                Json::Value j; Json::CharReaderBuilder rb; std::string e;
+                std::istringstream ss(body);
+                if (Json::parseFromStream(rb, ss, &j, &e) && j["status"].asString() == "success") {
+                    std::string region = j.get("regionName","").asString();
+                    std::string city   = j.get("city","").asString();
+                    std::string loc;
+                    if (!region.empty()) loc = region;
+                    if (!city.empty() && city != region) { if (!loc.empty()) loc+=" "; loc+=city; }
+                    if (!loc.empty()) return loc;
+                }
+            }
+        } catch (...) {}
+        return "XX XX";
+    }
+
+    static void getIpLocationAsync(const std::string &ip,
+                                    std::function<void(std::string)> callback) {
+        if (isIntranetIp(ip)) { callback("内网IP"); return; }
+        std::thread([ip, cb = std::move(callback)]() {
+            cb(queryIpLocationBlocking(ip));
+        }).detach();
+    }
+#else
+    // Linux: Drogon 异步 HTTP client
     static void getIpLocationAsync(const std::string &ip,
                                     std::function<void(std::string)> callback) {
         if (isIntranetIp(ip)) { callback("内网IP"); return; }
         try {
-            auto client = drogon::HttpClient::newHttpClient("https://api.pearktrue.cn");
+            auto client = drogon::HttpClient::newHttpClient("https://api.pearapi.ai");
             auto extReq = drogon::HttpRequest::newHttpRequest();
             extReq->setPath("/api/ip/high/");
             extReq->setParameter("ip", ip);
             extReq->setMethod(drogon::Get);
+            extReq->addHeader("User-Agent", "Mozilla/5.0");
             client->sendRequest(extReq,
                 [ip, callback](drogon::ReqResult result,
                                const drogon::HttpResponsePtr &resp) mutable {
                     if (result == drogon::ReqResult::Ok && resp) {
                         try {
                             auto j = resp->getJsonObject();
-                            if (j && j->isObject() && (*j)["code"].asInt() == 200) {
-                                auto &data = (*j)["data"];
-                                std::string province = data.get("province", "").asString();
-                                std::string city     = data.get("city",     "").asString();
-                                std::string district = data.get("district", "").asString();
-                                if (district.empty()) district = data.get("area",   "").asString();
-                                if (district.empty()) district = data.get("county", "").asString();
-                                // 兜底：尝试根节点
-                                if (province.empty()) province = (*j).get("province", "").asString();
-                                if (city.empty())     city     = (*j).get("city",     "").asString();
-                                if (district.empty()) district = (*j).get("district","").asString();
+                            if (j && (*j)["code"].asInt() == 200) {
+                                auto &d = (*j)["data"];
+                                std::string pro = d.get("province","").asString();
+                                std::string city= d.get("city","").asString();
+                                std::string dist= d.get("district","").asString();
                                 std::string loc;
-                                if (!province.empty()) loc = province;
-                                if (!city.empty() && city != province) {
-                                    if (!loc.empty()) loc += " ";
-                                    loc += city;
-                                }
-                                if (!district.empty() && district != city && district != province) {
-                                    if (!loc.empty()) loc += " ";
-                                    loc += district;
-                                }
+                                if (!pro.empty())  loc = pro;
+                                if (!city.empty() && city != pro)  { if (!loc.empty()) loc+=" "; loc+=city; }
+                                if (!dist.empty() && dist != city && dist != pro) { if (!loc.empty()) loc+=" "; loc+=dist; }
                                 if (!loc.empty()) { callback(std::move(loc)); return; }
                             }
                         } catch (...) {}
                     }
-                    callback(getIpLocation(ip)); // 降级
+                    try {
+                        auto c2 = drogon::HttpClient::newHttpClient("http://ip-api.com");
+                        auto r2 = drogon::HttpRequest::newHttpRequest();
+                        r2->setPath("/json/" + ip);
+                        r2->setParameter("lang","zh-CN");
+                        r2->setParameter("fields","status,regionName,city");
+                        r2->setMethod(drogon::Get);
+                        c2->sendRequest(r2,
+                            [ip, callback](drogon::ReqResult res2,
+                                           const drogon::HttpResponsePtr &rsp2) mutable {
+                                if (res2 == drogon::ReqResult::Ok && rsp2) {
+                                    try {
+                                        auto j2 = rsp2->getJsonObject();
+                                        if (j2 && (*j2)["status"].asString() == "success") {
+                                            std::string region = (*j2).get("regionName","").asString();
+                                            std::string city   = (*j2).get("city","").asString();
+                                            std::string loc;
+                                            if (!region.empty()) loc = region;
+                                            if (!city.empty() && city != region) { if (!loc.empty()) loc+=" "; loc+=city; }
+                                            if (!loc.empty()) { callback(std::move(loc)); return; }
+                                        }
+                                    } catch (...) {}
+                                }
+                                callback(getIpLocation(ip));
+                            }, 3.0);
+                    } catch (...) { callback(getIpLocation(ip)); }
                 }, 3.0);
-        } catch (...) {
-            callback(getIpLocation(ip));
-        }
+        } catch (...) { callback(getIpLocation(ip)); }
     }
+#endif
 
     // 判断 IP 是否匹配某个段，支持 * 通配符
     static bool isMatchedIp(const std::string &blackList, const std::string &ip) {
