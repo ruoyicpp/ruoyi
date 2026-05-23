@@ -48,6 +48,10 @@
 #include "common/OAuth2Manager.h"
 #include "common/LicenseManager.h"
 #include "common/ColorLogger.h"
+#include "common/GmCrypto.h"
+#include "common/TraceContext.h"
+#include "ai/OnnxService.h"
+#include "iot/ModbusGateway.h"
 
 // ── 服务层 ───────────────────────────────────────────────────────
 #include "services/NginxManager.h"
@@ -97,11 +101,13 @@
 #include "monitor/controllers/DruidCtrl.h"
 #include "monitor/controllers/SysIpCtrl.h"
 #include "monitor/controllers/SysRestartCtrl.h"
+#include "monitor/controllers/OpsCtrl.h"
 
 // ── Common 控制器 ────────────────────────────────────────────────
 #include "common/controllers/CommonCtrl.h"
 #include "common/controllers/DashboardCtrl.h"
 #include "common/controllers/LicenseApiCtrl.h"
+#include "common/controllers/GmCryptoCtrl.h"
 
 // ── Tool 控制器 ──────────────────────────────────────────────────
 #include "tool/controllers/GenCtrl.h"
@@ -113,3 +119,7 @@
 // ── AI ───────────────────────────────────────────────────────────
 #include "ai/controllers/AiCtrl.h"
 #include "ai/AiChatCtrl.h"
+#include "ai/OnnxCtrl.h"
+
+// ── IoT ──────────────────────────────────────────────────────────
+#include "iot/IotCtrl.h"

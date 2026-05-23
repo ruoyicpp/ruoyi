@@ -539,7 +539,7 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         ))",
 
         // =====================================================================
-        // 1. 部门初始数据 (与 C# RuoYi.Net 完全一致)
+        // 1. 部门初始数据 (与 java版本 完全一致)
         // =====================================================================
         R"(INSERT INTO sys_dept (dept_id,parent_id,ancestors,dept_name,order_num,leader,phone,email,status,del_flag,create_by,create_time)
            VALUES (100,0,'0','若依科技',0,'若依','15888888888','ry@qq.com','0','0','admin',NOW()) ON CONFLICT (dept_id) DO NOTHING)",
@@ -652,6 +652,15 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
            (113,'缓存监控',2,5,'cache','monitor/cache/index','','1','0','C','0','0','monitor:cache:list','redis','admin',NOW(),'缓存监控菜单') ON CONFLICT (menu_id) DO NOTHING)",
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
            (114,'缓存列表',2,6,'cacheList','monitor/cache/list','','1','0','C','0','0','monitor:cache:list','redis-list','admin',NOW(),'缓存列表菜单') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (119,'运维面板',2,7,'ops','monitor/ops/index','','1','0','C','0','0','monitor:ops:overview','monitor','admin',NOW(),'系统运维面板') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (3150,'运维查询',119,1,'','','','1','0','F','0','0','monitor:ops:overview','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (3151,'热重载',119,2,'','','','1','0','F','0','0','monitor:ops:reload','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (3152,'重启服务',119,3,'','','','1','0','F','0','0','monitor:ops:restart','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
            (115,'表单构建',3,1,'build','tool/build/index','','1','0','C','0','0','tool:build:list','build','admin',NOW(),'表单构建菜单') ON CONFLICT (menu_id) DO NOTHING)",
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
@@ -816,6 +825,46 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
            (1060,'生成代码',116,6,'#','','','1','0','F','0','0','tool:gen:code','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
 
         // =====================================================================
+        // 4-ext. 国密算法菜单（挂在 系统工具=3 下）
+        // =====================================================================
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (3000,'国密算法',3,5,'gm','tool/gm/index','','1','0','C','0','0','tool:gm:use','lock','admin',NOW(),'SM2/SM3/SM4 国密算法工具') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (3001,'SM3哈希',3000,1,'#','','','1','0','F','0','0','tool:gm:sm3','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (3002,'SM4加解密',3000,2,'#','','','1','0','F','0','0','tool:gm:sm4','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (3003,'SM2签名',3000,3,'#','','','1','0','F','0','0','tool:gm:sm2','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+
+        // =====================================================================
+        // 4-ext. AI推理目录（一级菜单）
+        // =====================================================================
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (4000,'AI推理',0,8,'ai',NULL,'','1','0','M','0','0','','robot','admin',NOW(),'AI推理目录') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (4001,'ONNX推理',4000,1,'onnx','ai/onnx/index','','1','0','C','0','0','ai:onnx:use','component','admin',NOW(),'ONNX Runtime 模型推理') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (4002,'加载模型',4001,1,'#','','','1','0','F','0','0','ai:onnx:load','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (4003,'执行推理',4001,2,'#','','','1','0','F','0','0','ai:onnx:infer','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+
+        // =====================================================================
+        // 4-ext. IoT设备目录（一级菜单）
+        // =====================================================================
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (5000,'IoT设备',0,9,'iot',NULL,'','1','0','M','0','0','','guide','admin',NOW(),'IoT设备管理目录') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (5001,'Modbus设备',5000,1,'device','iot/device/index','','1','0','C','0','0','iot:device:list','monitor','admin',NOW(),'Modbus TCP 设备管理') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (5002,'注册设备',5001,1,'#','','','1','0','F','0','0','iot:device:add','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (5003,'删除设备',5001,2,'#','','','1','0','F','0','0','iot:device:remove','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (5004,'读取数据',5001,3,'#','','','1','0','F','0','0','iot:modbus:read','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (5005,'写入数据',5001,4,'#','','','1','0','F','0','0','iot:modbus:write','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
+
+        // =====================================================================
         // 5. 用户-角色关联
         // =====================================================================
         R"(INSERT INTO sys_user_role (user_id,role_id) VALUES (1,1) ON CONFLICT DO NOTHING)",
@@ -841,7 +890,10 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
            (2,1042),(2,1043),(2,1044),(2,1045),
            (2,1046),(2,1047),(2,1048),
            (2,1049),(2,1050),(2,1051),(2,1052),(2,1053),(2,1054),
-           (2,1055),(2,1056),(2,1057),(2,1058),(2,1059),(2,1060)
+           (2,1055),(2,1056),(2,1057),(2,1058),(2,1059),(2,1060),
+           (2,3000),(2,3001),(2,3002),(2,3003),
+           (2,4000),(2,4001),(2,4002),(2,4003),
+           (2,5000),(2,5001),(2,5002),(2,5003),(2,5004),(2,5005)
            ON CONFLICT DO NOTHING)",
 
         // =====================================================================
@@ -941,7 +993,7 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
            VALUES (10,'系统状态','sys_common_status','0','admin',NOW(),'登录状态列表') ON CONFLICT (dict_type) DO NOTHING)",
 
         // =====================================================================
-        // 12. 字典数据 (与 C# 完全一致，包含全部29条)
+        // 12. 字典数据 (与java版本  完全一致，包含全部29条)
         // =====================================================================
         R"(INSERT INTO sys_dict_data (dict_code,dict_sort,dict_label,dict_value,dict_type,css_class,list_class,is_default,status,create_by,create_time,remark)
            VALUES (1,1,'男','0','sys_user_sex','','','Y','0','admin',NOW(),'性别男') ON CONFLICT (dict_code) DO NOTHING)",
