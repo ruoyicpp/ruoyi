@@ -53,7 +53,7 @@
                      "port":  5432,
                      "dbname":  "ruoyi.c",
                      "user":  "postgres",
-                     "passwd":  "0619LiuXinjie",
+                     "passwd":  "",
                      "sqlite_path":  ""
                  },
     "sqlite":  {
