@@ -39,6 +39,55 @@ static std::string buildDbConnStr(const ConfigLoader& loader, int timeout = 5) {
          + " connect_timeout=" + std::to_string(timeout);
 }
 
+// ── 公共认证辅助函数：验证 Admin-Token（JWT + localhost 白名单）────────
+namespace AuthHelper {
+    // 从请求中提取并验证管理员 token
+    inline bool verifyAdminToken(const drogon::HttpRequestPtr& req) {
+        auto token = SecurityUtils::getToken(req);
+
+        // 尝试从 Cookie 中获取 Admin-Token
+        if (token.empty()) {
+            const std::string& ck = req->getHeader("cookie");
+            const std::string key = "Admin-Token=";
+            auto pos = ck.find(key);
+            if (pos != std::string::npos) {
+                pos += key.size();
+                auto end = ck.find(';', pos);
+                token = ck.substr(pos, end == std::string::npos ? end : end - pos);
+            }
+        }
+
+        // 尝试从 query 参数获取 token
+        if (token.empty()) {
+            token = req->getParameter("token");
+        }
+
+        // 验证 JWT token
+        if (!token.empty()) {
+            try {
+                auto uuid = JwtUtils::parseUuid(token);
+                auto userKey = SecurityUtils::getTokenKey(uuid);
+                if (TokenCache::instance().get(userKey)) {
+                    return true;
+                }
+            } catch (...) {}
+        }
+
+        // localhost 白名单（开发环境）
+        const auto& peer = req->getPeerAddr().toIp();
+        return (peer == "127.0.0.1" || peer == "::1" || peer == "0.0.0.0");
+    }
+
+    // 生成 401 未授权响应（JSON 格式）
+    inline drogon::HttpResponsePtr make401JsonResponse() {
+        Json::Value err;
+        err["error"] = "Unauthorized";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(err);
+        resp->setStatusCode(drogon::k401Unauthorized);
+        return resp;
+    }
+}
+
 // SecurityUtils.cc 暴露的 OpenSSL 3.x default provider 早期初始化函数
 extern "C" void ruoyi_init_openssl_provider();
 
@@ -1289,11 +1338,17 @@ next();
                 }
                 if (!ok) {
                     auto r = drogon::HttpResponse::newHttpResponse();
-                    r->setStatusCode(drogon::k401Unauthorized);
                     r->setContentTypeCode(drogon::CT_TEXT_HTML);
-                    r->setBody("<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
-                               "<h2>&#128274; 请先登录后携带 token 访问</h2>"
-                               "<p>示例：/ssl-config?token=eyJhbG...</p></body></html>");
+                    r->setBody(R"HTML(<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><script>
+(function(){
+  var t='';
+  try{var u=new URL(window.location.href);t=u.searchParams.get('token')||'';}catch(e){}
+  if(!t&&window.parent!==window){try{t=window.parent.sessionStorage.getItem('Admin-Token')||'';}catch(e){}}
+  if(!t){try{t=sessionStorage.getItem('Admin-Token')||'';}catch(e){}}
+  if(t){var u=new URL(window.location.href);u.searchParams.set('token',t);window.location.replace(u.toString());}
+  else{document.body.innerHTML='<div style="text-align:center;padding:60px;font-family:sans-serif"><h2>&#128274; 请先登录后携带 token 访问</h2><p>示例：/ssl-config?token=eyJhbG...</p></div>';}
+})();
+</script></body></html>)HTML");
                     cb(r); return;
                 }
                 std::string tok = token;
@@ -1438,53 +1493,57 @@ load();
         // ── certmanager Web UI（原版前端 + DLL API，单端口，无需 19443）────────
         // 访问：GET /certmanager  → 读取 certmanager-web/index.html（JWT 认证）
         // API：/certmanager/api/* → 直接调 DLL 函数
-        auto cmAuth = [](const drogon::HttpRequestPtr& req) -> bool {
-            auto token = SecurityUtils::getToken(req);
-            if (token.empty()) {
-                const std::string& ck = req->getHeader("cookie");
-                const std::string key = "Admin-Token=";
-                auto pos = ck.find(key);
-                if (pos != std::string::npos) {
-                    pos += key.size(); auto end = ck.find(';', pos);
-                    token = ck.substr(pos, end == std::string::npos ? end : end - pos);
-                }
-            }
-            if (token.empty()) token = req->getParameter("token");
-            if (!token.empty()) {
-                try {
-                    auto uuid = JwtUtils::parseUuid(token);
-                    auto userKey = SecurityUtils::getTokenKey(uuid);
-                    if (TokenCache::instance().get(userKey)) return true;
-                } catch (...) {}
-            }
-            const auto& peer = req->getPeerAddr().toIp();
-            return (peer == "127.0.0.1" || peer == "::1" || peer == "0.0.0.0");
-        };
-        auto cm401 = []() {
-            Json::Value e; e["error"] = "Unauthorized";
-            return drogon::HttpResponse::newHttpJsonResponse(e);
-        };
 
         // UI 页面
         drogon::app().registerHandler("/certmanager",
-            [cmAuth](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                      std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) {
+                if (!AuthHelper::verifyAdminToken(req)) {
                     auto r = drogon::HttpResponse::newHttpResponse();
                     r->setStatusCode(drogon::k401Unauthorized);
                     r->setContentTypeCode(drogon::CT_TEXT_HTML);
-                    r->setBody("<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
-                               "<h2>&#128274; 请先登录后携带 token 访问</h2>"
-                               "<p>示例：/certmanager?token=eyJhbG...</p></body></html>");
+                    r->setBody(R"HTML(<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><script>
+(function(){
+  var t='';
+  try{var u=new URL(window.location.href);t=u.searchParams.get('token')||'';}catch(e){}
+  if(!t&&window.parent!==window){try{t=window.parent.sessionStorage.getItem('Admin-Token')||'';}catch(e){}}
+  if(!t){try{t=sessionStorage.getItem('Admin-Token')||'';}catch(e){}}
+  if(t){var u=new URL(window.location.href);u.searchParams.set('token',t);window.location.replace(u.toString());}
+  else{document.body.innerHTML='<div style="text-align:center;padding:60px;font-family:sans-serif"><h2>&#128274; 请先登录后携带 token 访问</h2><p>示例：/certmanager?token=eyJhbG...</p></div>';}
+})();
+</script></body></html>)HTML");
                     cb(r); return;
                 }
-                std::ifstream f("certmanager-web/index.html", std::ios::binary);
+                // 从配置读取 certmanager web 根目录
+                std::string webRoot = "./certmanager-web";
+                try {
+                    auto& cfg = drogon::app().getCustomConfig();
+                    if (cfg.isMember("acme") && cfg["acme"].isMember("web_root")) {
+                        webRoot = cfg["acme"]["web_root"].asString();
+                    }
+                } catch (...) {}
+
+                std::string indexPath = webRoot + "/index.html";
+                std::ifstream f(indexPath, std::ios::binary);
                 if (!f.is_open()) {
                     auto r = drogon::HttpResponse::newHttpResponse();
                     r->setStatusCode(drogon::k404NotFound);
-                    r->setBody("certmanager-web/index.html not found in working directory");
+                    r->setBody("certmanager-web/index.html not found at: " + indexPath);
                     cb(r); return;
                 }
+
+                // 检查文件大小（防止内存耗尽）
+                f.seekg(0, std::ios::end);
+                auto fileSize = f.tellg();
+                constexpr size_t MAX_FILE_SIZE = 10 * 1024 * 1024;  // 10MB
+                if (fileSize > MAX_FILE_SIZE) {
+                    auto r = drogon::HttpResponse::newHttpResponse();
+                    r->setStatusCode(drogon::k413RequestEntityTooLarge);
+                    r->setBody("File too large (max 10MB)");
+                    cb(r); return;
+                }
+                f.seekg(0, std::ios::beg);
+
                 std::string html((std::istreambuf_iterator<char>(f)), {});
                 auto resp = drogon::HttpResponse::newHttpResponse();
                 resp->setContentTypeCode(drogon::CT_TEXT_HTML);
@@ -1494,36 +1553,48 @@ load();
 
         // API: GET /certmanager/api/info
         drogon::app().registerHandler("/certmanager/api/info",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 Json::Value j; j["version"] = CertManagerAcme::instance().version();
                 cb(drogon::HttpResponse::newHttpJsonResponse(j));
             }, {drogon::Get});
 
         // API: GET /certmanager/api/certificates
         drogon::app().registerHandler("/certmanager/api/certificates",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 cb(drogon::HttpResponse::newHttpJsonResponse(
                     CertManagerAcme::instance().listCertsJson()));
             }, {drogon::Get});
 
         // API: GET /certmanager/api/accounts
         drogon::app().registerHandler("/certmanager/api/accounts",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 cb(drogon::HttpResponse::newHttpJsonResponse(
                     CertManagerAcme::instance().listAccountsJson()));
             }, {drogon::Get});
 
         // API: POST /certmanager/api/accounts
         drogon::app().registerHandler("/certmanager/api/accounts",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 auto body = req->getJsonObject();
                 std::string email   = body ? (*body).get("email",   "").asString() : "";
                 std::string keyType = body ? (*body).get("keyType", "EC256").asString() : "EC256";
@@ -1533,26 +1604,35 @@ load();
 
         // API: GET /certmanager/api/dns-providers
         drogon::app().registerHandler("/certmanager/api/dns-providers",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 cb(drogon::HttpResponse::newHttpJsonResponse(
                     CertManagerAcme::instance().listDNSProvidersJson()));
             }, {drogon::Get});
 
         // API: GET /certmanager/api/credentials（DLL无此功能，返回空数组）
         drogon::app().registerHandler("/certmanager/api/credentials",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 cb(drogon::HttpResponse::newHttpJsonResponse(Json::Value(Json::arrayValue)));
             }, {drogon::Get});
 
         // API: POST /certmanager/api/certificates/obtain
         drogon::app().registerHandler("/certmanager/api/certificates/obtain",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 auto body = req->getJsonObject();
                 if (!body) { Json::Value e; e["error"] = "need JSON body";
                     cb(drogon::HttpResponse::newHttpJsonResponse(e)); return; }
@@ -1575,9 +1655,12 @@ load();
 
         // API: POST /certmanager/api/certificates/renew
         drogon::app().registerHandler("/certmanager/api/certificates/renew",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 auto body = req->getJsonObject();
                 std::string certId = body ? (*body).get("certId", "").asString() : "";
                 int bundle = body ? (*body).get("bundle", 1).asInt() : 1;
@@ -1587,9 +1670,12 @@ load();
 
         // API: POST /certmanager/api/certificates/revoke
         drogon::app().registerHandler("/certmanager/api/certificates/revoke",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 auto body = req->getJsonObject();
                 std::string certId = body ? (*body).get("certId", "").asString() : "";
                 cb(drogon::HttpResponse::newHttpJsonResponse(
@@ -1598,10 +1684,13 @@ load();
 
         // API: GET /certmanager/api/certificates/{id}/download/{type}
         drogon::app().registerHandler("/certmanager/api/certificates/{id}/download/{type}",
-            [cmAuth, cm401](const drogon::HttpRequestPtr& req,
+            [](const drogon::HttpRequestPtr& req,
                             std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                             const std::string& certId, const std::string& fileType) {
-                if (!cmAuth(req)) { cb(cm401()); return; }
+                if (!AuthHelper::verifyAdminToken(req)) {
+                    cb(AuthHelper::make401JsonResponse());
+                    return;
+                }
                 std::string content = CertManagerAcme::instance().readCertFileContent(certId, fileType);
                 auto resp = drogon::HttpResponse::newHttpResponse();
                 resp->setBody(content);
@@ -2145,6 +2234,23 @@ load();
                         ngCfg.maxRestarts = ng.get("maxRestarts", 5).asInt();
                     }
                 }
+                // ── StorageService 初始化（本地 / MinIO / S3）────────────────────
+                {
+                    std::ifstream scf(configFile);
+                    if (scf.is_open()) {
+                        Json::Value sr; Json::CharReaderBuilder srb; std::string se;
+                        if (Json::parseFromStream(srb, scf, &sr, &se) && sr.isMember("storage")) {
+                            StorageService::instance().init(sr["storage"]);
+                            LOG_INFO << "[Storage] backend=" << sr["storage"].get("type","local").asString()
+                                     << " endpoint=" << sr["storage"].get("endpoint","").asString();
+                        } else {
+                            Json::Value def; def["type"] = "local"; def["local_path"] = "./upload";
+                            StorageService::instance().init(def);
+                            LOG_INFO << "[Storage] backend=local (config.json 无 storage 段)";
+                        }
+                    }
+                }
+
                 if (ngCfg.enabled) {
                     auto ngSw = SysConfigService::instance().selectConfigByKey("sys.subprocess.nginx");
                     if (ngSw == "false") {

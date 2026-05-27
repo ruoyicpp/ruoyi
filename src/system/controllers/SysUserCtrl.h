@@ -17,6 +17,7 @@
 #include "../../common/CsvUtils.h"
 #include "../services/SysPasswordService.h"
 #include "../services/SysConfigService.h"
+#include "../../services/StorageService.h"
 #include "SysLoginCtrl.h"
 
 // /system/user 用户管理，使用直接 libpq 查询
@@ -59,7 +60,7 @@ public:
         if (!userName.empty()) { sql += " AND u.user_name LIKE $" + std::to_string(idx++); params.push_back("%" + userName + "%"); }
         if (!status.empty())   { sql += " AND u.status=$" + std::to_string(idx++); params.push_back(status); }
         if (!deptId.empty())   { sql += " AND (u.dept_id=$" + std::to_string(idx++) + " OR u.dept_id IN (SELECT dept_id FROM sys_dept WHERE ancestors LIKE '%'||$" + std::to_string(idx++) + "||'%'))"; params.push_back(deptId); params.push_back(deptId); }
-        // 数据权限过滤（对应 C# [DataScope]）
+        // 数据权限过滤（对应java [DataScope]）
         sql += DATA_SCOPE_FILTER(req, "u", "u");
 
         std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";
@@ -433,7 +434,7 @@ public:
         std::string newEncoded = SecurityUtils::encryptPassword(newPwd);
         db.execParams("UPDATE sys_user SET password=$1,update_time=NOW() WHERE user_id=$2",
             {newEncoded, std::to_string(userId)});
-        // 更新 token 缓存中的密码（对应 C# SetLoginUser）
+        // 更新 token 缓存中的密码（对应java SetLoginUser）
         auto userOpt = TokenService::instance().getLoginUser(req);
         if (userOpt) {
             userOpt->password = newEncoded;
@@ -646,7 +647,7 @@ private:
         cb(CsvUtils::makeCsvResponse(csv, "user.csv"));
     }
 
-    // POST /system/user/profile/avatar — 上传头像（对应 C# SysProfileController.UploadAvatar）
+    // POST /system/user/profile/avatar — 上传头像（对应Java SysProfileController.UploadAvatar）
     void uploadAvatar(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         long userId = GET_USER_ID(req);
         drogon::MultiPartParser parser;
@@ -667,14 +668,27 @@ private:
                 return;
             }
         }
-        std::string uploadDir = "uploads/avatar/";
-        std::filesystem::create_directories(uploadDir);
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
-        std::string newName = std::to_string(userId) + "_" + std::to_string(ms) + ext;
-        std::string filePath = uploadDir + newName;
-        file.saveAs(filePath);
-        std::string imgUrl = "/profile/avatar/" + newName;
+        std::string newName = "avatar/" + std::to_string(userId) + "_" + std::to_string(ms) + ext;
+        std::string mime = "image/jpeg";
+        if (ext==".png") mime="image/png";
+        else if (ext==".gif") mime="image/gif";
+        else if (ext==".webp") mime="image/webp";
+        else if (ext==".bmp") mime="image/bmp";
+        auto sv = file.fileContent();
+        std::string data(sv.data(), sv.size());
+        std::string imgUrl = StorageService::instance().upload(newName, data, mime);
+        // 降级本地
+        if (imgUrl.empty()) {
+            std::string uploadDir = "uploads/avatar/";
+            std::filesystem::create_directories(uploadDir);
+            std::string localPath = uploadDir + std::to_string(userId) + "_" + std::to_string(ms) + ext;
+            std::ofstream lf(localPath, std::ios::binary);
+            lf.write(data.data(), data.size());
+            imgUrl = "/profile/avatar/" + std::to_string(userId) + "_" + std::to_string(ms) + ext;
+            LOG_WARN << "[Storage] 头像上传失败，已降级本地: " << localPath;
+        }
         DatabaseService::instance().execParams(
             "UPDATE sys_user SET avatar=$1,update_time=NOW() WHERE user_id=$2",
             {imgUrl, std::to_string(userId)});

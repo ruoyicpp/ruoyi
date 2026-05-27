@@ -3,6 +3,7 @@
 #include "../AjaxResult.h"
 #include "../SecurityUtils.h"
 #include "../../filters/PermFilter.h"
+#include "../../services/StorageService.h"
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -48,17 +49,49 @@ public:
                 return;
             }
         }
-        // 保存到 uploads 目录；文件名 = ms + 4 位随机后缀，避免同毫秒并发冲突
-        std::string uploadDir = "uploads/";
-        std::filesystem::create_directories(uploadDir);
+        // 生成文件名：日期目录/ms_rnd.ext
         auto now = std::chrono::system_clock::now();
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
         char rnd[5]; for (int i = 0; i < 4; ++i) rnd[i] = (char)('a' + (std::rand() % 26)); rnd[4] = 0;
-        std::string newName = std::to_string(ms) + "_" + rnd + ext;
-        std::string filePath = uploadDir + newName;
-        file.saveAs(filePath);
+        time_t tt = std::chrono::system_clock::to_time_t(now);
+        char dateBuf[16];
+#ifdef _WIN32
+        { struct tm tm_; localtime_s(&tm_, &tt); std::strftime(dateBuf, sizeof(dateBuf), "%Y%m%d", &tm_); }
+#else
+        { struct tm tm_; localtime_r(&tt, &tm_); std::strftime(dateBuf, sizeof(dateBuf), "%Y%m%d", &tm_); }
+#endif
+        std::string newName = std::string(dateBuf) + "/" + std::to_string(ms) + "_" + rnd + ext;
 
-        std::string url = "/profile/upload/" + newName;
+        // MIME
+        std::string mime = "application/octet-stream";
+        if (ext==".jpg"||ext==".jpeg") mime="image/jpeg";
+        else if (ext==".png")  mime="image/png";
+        else if (ext==".gif")  mime="image/gif";
+        else if (ext==".webp") mime="image/webp";
+        else if (ext==".bmp")  mime="image/bmp";
+        else if (ext==".pdf")  mime="application/pdf";
+        else if (ext==".mp4")  mime="video/mp4";
+        else if (ext==".mp3")  mime="audio/mpeg";
+
+        auto sv = file.fileContent();
+        std::string data(sv.data(), sv.size());
+        auto& storage = StorageService::instance();
+        std::string url;
+
+        // 优先走 StorageService（MinIO/S3/local 由配置决定）
+        url = storage.upload(newName, data, mime);
+
+        // MinIO/S3 失败时降级本地
+        if (url.empty()) {
+            std::string localDir = "uploads/" + std::string(dateBuf) + "/";
+            std::filesystem::create_directories(localDir);
+            std::string localPath = localDir + std::to_string(ms) + "_" + rnd + ext;
+            std::ofstream lf(localPath, std::ios::binary);
+            lf.write(data.data(), data.size());
+            url = "/profile/upload/" + newName;
+            LOG_WARN << "[Storage] 远端上传失败，已降级到本地: " << localPath;
+        }
+
         auto result = AjaxResult::successMap();
         result["url"]              = url;
         result["fileName"]         = url;
@@ -72,38 +105,42 @@ public:
         std::string fileName  = req->getParameter("fileName");
         std::string deleteStr = req->getParameter("delete");
         if (fileName.empty()) { RESP_ERR(cb, "文件名不能为空"); return; }
-        // 防路径穿越：不允许 .. 和绝对路径
-        if (fileName.find("..") != std::string::npos ||
-            fileName.find('/') != std::string::npos  ||
-            fileName.find('\\') != std::string::npos) {
+        if (fileName.find("..") != std::string::npos) { RESP_ERR(cb, "非法文件名"); return; }
+
+        // MinIO/S3：重定向到公开 URL
+        auto& storage = StorageService::instance();
+        if (storage.type() != "local") {
+            auto pubUrl = storage.getPublicUrl(fileName);
+            auto resp = drogon::HttpResponse::newRedirectionResponse(pubUrl);
+            cb(resp);
+            return;
+        }
+
+        // 本地模式
+        if (fileName.find('/') != std::string::npos || fileName.find('\\') != std::string::npos) {
             RESP_ERR(cb, "非法文件名"); return;
         }
         std::string filePath = "uploads/" + fileName;
         if (!std::filesystem::exists(filePath)) { RESP_ERR(cb, "文件不存在"); return; }
-        // 读取文件内容
         std::ifstream ifs(filePath, std::ios::binary);
         if (!ifs) { RESP_ERR(cb, "文件读取失败"); return; }
-        std::string content((std::istreambuf_iterator<char>(ifs)),
-                             std::istreambuf_iterator<char>());
-        // 根据扩展名设置 Content-Type
-        std::string ext = std::filesystem::path(fileName).extension().string();
-        for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
+        std::string content((std::istreambuf_iterator<char>(ifs)), {});
+        std::string ext2 = std::filesystem::path(fileName).extension().string();
+        for (auto& c : ext2) c = (char)std::tolower((unsigned char)c);
         std::string mime = "application/octet-stream";
-        if (ext==".jpg"||ext==".jpeg") mime="image/jpeg";
-        else if (ext==".png")  mime="image/png";
-        else if (ext==".gif")  mime="image/gif";
-        else if (ext==".pdf")  mime="application/pdf";
-        else if (ext==".txt")  mime="text/plain; charset=utf-8";
-        else if (ext==".csv")  mime="text/csv; charset=utf-8";
-        else if (ext==".mp4")  mime="video/mp4";
-        else if (ext==".mp3")  mime="audio/mpeg";
+        if (ext2==".jpg"||ext2==".jpeg") mime="image/jpeg";
+        else if (ext2==".png")  mime="image/png";
+        else if (ext2==".gif")  mime="image/gif";
+        else if (ext2==".pdf")  mime="application/pdf";
+        else if (ext2==".txt")  mime="text/plain; charset=utf-8";
+        else if (ext2==".csv")  mime="text/csv; charset=utf-8";
+        else if (ext2==".mp4")  mime="video/mp4";
+        else if (ext2==".mp3")  mime="audio/mpeg";
         auto resp = drogon::HttpResponse::newHttpResponse();
         resp->setContentTypeString(mime);
-        resp->addHeader("Content-Disposition",
-            "attachment; filename=\"" + fileName + "\"");
+        resp->addHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
         resp->setBody(std::move(content));
         cb(resp);
-        // 下载后可选删除
         if (deleteStr == "true" || deleteStr == "1")
             std::filesystem::remove(filePath);
     }
@@ -111,25 +148,14 @@ public:
     void fileList(const drogon::HttpRequestPtr &req,
                   std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         CHECK_PERM(req, cb, "common:file:list");
-        std::string uploadDir = "uploads/";
+        auto& storage = StorageService::instance();
+        auto keys = storage.list();
         Json::Value rows(Json::arrayValue);
-        std::error_code ec;
-        if (std::filesystem::exists(uploadDir, ec)) {
-            for (auto& entry : std::filesystem::directory_iterator(uploadDir, ec)) {
-                if (!entry.is_regular_file()) continue;
-                Json::Value f;
-                f["fileName"]  = entry.path().filename().string();
-                f["fileSize"]  = (Json::Int64)entry.file_size();
-                f["url"]       = "/profile/upload/" + entry.path().filename().string();
-                auto ftime = entry.last_write_time();
-                auto sctp  = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-                    ftime - std::filesystem::file_time_type::clock::now()
-                    + std::chrono::system_clock::now());
-                std::time_t tt = std::chrono::system_clock::to_time_t(sctp);
-                char buf[20]; std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&tt));
-                f["uploadTime"] = buf;
-                rows.append(f);
-            }
+        for (auto& key : keys) {
+            Json::Value f;
+            f["fileName"] = key;
+            f["url"]      = storage.getPublicUrl(key);
+            rows.append(f);
         }
         auto result = AjaxResult::successMap();
         result["rows"]  = rows;
@@ -142,16 +168,9 @@ public:
         CHECK_PERM(req, cb, "common:file:delete");
         std::string fileName = req->getParameter("fileName");
         if (fileName.empty()) { RESP_ERR(cb, "文件名不能为空"); return; }
-        if (fileName.find("..") != std::string::npos ||
-            fileName.find('/') != std::string::npos  ||
-            fileName.find('\\') != std::string::npos) {
-            RESP_ERR(cb, "非法文件名"); return;
-        }
-        std::string filePath = "uploads/" + fileName;
-        std::error_code ec;
-        if (!std::filesystem::exists(filePath, ec)) { RESP_ERR(cb, "文件不存在"); return; }
-        std::filesystem::remove(filePath, ec);
-        if (ec) { RESP_ERR(cb, "删除失败: " + ec.message()); return; }
+        if (fileName.find("..") != std::string::npos) { RESP_ERR(cb, "非法文件名"); return; }
+        bool ok = StorageService::instance().remove(fileName);
+        if (!ok) { RESP_ERR(cb, "删除失败或文件不存在"); return; }
         RESP_MSG(cb, "删除成功");
     }
 };
