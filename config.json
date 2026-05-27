@@ -1,4 +1,4 @@
-﻿{
+{
     "_listeners_comment": "访问模式说明：① 本地/局域网: port=18080, https=false → http://localhost:18080  ② 公网域名不带HTTPS: port=80, https=false → http://yourdomain.com  ③ 公网域名HTTPS: 保留80(ACME验证)+443或自定义端口, https=true, 同时启用 acme 块 → https://yourdomain.com",
     "listeners":  [
                       {
@@ -53,7 +53,7 @@
                      "port":  5432,
                      "dbname":  "ruoyi.c",
                      "user":  "postgres",
-                     "passwd":  "0619LiuXinjie",
+                     "passwd":  "",
                      "sqlite_path":  ""
                  },
     "sqlite":  {
