@@ -13,6 +13,8 @@
 
 #include <shared_mutex>
 #include <mutex>
+#include <condition_variable>
+#include <thread>
 #include <vector>
 #include <queue>
 #include <functional>

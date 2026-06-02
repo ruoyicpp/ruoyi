@@ -11,6 +11,11 @@
 #include <curl/curl.h>
 #include <iostream>
 
+#ifdef RUOYI_USE_MINIO_CPP
+#include <miniocpp/client.h>
+#include <miniocpp/error.h>
+#endif
+
 // 文件存储分层：本地磁盘 / MinIO / AWS S3（SigV4 签名）
 // config.json: { "storage": { "type": "local", "local_path": "./upload",
 //   "endpoint": "http://127.0.0.1:9000", "bucket": "ruoyi",
@@ -37,8 +42,8 @@ public:
     std::string upload(const std::string &filename, const std::string &data,
                        const std::string &contentType = "application/octet-stream") {
         if (type_ == "local")   return uploadLocal(filename, data);
-        if (type_ == "minio")   return uploadS3(filename, data, contentType);
-        if (type_ == "s3")      return uploadS3(filename, data, contentType);
+        if (type_ == "minio")  return uploadMinio(filename, data, contentType);
+        if (type_ == "s3")     return uploadS3(filename, data, contentType);
         return uploadLocal(filename, data);
     }
 
@@ -48,7 +53,14 @@ public:
             std::error_code ec;
             return std::filesystem::remove(localPath_ + "/" + filename, ec);
         }
-        if (type_ == "minio" || type_ == "s3") return deleteS3(filename);
+        if (type_ == "minio") {
+#ifdef RUOYI_USE_MINIO_CPP
+            return removeMinio(filename);
+#else
+            return false;
+#endif
+        }
+        if (type_ == "s3")     return deleteS3(filename);
         return false;
     }
 
@@ -60,6 +72,13 @@ public:
             for (auto &e : std::filesystem::directory_iterator(localPath_, ec))
                 if (e.is_regular_file()) v.push_back(e.path().filename().string());
             return v;
+        }
+        if (type_ == "minio") {
+#ifdef RUOYI_USE_MINIO_CPP
+            return listMinio(prefix);
+#else
+            return {};
+#endif
         }
         // S3/MinIO: GET /?list-type=2&prefix=...
         return listS3(prefix);
@@ -91,7 +110,85 @@ private:
         return "/profile/" + filename;
     }
 
-    // AWS SigV4 签名 PUT（兼容 MinIO）
+    // ── minio-cpp SDK 封装（type=minio）───────────────────────
+#ifdef RUOYI_USE_MINIO_CPP
+    std::string uploadMinio(const std::string &filename, const std::string &data,
+                            const std::string &contentType) {
+        try {
+            minio::s3::BaseUrl baseUrl(endpoint_);
+            minio::creds::StaticProvider provider(accessKey_, secretKey_);
+            minio::s3::Client client(baseUrl, &provider);
+
+            std::stringstream ss;
+            ss.write(data.data(), static_cast<std::streamsize>(data.size()));
+
+            minio::s3::PutObjectArgs args(ss,
+                static_cast<long>(data.size()), -1);
+            args.bucket        = bucket_;
+            args.object        = filename;
+            args.content_type  = contentType;
+
+            auto resp = client.PutObject(args);
+            if (resp) {
+                return getPublicUrl(filename);
+            } else {
+                std::cerr << "[Storage] MinIO PUT failed: " << resp.Error().String() << std::endl;
+                return "";
+            }
+        } catch (const std::exception &e) {
+            std::cerr << "[Storage] MinIO exception: " << e.what() << std::endl;
+            return "";
+        }
+    }
+
+    bool removeMinio(const std::string &filename) {
+        try {
+            minio::s3::BaseUrl baseUrl(endpoint_);
+            minio::creds::StaticProvider provider(accessKey_, secretKey_);
+            minio::s3::Client client(baseUrl, &provider);
+            minio::s3::RemoveObjectArgs remArgs;
+            remArgs.bucket = bucket_;
+            remArgs.object = filename;
+            auto resp = client.RemoveObject(remArgs);
+            return resp.operator bool();
+        } catch (const std::exception &e) {
+            std::cerr << "[Storage] MinIO remove error: " << e.what() << std::endl;
+            return false;
+        }
+    }
+
+    std::vector<std::string> listMinio(const std::string &prefix) {
+        try {
+            minio::s3::BaseUrl baseUrl(endpoint_);
+            minio::creds::StaticProvider provider(accessKey_, secretKey_);
+            minio::s3::Client client(baseUrl, &provider);
+
+            minio::s3::ListObjectsArgs listArgs;
+            listArgs.bucket     = bucket_;
+            listArgs.prefix     = prefix;
+            listArgs.recursive  = true;
+            std::vector<std::string> keys;
+            for (auto it = client.ListObjects(listArgs); it; ++it) {
+                keys.push_back((*it).name);
+            }
+            return keys;
+        } catch (const std::exception &e) {
+            std::cerr << "[Storage] MinIO list error: " << e.what() << std::endl;
+            return {};
+        }
+    }
+#else
+    // 无 minio-cpp 时，minio 类型回退到手写 SigV4（兼容 MinIO）
+    std::string uploadMinio(const std::string &filename, const std::string &data,
+                            const std::string &contentType) {
+        std::cerr << "[Storage] minio-cpp not available, falling back to SigV4 for type=minio" << std::endl;
+        return uploadS3(filename, data, contentType);
+    }
+    bool removeMinio(const std::string &filename) { return deleteS3(filename); }
+    std::vector<std::string> listMinio(const std::string &prefix) { return listS3(prefix); }
+#endif
+
+    // ── 手写 SigV4（type=s3 或 minio 回退）──────────────────────
     std::string uploadS3(const std::string &filename, const std::string &data,
                          const std::string &contentType) {
         // 计算 payload SHA256

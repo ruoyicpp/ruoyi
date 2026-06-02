@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include <thread>
+#include <sys/stat.h>
 #include <atomic>
 #include <chrono>
 #ifdef _WIN32

@@ -140,7 +140,12 @@ void FileSink::rotate() {
     auto parent = p.parent_path();
 
     time_t now = std::time(nullptr);
-    struct tm t; localtime_s(&t, &now);
+    struct tm t;
+#ifdef _WIN32
+    localtime_s(&t, &now);
+#else
+    localtime_r(&now, &t);
+#endif
     char buf[64];
     strftime(buf, sizeof(buf), "%Y%m%d-%H%M%S", &t);
 
@@ -171,7 +176,12 @@ void ConsoleSink::write(Level level, const std::string& json) {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             now.time_since_epoch()) % 1000;
         time_t t = std::chrono::system_clock::to_time_t(now);
-        struct tm tm; localtime_s(&tm, &t);
+        struct tm tm;
+#ifdef _WIN32
+        localtime_s(&tm, &t);
+#else
+        localtime_r(&t, &tm);
+#endif
         char buf[32];
         strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
         ss << "\033[90m" << buf << "." << std::setfill('0') << std::setw(3)
