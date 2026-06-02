@@ -219,7 +219,7 @@ ninja
 
 ## 配置说明
 
-主配置文件：`config.json`（参考 `config.bat.template.json`）
+主配置文件：`config.json`（参考 `build-nginx/config.template.json`）
 
 ### 核心配置
 
@@ -330,6 +330,24 @@ ninja
 
 > 将 `npm run build:prod` 生成的 `dist/` 内容放到 `./web/` 目录，直接访问 `:18080` 即可，无需 Nginx。
 
+### 敏感信息管理
+
+发布仓库时，含真实密码的配置文件不会被提交：
+
+| 文件 | 说明 |
+|---|---|
+| `build-nginx/config.json` | 真实配置，被 `.gitignore` 排除 |
+| `build-nginx/ruoyi1.mymq.site.json` | 真实配置，被 `.gitignore` 排除 |
+| `build-nginx/config.template.json` | 配置模板，含占位符（`YOUR_DATABASE_PASSWORD` 等），**会随 git 提交** |
+
+部署到新机器时：
+
+1. 克隆仓库后，从 `build-nginx/config.template.json` 复制一份为 `build-nginx/config.json`
+2. 填写 `database.passwd`、`jwt.secret`、`security.*.admin_unlock_key` 等敏感字段
+3. 或通过环境变量注入（`RUOYI_DATABASE_PASSWD`、`RUOYI_JWT_SECRET` 等）
+
+环境变量优先级高于配置文件，详见各字段旁的 `_comment` 说明。
+
 ### 邮件配置（系统内配置）
 
 登录后进入 **系统管理 → 邮件发件箱** 配置 SMTP，无需修改配置文件：
@@ -367,7 +385,10 @@ ninja
 
 ```
 ruoyi-cpp/
-├── config.json                      # 主配置文件（参考 config.bat.template.json）
+├── build-nginx/
+│   ├── config.json                      # 主配置文件（不随 git 提交，敏感信息）
+│   ├── config.template.json             # 配置模板（git 提交，敏感值用占位符）
+│   └── ruoyi-cpp.exe                    # 编译产物
 ├── web/                             # 前端 dist 目录（放这里即可，无需 Nginx）
 ├── logs/                            # 日志目录（.log 文本 + .jsonl 结构化）
 ├── upload/                          # 本地上传文件目录
@@ -550,6 +571,13 @@ location /ws/ {
 
 **Q：JWT secret 为空能启动吗？**
 > 可以启动，但所有 Token 将使用空密钥签发，**存在严重安全风险**，生产环境务必填写强随机密钥。
+
+**Q：配置修改后需要重启服务吗？**
+> 不需要。程序内置 `HotConfig` 监视器，每 5 秒检测 `config.json` 的修改时间，变化时自动重载 JWT 配置和调用 `onReload` 回调，无需重启。
+> 也可通过 `POST /actuator/reload` 手动触发立即重载。
+
+**Q：如何查看 API 文档？**
+> 启动后访问 `http://localhost:18080/swagger-ui/index.html`（加载自 CDN，无需额外配置），或直接请求 `GET /v3/api-docs` 获取 OpenAPI 3.0 JSON 规范。
 
 **Q：角色权限修改后不生效？**
 > 后端会自动刷新在线用户的权限缓存，若仍不生效请检查 `MemCache` / Redis 连接是否正常。
