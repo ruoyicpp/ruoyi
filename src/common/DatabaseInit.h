@@ -8,7 +8,7 @@
 #include "Constants.h"
 
 // 启动时自动建表 + 初始化数据
-// 表结构与 RuoYi.Net 保持一致，数据库为 PostgreSQL
+// 表结构与 RuoYi.Net/java 保持一致，数据库为 PostgreSQL
 // 直接使用 libpq（不依赖 Drogon ORM）
 class DatabaseInit {
 public:

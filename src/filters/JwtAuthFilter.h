@@ -54,7 +54,7 @@ inline bool isBotUserAgent(const std::string& ua) {
     return false;
 }
 
-// JWT 认证中间件（对应 C# JwtAuthorizationFilter）
+// JWT 认证中间件（对应 java的JwtAuthorizationFilter）
 class JwtAuthFilter : public drogon::HttpMiddleware<JwtAuthFilter> {
 public:
     static constexpr bool isAutoCreation = false;

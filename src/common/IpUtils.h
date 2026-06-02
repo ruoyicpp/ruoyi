@@ -1,3 +1,20 @@
+/**
+ * @file IpUtils.h
+ * @brief IP 地址工具 — 处理 IP 提取、验证、地理位置查询等
+ * 
+ * 功能概述：
+ *   - IP 提取：从 HTTP 请求中提取客户端真实 IP
+ *   - IP 验证：判断 IP 是否为内网地址
+ *   - 位置查询：异步查询 IP 地理位置
+ *   - 跨平台支持：Windows 使用 WinHTTP，Linux 使用 curl
+ * 
+ * 核心特性：
+ *   - 代理感知：支持 X-Forwarded-For、X-Real-IP 等代理头
+ *   - 多源查询：支持多个 IP 地址库（pearapi.ai、ip-api.com、pconline）
+ *   - 异步非阻塞：地址查询在后台线程执行，不阻塞主线程
+ *   - 降级策略：查询失败时返回默认值 "XX XX"
+ */
+
 #pragma once
 #include <drogon/drogon.h>
 #include <string>
@@ -9,23 +26,51 @@
 #  pragma comment(lib, "winhttp.lib")
 #endif
 
+/**
+ * @class IpUtils
+ * @brief IP 地址工具类
+ * 
+ * 提供 IP 地址提取、验证、地理位置查询等功能。
+ * 支持代理环境和跨平台 HTTP 请求。
+ */
 class IpUtils {
 public:
+    /**
+     * @brief 从 HTTP 请求中提取客户端真实 IP
+     * 
+     * 按优先级从以下位置提取 IP：
+     *   1. X-Forwarded-For 请求头（代理链中的第一个 IP）
+     *   2. X-Real-IP 请求头
+     *   3. 直接连接的对端 IP
+     * 
+     * 如果 X-Forwarded-For 包含多个 IP（逗号分隔），取第一个。
+     * 自动移除 IP 前后的空格。
+     * 
+     * @param req HTTP 请求对象
+     * @return 客户端真实 IP 地址
+     */
     static std::string getIpAddr(const drogon::HttpRequestPtr &req) {
-    // 优先读取 X-Forwarded-For
         std::string ip = req->getHeader("X-Forwarded-For");
         if (ip.empty()) ip = req->getHeader("X-Real-IP");
         if (ip.empty()) ip = req->getPeerAddr().toIp();
-    // 校验单个 IP 是否匹配黑白名单（支持通配符）
         auto pos = ip.find(',');
         if (pos != std::string::npos) ip = ip.substr(0, pos);
-    // 工具函数
         while (!ip.empty() && ip.front() == ' ') ip.erase(ip.begin());
         return ip;
     }
 
-
-    // 判断是否内网 IP
+    /**
+     * @brief 判断 IP 是否为内网地址
+     * 
+     * 识别以下内网 IP 范围：
+     *   - 127.0.0.1、::1、localhost（本地环回）
+     *   - 10.0.0.0/8（10.0.0.0 - 10.255.255.255）
+     *   - 192.168.0.0/16（192.168.0.0 - 192.168.255.255）
+     *   - 172.16.0.0/12（172.16.0.0 - 172.31.255.255）
+     * 
+     * @param ip IP 地址字符串
+     * @return 如果是内网 IP 返回 true，否则返回 false
+     */
     static bool isIntranetIp(const std::string &ip) {
         if (ip.empty() || ip == "127.0.0.1" || ip == "::1" || ip == "localhost") return true;
         if (ip.rfind("10.", 0) == 0) return true;

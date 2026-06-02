@@ -53,12 +53,20 @@ public:
                 ok = (peer == "127.0.0.1" || peer == "::1" || peer == "0.0.0.0");
             }
             if (!ok) {
+                // 同源 iframe：让 JS 从 parent.sessionStorage 读 token 后重定向
                 auto resp = drogon::HttpResponse::newHttpResponse();
-                resp->setStatusCode(drogon::k401Unauthorized);
                 resp->setContentTypeCode(drogon::CT_TEXT_HTML);
-                resp->setBody("<html><body style='font-family:sans-serif;text-align:center;padding:60px'>"
-                              "<h2>&#128274; 监控页面需要登录</h2>"
-                              "<p style='color:#909399'>请先登录系统后再访问</p></body></html>");
+                resp->setBody(R"HTML(<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>
+<script>
+(function(){
+  var t='';
+  try{var u=new URL(window.location.href);t=u.searchParams.get('token')||'';}catch(e){}
+  if(!t&&window.parent!==window){try{t=window.parent.sessionStorage.getItem('Admin-Token')||'';}catch(e){}}
+  if(!t){try{t=sessionStorage.getItem('Admin-Token')||'';}catch(e){}}
+  if(t){var u=new URL(window.location.href);u.searchParams.set('token',t);window.location.replace(u.toString());}
+  else{document.body.innerHTML='<div style="text-align:center;padding:60px;font-family:sans-serif"><h2>\u{1F512} \u76d1\u63a7\u9875\u9762\u9700\u8981\u767b\u5f55</h2><p style="color:#909399">\u8bf7\u5148\u767b\u5f55\u7cfb\u7edf\u540e\u518d\u8bbf\u95ee</p></div>';}
+})();
+</script></body></html>)HTML");
                 cb(resp); return;
             }
         }

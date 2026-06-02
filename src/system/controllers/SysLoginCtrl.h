@@ -282,7 +282,7 @@ public:
         std::string email     = (*body).get("email",     "").asString();
         std::string emailCode = (*body).get("emailCode", "").asString();
 
-        // 1. 验证码（C# 顺序：先验证码，再内容校验）
+        // 1. 验证码java 顺序：先验证码，再内容校验）
         if (SysConfigService::instance().isCaptchaEnabled()) {
             auto cacheKey = Constants::CAPTCHA_CODE_KEY + uuid;
             auto cached = MemCache::instance().getString(cacheKey);
@@ -330,14 +330,14 @@ public:
             }
         }
 
-        // 3. 用户名唯一性（对应 C# CheckUserNameUniqueAsync）
+        // 3. 用户名唯一性（对应 java CheckUserNameUniqueAsync）
         auto& db = DatabaseService::instance();
         auto exist = db.queryParams(
             "SELECT user_id FROM sys_user WHERE user_name=$1 AND del_flag!='2' LIMIT 1", {username});
         if (exist.ok() && exist.rows() > 0)
             { RESP_ERR(cb, "保存用户'" + username + "'失败，注册账号已存在"); return; }
 
-        // 4. 注册（对应 C# RegisterUserAsync）
+        // 4. 注册（对应 java RegisterUserAsync）
         std::string encPwd = SecurityUtils::encryptPassword(password);
         auto ins = db.queryParams(
             "INSERT INTO sys_user(user_name,nick_name,password,email,status,del_flag,create_time) "
@@ -354,7 +354,7 @@ public:
                 {newUserId, std::to_string(initRoleId)});
         }
 
-        // 6. 注册成功写登录日志（对应 C# SysLogininforService.AddAsync）
+        // 6. 注册成功写登录日志（对应java SysLogininforService.AddAsync）
         std::string ip = IpUtils::getIpAddr(req);
         db.execParams(
             "INSERT INTO sys_logininfor(user_name,ipaddr,login_location,browser,os,status,msg,login_time) "

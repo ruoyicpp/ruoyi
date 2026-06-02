@@ -13,8 +13,8 @@
 #include <drogon/HttpAppFramework.h>
 #include <string>
 #include <functional>
-#include <regex>
 #include <iostream>
+#include <algorithm>
 
 class HttpCaller {
 public:
@@ -76,11 +76,24 @@ public:
 
 private:
     static bool splitUrl(const std::string &url, std::string &base, std::string &path) {
-        std::regex re(R"(^(https?://[^/]+)(/.*)?$)", std::regex::icase);
-        std::smatch m;
-        if (!std::regex_match(url, m, re)) return false;
-        base = m[1].str();
-        path = m[2].matched ? m[2].str() : "/";
+        // 简单URL解析: http://host[:port]/path
+        std::string str = url;
+        std::transform(str.begin(), str.end(), str.begin(), ::tolower);
+        if (str.find("http://") == 0) {
+            base = url.substr(7);
+        } else if (str.find("https://") == 0) {
+            base = url.substr(8);
+        } else {
+            return false;
+        }
+        size_t slash = base.find('/');
+        if (slash == std::string::npos) {
+            base = url;
+            path = "/";
+        } else {
+            base = base.substr(0, slash);
+            path = url.substr(url.find('/'));
+        }
         return true;
     }
 };

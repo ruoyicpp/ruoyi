@@ -104,7 +104,7 @@ public:
         auto parentRes = db.queryParams("SELECT ancestors FROM sys_dept WHERE dept_id=$1", {sParentId});
         std::string parentAnc = (parentRes.ok() && parentRes.rows() > 0) ? parentRes.str(0, 0) : "0";
         std::string newAncestors = parentAnc + "," + sParentId;
-        // 批量更新子部门的 ancestors（对应 C# UpdateDeptChildrenAsync）
+        // 批量更新子部门的 ancestors（对应java UpdateDeptChildrenAsync）
         if (oldAncestors != newAncestors) {
             int oldLen = (int)oldAncestors.size();
             db.execParams(
@@ -122,7 +122,7 @@ public:
              (*body).get("leader","").asString(), (*body).get("phone","").asString(),
              (*body).get("email","").asString(), status,
              GET_USER_NAME(req), sDeptId});
-        // 启用该部门，同时启用其所有上级部门（对应 C# UpdateParentDeptStatusNormalAsync）
+        // 启用该部门，同时启用其所有上级部门（对应Java UpdateParentDeptStatusNormalAsync）
         if (status == "0" && !newAncestors.empty() && newAncestors != "0") {
             std::string inSql = "UPDATE sys_dept SET status='0' WHERE del_flag='0' AND dept_id IN (";
             std::vector<std::string> ancParams;

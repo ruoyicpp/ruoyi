@@ -1,3 +1,26 @@
+/**
+ * @file SysConfigService.h
+ * @brief 系统配置服务 — 管理系统级配置参数
+ * 
+ * 功能概述：
+ *   - 配置查询：按 key 查询系统配置值
+ *   - 配置缓存：使用内存缓存加速配置读取
+ *   - 功能开关：验证码、注册、忘记密码等功能的开关
+ * 
+ * 核心特性：
+ *   - 双层存储：内存缓存（MemCache）+ 数据库持久化（sys_config）
+ *   - 懒加载：首次查询时从数据库加载，后续从缓存读取
+ *   - 配置键：统一使用 Constants::SYS_CONFIG_KEY 作为缓存键前缀
+ * 
+ * 常用配置项：
+ *   - sys.account.captchaEnabled: 验证码是否启用（默认 true）
+ *   - sys.account.registerUser: 用户注册是否启用（默认 false）
+ *   - sys.account.forgotPwdEnabled: 忘记密码是否启用（默认 true）
+ * 
+ * 数据库表：
+ *   - sys_config: 系统配置表（config_key, config_value）
+ */
+
 #pragma once
 #include <json/json.h>
 #include <string>
@@ -6,7 +29,15 @@
 #include "../../common/Constants.h"
 #include "../../services/DatabaseService.h"
 
-// 对应 RuoYi.Net SysConfigService，使用直接 libpq 查询
+/**
+ * @class SysConfigService
+ * @brief 系统配置服务单例
+ * 
+ * 对应 RuoYi.Net 中的 SysConfigService，管理系统级配置参数。
+ * 采用单例模式，全局唯一实例。
+ * 
+ * 使用 libpq 直接查询 PostgreSQL 数据库，支持配置缓存和功能开关。
+ */
 class SysConfigService {
 public:
     static SysConfigService &instance() {
@@ -14,7 +45,21 @@ public:
         return inst;
     }
 
-    // 按 key 查询，先读缓存再查 DB
+    /**
+     * @brief 按 key 查询系统配置值
+     * 
+     * 先从内存缓存中查询，如果缓存未命中则从数据库查询，
+     * 并将结果存入缓存以加速后续查询。
+     * 
+     * @param configKey 配置键（如 "sys.account.captchaEnabled"）
+     * 
+     * @return 配置值（字符串），如果不存在返回空字符串
+     * 
+     * @note 
+     *   - 缓存键为 Constants::SYS_CONFIG_KEY + configKey
+     *   - 缓存使用 MemCache 单例管理
+     *   - 如果需要实时更新配置，需要手动清除缓存
+     */
     std::string selectConfigByKey(const std::string &configKey) {
         auto cacheKey = Constants::SYS_CONFIG_KEY + configKey;
         auto cached = MemCache::instance().getString(cacheKey);

@@ -6,7 +6,7 @@
 #include <algorithm>
 
 // 权限检查辅助类：检查指定权限字符串
-// 对应 RuoYi.Net [AppAuthorize("system:user:list")]
+// 对应 RuoYi.Net/java [AppAuthorize("system:user:list")]
 // 用法：在路由注册时指定 PermFilter<"system:user:list">
 // 因为 C++ 模板不支持字符串字面量继承方式，每种权限对应一个类
 // 实际使用宏在 Controller 内手动校验权限，见下方

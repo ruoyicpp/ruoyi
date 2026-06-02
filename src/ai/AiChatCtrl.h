@@ -1,3 +1,34 @@
+/**
+ * @file AiChatCtrl.h
+ * @brief AI 聊天控制器 — 提供 AI 对话、会话管理、消息存储等功能
+ * 
+ * 功能概述：
+ *   - 会话管理：创建、列表、删除、清空会话
+ *   - 消息管理：发送消息、获取历史消息
+ *   - 多模型支持：本地 KoboldCpp + 云端讯飞星火
+ *   - 数据持久化：所有会话和消息存储到 PostgreSQL
+ * 
+ * API 端点：
+ *   GET    /ai                          - 内嵌聊天页面
+ *   GET    /ai/api/info                 - 获取 AI 后端信息和可用模型
+ *   POST   /ai/api/session              - 创建新会话
+ *   GET    /ai/api/sessions             - 获取用户的所有会话
+ *   DELETE /ai/api/session/{id}         - 删除指定会话
+ *   GET    /ai/api/session/{id}/messages - 获取会话的消息历史
+ *   POST   /ai/api/chat                 - 发送消息并获取 AI 回复
+ *   POST   /ai/api/session/{id}/clear   - 清空会话的所有消息
+ * 
+ * 依赖服务：
+ *   - DatabaseService: PostgreSQL 数据库操作
+ *   - KoboldCppService: 本地 LLM 推理引擎
+ *   - TokenService: JWT 令牌验证
+ *   - SecurityUtils: 安全工具函数
+ * 
+ * 数据库表：
+ *   - ai_chat_session: 会话表（session_id, user_id, title, model_name, create_time, update_time）
+ *   - ai_chat_message: 消息表（message_id, session_id, role, content, create_time）
+ */
+
 #pragma once
 #include <drogon/HttpController.h>
 #include <json/json.h>
@@ -7,20 +38,55 @@
 #include "../services/KoboldCppService.h"
 #include <sstream>
 
-// ─── 快捷宏 ────────────────────────────────────────────────────────────────
+/**
+ * @defgroup AI_Chat_Macros AI 聊天快捷宏
+ * @brief 用于快速生成 JSON 响应的宏定义
+ * @{
+ */
+
 #ifndef AI_OK
+/**
+ * @brief 成功响应宏
+ * @param cb 回调函数
+ * @param data 响应数据（会被放入 JSON 的 data 字段）
+ * 
+ * 生成格式：{ "code": 200, "msg": "ok", "data": <data> }
+ */
 #define AI_OK(cb, data) do { \
     Json::Value _r; _r["code"]=200; _r["msg"]="ok"; _r["data"]=(data); \
     auto _resp=drogon::HttpResponse::newHttpJsonResponse(_r); cb(_resp); } while(0)
+
+/**
+ * @brief 错误响应宏
+ * @param cb 回调函数
+ * @param msg 错误消息
+ * 
+ * 生成格式：{ "code": 500, "msg": <msg> }
+ */
 #define AI_ERR(cb, msg) do { \
     Json::Value _r; _r["code"]=500; _r["msg"]=(msg); \
     auto _resp=drogon::HttpResponse::newHttpJsonResponse(_r); cb(_resp); } while(0)
+
+/**
+ * @brief 未授权响应宏（401）
+ * @param cb 回调函数
+ * 
+ * 生成格式：{ "code": 401, "msg": "请先登录" }，HTTP 状态码 401
+ */
 #define AI_UNAUTH(cb) do { \
     Json::Value _r; _r["code"]=401; _r["msg"]="请先登录"; \
     auto _resp=drogon::HttpResponse::newHttpJsonResponse(_r); \
     _resp->setStatusCode(drogon::k401Unauthorized); cb(_resp); } while(0)
 #endif
+/** @} */
 
+/**
+ * @class AiChatCtrl
+ * @brief AI 聊天 HTTP 控制器
+ * 
+ * 继承自 Drogon 的 HttpController，处理所有 AI 聊天相关的 HTTP 请求。
+ * 支持会话管理、消息收发、多模型切换等功能。
+ */
 class AiChatCtrl : public drogon::HttpController<AiChatCtrl> {
 public:
     METHOD_LIST_BEGIN
@@ -34,7 +100,17 @@ public:
         ADD_METHOD_TO(AiChatCtrl::clearSession,    "/ai/api/session/{id}/clear", drogon::Post);
     METHOD_LIST_END
 
-    // ── GET /ai  — 内嵌 HTML 聊天页面 ──────────────────────────────────────
+    /**
+     * @brief GET /ai — 返回内嵌的聊天页面 HTML
+     * 
+     * 返回一个完整的 HTML 页面，包含聊天界面的前端代码。
+     * 无需认证，任何用户都可以访问。
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     * 
+     * @return HTML 页面（Content-Type: text/html）
+     */
     void index(const drogon::HttpRequestPtr& req,
                std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         auto resp = drogon::HttpResponse::newHttpResponse();
@@ -43,7 +119,30 @@ public:
         cb(resp);
     }
 
-    // ── GET /ai/api/info ────────────────────────────────────────────────────
+    /**
+     * @brief GET /ai/api/info — 获取 AI 后端信息和可用模型列表
+     * 
+     * 返回当前系统支持的 AI 模型列表及其可用状态。
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     * 
+     * @return JSON 响应
+     * @code
+     * {
+     *   "code": 200,
+     *   "msg": "ok",
+     *   "data": {
+     *     "ready": true,
+     *     "backend": "KoboldCpp",
+     *     "models": [
+     *       { "id": "kobold", "name": "本地模型(KoboldCpp)", "available": true },
+     *       { "id": "xfai", "name": "讯飞星火(云端)", "available": true }
+     *     ]
+     *   }
+     * }
+     * @endcode
+     */
     void apiInfo(const drogon::HttpRequestPtr& req,
                  std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         Json::Value d;
@@ -56,7 +155,32 @@ public:
         AI_OK(cb, d);
     }
 
-    // ── POST /ai/api/session — 新建会话 ─────────────────────────────────────
+    /**
+     * @brief POST /ai/api/session — 创建新的聊天会话
+     * 
+     * 为当前登录用户创建一个新的聊天会话。
+     * 需要 JWT 认证。
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     * 
+     * @param[in] title 会话标题（可选，默认"新对话"，最长100字符）
+     * @param[in] model 模型选择（可选，"kobold" 或 "xfai"，默认"xfai"）
+     * 
+     * @return JSON 响应
+     * @code
+     * {
+     *   "code": 200,
+     *   "msg": "ok",
+     *   "data": {
+     *     "session_id": 12345,
+     *     "title": "新对话"
+     *   }
+     * }
+     * @endcode
+     * 
+     * @note 会话信息存储到 ai_chat_session 表
+     */
     void createSession(const drogon::HttpRequestPtr& req,
                        std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         auto u = getUser(req);
@@ -80,7 +204,32 @@ public:
         AI_OK(cb, d);
     }
 
-    // ── GET /ai/api/sessions — 会话列表 ─────────────────────────────────────
+    /**
+     * @brief GET /ai/api/sessions — 获取当前用户的所有聊天会话列表
+     * 
+     * 返回用户的最近 50 个会话，按最后更新时间倒序排列。
+     * 需要 JWT 认证。
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     * 
+     * @return JSON 响应，包含会话数组
+     * @code
+     * {
+     *   "code": 200,
+     *   "msg": "ok",
+     *   "data": [
+     *     {
+     *       "session_id": 12345,
+     *       "title": "新对话",
+     *       "model_name": "讯飞星火",
+     *       "update_time": "2024-01-15 10:30:45"
+     *     },
+     *     ...
+     *   ]
+     * }
+     * @endcode
+     */
     void listSessions(const drogon::HttpRequestPtr& req,
                       std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         auto u = getUser(req);
@@ -103,7 +252,28 @@ public:
         AI_OK(cb, list);
     }
 
-    // ── DELETE /ai/api/session/{id} — 删除会话 ──────────────────────────────
+    /**
+     * @brief DELETE /ai/api/session/{id} — 删除指定的聊天会话
+     * 
+     * 删除指定会话及其所有消息记录。
+     * 只能删除自己的会话（通过 user_id 验证）。
+     * 需要 JWT 认证。
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     * @param id 会话 ID（URL 路径参数）
+     * 
+     * @return JSON 响应
+     * @code
+     * {
+     *   "code": 200,
+     *   "msg": "ok",
+     *   "data": { "deleted": true }
+     * }
+     * @endcode
+     * 
+     * @note 删除操作级联删除 ai_chat_message 表中的相关消息
+     */
     void deleteSession(const drogon::HttpRequestPtr& req,
                        std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                        long long id) {
@@ -120,7 +290,38 @@ public:
         AI_OK(cb, d);
     }
 
-    // ── GET /ai/api/session/{id}/messages — 消息历史 ─────────────────────────
+    /**
+     * @brief GET /ai/api/session/{id}/messages — 获取指定会话的消息历史
+     * 
+     * 返回指定会话的所有消息，按时间顺序排列（从早到晚）。
+     * 需要 JWT 认证。
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     * @param id 会话 ID（URL 路径参数）
+     * 
+     * @return JSON 响应，包含消息数组
+     * @code
+     * {
+     *   "code": 200,
+     *   "msg": "ok",
+     *   "data": [
+     *     {
+     *       "msg_id": 1,
+     *       "role": "user",
+     *       "content": "你好",
+     *       "create_time": "2024-01-15 10:30:45"
+     *     },
+     *     {
+     *       "msg_id": 2,
+     *       "role": "assistant",
+     *       "content": "你好！有什么我可以帮助你的吗？",
+     *       "create_time": "2024-01-15 10:30:50"
+     *     }
+     *   ]
+     * }
+     * @endcode
+     */
     void getMessages(const drogon::HttpRequestPtr& req,
                      std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                      long long id) {
@@ -144,7 +345,26 @@ public:
         AI_OK(cb, list);
     }
 
-    // ── POST /ai/api/session/{id}/clear — 清空消息 ───────────────────────────
+    /**
+     * @brief POST /ai/api/session/{id}/clear — 清空指定会话的所有消息
+     * 
+     * 删除会话中的所有消息，但保留会话本身。
+     * 会话标题重置为"新对话"，更新时间更新为当前时间。
+     * 需要 JWT 认证。
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     * @param id 会话 ID（URL 路径参数）
+     * 
+     * @return JSON 响应
+     * @code
+     * {
+     *   "code": 200,
+     *   "msg": "ok",
+     *   "data": { "cleared": true }
+     * }
+     * @endcode
+     */
     void clearSession(const drogon::HttpRequestPtr& req,
                       std::function<void(const drogon::HttpResponsePtr&)>&& cb,
                       long long id) {
@@ -162,7 +382,53 @@ public:
         AI_OK(cb, d);
     }
 
-    // ── POST /ai/api/chat — 发送消息，获取 AI 回复 ─────────────────────────
+    /**
+     * @brief POST /ai/api/chat — 发送用户消息并获取 AI 回复
+     * 
+     * 这是 AI 聊天的核心接口。流程如下：
+     *   1. 验证用户身份（JWT 认证）
+     *   2. 如果 session_id=0，自动创建新会话
+     *   3. 验证会话所有权（user_id 匹配）
+     *   4. 存储用户消息到数据库
+     *   5. 拉取最近 20 条历史消息作为上下文
+     *   6. 根据选择的模型调用 AI：
+     *      - "xfai"：调用讯飞星火云端 API（异步）
+     *      - "kobold"：调用本地 KoboldCpp 推理引擎（同步）
+     *   7. 存储 AI 回复到数据库
+     *   8. 更新会话的 update_time
+     *   9. 如果是首轮对话，自动生成会话标题
+     *   10. 返回 AI 回复给客户端
+     * 
+     * 需要 JWT 认证。
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     * 
+     * @param[in] session_id 会话 ID（可选，为 0 时自动创建新会话）
+     * @param[in] message 用户消息（必需，最长 8000 字符）
+     * @param[in] model 模型选择（可选，"kobold" 或 "xfai"，默认 "kobold"）
+     * @param[in] system_prompt 系统提示词（可选，默认"你是一个有帮助的AI助手，请用中文回答。"）
+     * @param[in] max_tokens 最大生成令牌数（可选，默认 512，仅对 KoboldCpp 有效）
+     * @param[in] temperature 采样温度（可选，默认 0.7，范围 0.0-2.0，仅对 KoboldCpp 有效）
+     * 
+     * @return JSON 响应
+     * @code
+     * {
+     *   "code": 200,
+     *   "msg": "ok",
+     *   "data": {
+     *     "session_id": 12345,
+     *     "reply": "你好！有什么我可以帮助你的吗？"
+     *   }
+     * }
+     * @endcode
+     * 
+     * @note 
+     *   - 讯飞星火 API 调用是异步的，最多等待 15 秒
+     *   - KoboldCpp 调用是同步的，会阻塞直到生成完成
+     *   - 如果 AI 无法响应，会返回友好的错误提示
+     *   - 消息存储在 ai_chat_message 表，会话信息在 ai_chat_session 表
+     */
     void chat(const drogon::HttpRequestPtr& req,
               std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         auto u = getUser(req);
@@ -280,12 +546,35 @@ public:
     }
 
 private:
-    // ── 从请求头获取登录用户 ────────────────────────────────────────────────
+    /**
+     * @brief 从 HTTP 请求头中提取并验证登录用户信息
+     * 
+     * 从 Authorization 头中解析 JWT 令牌，验证其有效性，
+     * 并返回对应的用户信息。
+     * 
+     * @param req HTTP 请求对象
+     * @return 如果验证成功，返回 LoginUser 对象；否则返回 std::nullopt
+     * 
+     * @note 使用 TokenService 进行 JWT 验证
+     */
     std::optional<LoginUser> getUser(const drogon::HttpRequestPtr& req) {
         return TokenService::instance().getLoginUser(req);
     }
 
-    // ── 内嵌聊天 UI（ChatGPT 风格，无需前端）──────────────────────────────
+    /**
+     * @brief 生成内嵌的聊天页面 HTML
+     * 
+     * 返回一个完整的、自包含的 HTML 页面，包含：
+     *   - 聊天界面 UI（侧边栏、消息区、输入框）
+     *   - 会话管理功能（新建、删除、清空）
+     *   - 模型选择和参数调整
+     *   - 实时消息交互（WebSocket 或 HTTP 轮询）
+     *   - ChatGPT 风格的深色主题
+     * 
+     * 无需额外的前端文件，可直接在浏览器中使用。
+     * 
+     * @return HTML 页面字符串
+     */
     static std::string chatHtml() {
         return R"HTMLEOF(<!DOCTYPE html>
 <html lang="zh-CN">

@@ -97,15 +97,39 @@ inline const char* _tagColor(std::string_view tag) {
     // 限流 / 警告类
     if (tag == "[RateLimit]") return YELLOW;
     // 菜单 / 启动配置
-    if (tag == "[Menu]") return B_CYAN;
-    // 启动 / 服务正常
-    if (tag == "[NGINX]" || tag == "[SysDictService]") return GREEN;
+    if (tag == "[Menu]" || tag == "[HotConfig]") return B_CYAN;
+    // 启动 / 前端 / Nginx 相关
+    if (tag == "[NGINX]" || tag == "[SysDictService]" || tag == "[NginxEmbedded]"
+     || tag == "[NginxLike]" || tag == "[EmbeddedFrontend]" || tag == "[Frontend]"
+     || tag == "[FrontendHost]") return GREEN;
+    // AI 相关
+    if (tag == "[Ai]" || tag == "[Spark]") return PURPLE;
+    // 证书 / ACME
+    if (tag == "[ACME]") return LIME;
+    // API 密钥 / 签名
+    if (tag == "[ApiKey]" || tag == "[Sign]" || tag == "[SignUtils]") return B_YELLOW;
+    // 通知 / 指标
+    if (tag == "[Notify]" || tag == "[Metrics]") return VIOLET;
+    // 调度 / 工作线程
+    if (tag == "[Orchestrator]" || tag == "[Worker]" || tag == "[Restart]") return B_MAGENTA;
+    // 慢请求 / 慢 SQL
+    if (tag == "[SlowReq]" || tag == "[SlowSQL]" || tag == "[Fallback]") return ORANGE;
+    // SQL 注入检测
+    if (tag == "[SQLi]") return B_RED;
+    // 文件加密 / 数据保留
+    if (tag == "[FileCipher]" || tag == "[Retention]") return OLIVE;
+    // 访问日志
+    if (tag == "[AccessLog]" || tag == "[Log]") return GRAY;
+    // HTTP 跨域
+    if (tag == "[CORS]") return TEAL;
+    // 许可证
+    if (tag == "[License]") return BROWN;
+    // 安全工具
+    if (tag == "[SecurityUtils]") return B_WHITE;
     // 服务器信息
     if (tag == "[Server]") return WHITE;
-    // 日志系统
-    if (tag == "[Log]") return GRAY;
     // 崩溃
-    if (tag == "[CRASH]") return B_RED;
+    if (tag == "[CRASH]" || tag == "[FATAL]") return B_RED;
     // 默认（未映射 TAG 兜底）：CYAN
     return CYAN;
 }
@@ -136,13 +160,22 @@ inline std::string _decorate(const char* data, std::size_t len) {
 
     // 整行级别颜色（trantor 行：含 INFO/WARN/ERROR/...）
     const char* lineColor = nullptr;
-    if      (findWord("FATAL"))                       lineColor = _ansi::B_RED;
-    else if (findWord("ERROR"))                       lineColor = _ansi::RED;
-    else if (findWord("WARN") || findWord("WARNING")) lineColor = _ansi::YELLOW;
-    else if (findWord("DEBUG"))                       lineColor = _ansi::GRAY;
-    else if (findWord("TRACE"))                       lineColor = _ansi::GRAY;
-    else if (findWord("NOTICE"))                      lineColor = _ansi::GRAY;
-    else if (findWord("INFO"))                        lineColor = _ansi::GREEN;
+    if      (findWord("FATAL"))                               lineColor = _ansi::B_RED;
+    else if (findWord("ERROR"))                               lineColor = _ansi::RED;
+    else if (findWord("WARN") || findWord("WARNING"))         lineColor = _ansi::YELLOW;
+    else if (findWord("DEBUG"))                               lineColor = _ansi::GRAY;
+    else if (findWord("TRACE"))                               lineColor = _ansi::GRAY;
+    else if (findWord("NOTICE"))                              lineColor = _ansi::GRAY;
+    else if (findWord("INFO"))                                lineColor = _ansi::GREEN;
+    // 内容特征关键词（充分利用其余颜色）
+    else if (findWord("success") || findWord("connected")
+          || findWord("completed") || findWord("passed"))     lineColor = _ansi::B_GREEN;
+    else if (findWord("slow") || findWord("timeout")
+          || findWord("retry")   || findWord("reconnect"))    lineColor = _ansi::ORANGE;
+    else if (findWord("loading") || findWord("initializing")
+          || findWord("connecting"))                          lineColor = _ansi::SKY;
+    else if (findWord("injection") || findWord("SQLi"))       lineColor = _ansi::B_RED;
+    else if (findWord("skipping") || findWord("already"))     lineColor = _ansi::GRAY;
 
     std::string out;
     out.reserve(len + 32);

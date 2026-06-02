@@ -1,4 +1,4 @@
-// AI 轨迹片段重构恢复 - 来自 cb68a004 Steps 6215, 6269, 6451, 6476 等多次 edit
+
 // 商业版核心文件：硬件指纹采集 + HMAC 完整性签名 + 注册表二级绑定 + 解锁码生成
 // 注意：本文件原版有 6+ 次 multi_edit 演进，此处是按可见 API 表面与其他文件
 //      （LicenseManager.h / DatabaseInit.h / tools/license_tool.cc）的引用反推重构。

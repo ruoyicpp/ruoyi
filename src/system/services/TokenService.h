@@ -1,3 +1,29 @@
+/**
+ * @file TokenService.h
+ * @brief JWT 令牌服务 — 处理用户认证、令牌生成、刷新和验证
+ * 
+ * 功能概述：
+ *   - 令牌生成：创建 JWT 令牌，包含用户信息和设备信息
+ *   - 令牌刷新：延长令牌有效期
+ *   - 令牌验证：从 HTTP 请求中提取和验证令牌
+ *   - 会话管理：支持多终端登录、踢掉旧会话等策略
+ *   - 地址解析：获取登录 IP 地址和地理位置
+ *   - 设备识别：解析浏览器、操作系统等 User-Agent 信息
+ * 
+ * 核心特性：
+ *   - JWT 令牌格式：包含 uuid、userId、userName、deptId
+ *   - 双层存储：内存缓存（TokenCache）+ 数据库持久化（sys_token）
+ *   - 异步地址解析：外网 IP 地址异步查询，不阻塞登录流程
+ *   - 多终端策略：可配置是否在新登录时踢掉同用户的其他会话
+ * 
+ * 配置项（config.json）：
+ *   - jwt.secret: JWT 签名密钥
+ *   - jwt.issuer: JWT 签发者
+ *   - jwt.audience: JWT 受众
+ *   - jwt.expire_minutes: 令牌过期时间（分钟）
+ *   - security.kick_previous_session: 新登录时是否踢掉旧会话（默认 false）
+ */
+
 #pragma once
 #include <string>
 #include <chrono>
@@ -12,9 +38,18 @@
 #include "../../common/ApiKeyService.h"
 #include "../../services/DatabaseService.h"
 
-// 多终端策略：是否在新登录时踢掉同 userId 的其它在线会话
-// 通过 config.json 的 security.kick_previous_session 控制（默认 false）
-// 0=未初始化，1=true，2=false
+/**
+ * @struct MultiSessionPolicy
+ * @brief 多终端会话策略
+ * 
+ * 控制新用户登录时是否踢掉同 userId 的其他在线会话。
+ * 配置通过 config.json 的 security.kick_previous_session 控制（默认 false）。
+ * 
+ * 缓存策略：
+ *   - 0 = 未初始化
+ *   - 1 = true（踢掉旧会话）
+ *   - 2 = false（允许多终端登录）
+ */
 struct MultiSessionPolicy {
     static bool kickPrevious() {
         static int cached = [] {
@@ -34,7 +69,21 @@ struct MultiSessionPolicy {
     }
 };
 
-// 对应 RuoYi.Net TokenService
+/**
+ * @class TokenService
+ * @brief JWT 令牌管理服务单例
+ * 
+ * 对应 RuoYi.Net 中的 TokenService，提供令牌的生成、验证、刷新等功能。
+ * 采用单例模式，全局唯一实例。
+ * 
+ * 主要职责：
+ *   - 生成 JWT 令牌（包含用户信息和设备信息）
+ *   - 刷新令牌有效期
+ *   - 验证令牌有效性
+ *   - 管理在线会话（支持多终端或单终端策略）
+ *   - 解析 IP 地址和地理位置
+ *   - 识别客户端设备信息
+ */
 class TokenService {
 public:
     static TokenService &instance() {
@@ -42,7 +91,27 @@ public:
         return inst;
     }
 
-    // 创建 token，生成 uuid 后存入缓存，返回 JWT 字符串
+    /**
+     * @brief 创建新的 JWT 令牌
+     * 
+     * 为用户生成 JWT 令牌，包含以下步骤：
+     *   1. 如果启用了多终端策略，踢掉同用户的其他在线会话
+     *   2. 生成唯一的 UUID 作为令牌标识
+     *   3. 解析请求中的 IP 地址和 User-Agent 信息
+     *   4. 获取 IP 地址的地理位置（内网 IP 直接返回，外网 IP 异步查询）
+     *   5. 将用户信息存储到缓存和数据库
+     *   6. 返回 JWT 字符串
+     * 
+     * @param user 登录用户对象（会被修改，添加 token、ipAddr、browser 等字段）
+     * @param req HTTP 请求对象（用于提取 IP、User-Agent 等信息）
+     * 
+     * @return JWT 令牌字符串
+     * 
+     * @note 
+     *   - 外网 IP 的地理位置查询是异步的，不会阻塞返回
+     *   - 令牌过期时间由 config.json 的 jwt.expire_minutes 控制
+     *   - 多终端策略由 config.json 的 security.kick_previous_session 控制
+     */
     std::string createToken(LoginUser &user, const drogon::HttpRequestPtr &req) {
         // 多终端策略：踢掉同 userId 的其它在线会话（若已开启）
         if (MultiSessionPolicy::kickPrevious() && user.userId > 0) {

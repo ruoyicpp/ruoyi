@@ -6,11 +6,11 @@
 #ifdef HAVE_BCRYPT_HPP
 #  include <bcrypt/BCrypt.hpp>
 
-std::string SecurityUtils::encryptPassword(const std::string &password) {
+std::string SecurityUtils::encryptPasswordInternal(const std::string &password) {
     return BCrypt::generateHash(password, 10);
 }
 
-bool SecurityUtils::matchesPassword(const std::string &raw, const std::string &encoded) {
+bool SecurityUtils::matchesPasswordInternal(const std::string &raw, const std::string &encoded) {
     return BCrypt::validatePassword(raw, encoded);
 }
 
@@ -111,14 +111,14 @@ static std::vector<unsigned char> pbkdf2(const std::string &password,
     return out;
 }
 
-std::string SecurityUtils::encryptPassword(const std::string &password) {
+std::string SecurityUtils::encryptPasswordInternal(const std::string &password) {
     unsigned char salt[16];
     RAND_bytes(salt, sizeof(salt));
     auto hash = pbkdf2(password, salt, sizeof(salt));
     return "$pbkdf2$" + toHex(salt, sizeof(salt)) + "$" + toHex(hash.data(), hash.size());
 }
 
-bool SecurityUtils::matchesPassword(const std::string &raw, const std::string &encoded) {
+bool SecurityUtils::matchesPasswordInternal(const std::string &raw, const std::string &encoded) {
     // 支持旧的 BCrypt 格式（$2a$ 开头）和新的 PBKDF2 格式
     if (encoded.rfind("$pbkdf2$", 0) == 0) {
         // 解析 $pbkdf2$<salt>$<hash>

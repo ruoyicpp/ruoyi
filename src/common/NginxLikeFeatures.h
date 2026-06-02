@@ -34,7 +34,6 @@
 #include <ctime>
 #include <fstream>
 #include <mutex>
-#include <regex>
 #include <string>
 #include <unordered_map>
 #include <vector>

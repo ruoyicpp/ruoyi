@@ -1,3 +1,25 @@
+/**
+ * @file SysMenuService.h
+ * @brief 系统菜单服务 — 处理菜单树、权限、路由等
+ * 
+ * 功能概述：
+ *   - 菜单管理：查询、构建菜单树、权限检查
+ *   - 路由生成：为前端生成动态路由（getRouters）
+ *   - 权限控制：基于角色的菜单权限过滤
+ *   - 菜单缓存：支持菜单列表缓存
+ * 
+ * 核心特性：
+ *   - 树形结构：菜单按 parent_id 组织为树形结构
+ *   - 权限过滤：管理员可见所有菜单，普通用户仅可见有权限的菜单
+ *   - 动态路由：根据用户权限生成前端路由配置
+ *   - 多条件查询：支持按菜单名、状态等条件过滤
+ * 
+ * 数据库表：
+ *   - sys_menu: 菜单表
+ *   - sys_role_menu: 角色菜单关联表
+ *   - sys_user_role: 用户角色关联表
+ */
+
 #pragma once
 #include <json/json.h>
 #include <string>
@@ -7,7 +29,15 @@
 #include "../../common/SecurityUtils.h"
 #include "../../services/DatabaseService.h"
 
-// 对应 RuoYi.Net SysMenuService，使用直接 libpq 查询
+/**
+ * @class SysMenuService
+ * @brief 系统菜单服务单例
+ * 
+ * 对应 RuoYi.Net 中的 SysMenuService，处理菜单和权限相关的业务逻辑。
+ * 采用单例模式，全局唯一实例。
+ * 
+ * 使用 libpq 直接查询 PostgreSQL 数据库，支持菜单树构建和权限过滤。
+ */
 class SysMenuService {
 public:
     static SysMenuService &instance() {
@@ -15,7 +45,43 @@ public:
         return inst;
     }
 
-    // 根据用户ID查询权限（供前端 getRouters 使用）
+    /**
+     * @brief 为指定用户构建菜单树和路由
+     * 
+     * 根据用户权限查询菜单，构建树形结构，并转换为前端路由格式。
+     * 管理员可见所有菜单，普通用户仅可见有权限的菜单。
+     * 
+     * @param userId 用户 ID
+     * 
+     * @return JSON 格式的路由数组，供前端 getRouters 使用
+     * @code
+     * [
+     *   {
+     *     "name": "System",
+     *     "path": "/system",
+     *     "hidden": false,
+     *     "redirect": "noRedirect",
+     *     "component": "Layout",
+     *     "alwaysShow": true,
+     *     "meta": { "title": "系统管理", "icon": "system", "noCache": false },
+     *     "children": [
+     *       {
+     *         "name": "User",
+     *         "path": "user",
+     *         "hidden": false,
+     *         "component": "system/user/index",
+     *         "meta": { "title": "用户管理", "icon": "user", "noCache": false }
+     *       }
+     *     ]
+     *   }
+     * ]
+     * @endcode
+     * 
+     * @note 
+     *   - 仅返回菜单类型为 'M'（菜单）或 'C'（按钮）的项
+     *   - 仅返回状态为 '0'（正常）的菜单
+     *   - 管理员（userId=1）可见所有菜单
+     */
     Json::Value buildMenusForUser(long userId) {
         auto& db = DatabaseService::instance();
         DatabaseService::QueryResult res{};
@@ -295,10 +361,20 @@ private:
         long parentId        = menu["parentId"].asInt64();
         std::string menuType = menu["menuType"].asString();
         std::string isFrame  = menu["isFrame"].asString();
+        std::string comp     = menu["component"].asString();
         if (parentId == 0 && menuType == "M" && isFrame == "1")
             return "/" + path;
         if (isMenuFrame(menu)) return "/";
         if (isInnerLinkMenu(menu)) return "/";
+        // InnerLink 子菜单：path 含完整 URL 时只取 URL path 部分
+        // 避被当 router path 导致乱码
+        if (comp == "InnerLink") {
+            auto pos = path.find("://");
+            if (pos != std::string::npos) {
+                auto pathStart = path.find('/', pos + 3);
+                return (pathStart != std::string::npos) ? path.substr(pathStart) : "/";
+            }
+        }
         return path;
     }
 

@@ -3,13 +3,13 @@
 #include <vector>
 #include <json/json.h>
 
-// 鐎电懓绨� RuoYi.Net LoginUser
+// 若依框架 LoginUser
 struct LoginUser {
     long        userId      = 0;
     long        deptId      = 0;
     std::string userName;
-    std::string password;   // 閿熸枻鎷烽敓鏂ゆ嫹閿熷彨浼欐嫹閿熸枻鎷烽敓鏂ゆ嫹搴�
-    std::string token;      // uuid閿熸枻鎷烽敓鏂ゆ嫹閿熸枻鎷� cache key
+    std::string password;   // 登录密码（仅在登录时传输，缓存中不持久化存储）
+    std::string token;      // uuid 作为 Redis cache key
     long long   loginTime   = 0;
     long long   expireTime  = 0;
     std::string ipAddr;
@@ -17,10 +17,10 @@ struct LoginUser {
     std::string browser;
     std::string os;
     std::string deptName;
-    std::vector<std::string> permissions;  // 鏉冮敓鏂ゆ嫹閿熻鍑ゆ嫹閿熸枻鎷烽敓鍙唻鎷烽敓鏂ゆ嫹閿燂拷 "system:user:list"
-    std::vector<std::string> roles;        // 閿熸枻鎷疯壊 key 閿熷彨鎲嬫嫹閿熸枻鎷烽敓锟� "admin"
+    std::vector<std::string> permissions;  // 权限标识列表，如 "system:user:list"
+    std::vector<std::string> roles;        // 角色 key 列表，如 "admin"
 
-    // 鎼村繐鍨崠鏍﹁礋 JSON閿涘牏鏁ゆ禍锟� token 缂傛挸鐡ㄧ€涙ê鍋嶉敍锟�
+    // 序列化当前对象为 JSON（用于存入 Redis 缓存）
     Json::Value toJson() const {
         Json::Value j;
         j["userId"]        = (Json::Int64)userId;
@@ -39,6 +39,14 @@ struct LoginUser {
         return j;
     }
 
+    /**
+     * @brief 从 JSON 对象反序列化
+     *
+     * 用于从缓存或数据库恢复用户信息。
+     *
+     * @param j JSON 对象
+     * @return 反序列化后的 LoginUser 对象
+     */
     static LoginUser fromJson(const Json::Value &j) {
         LoginUser u;
         u.userId        = j["userId"].asInt64();

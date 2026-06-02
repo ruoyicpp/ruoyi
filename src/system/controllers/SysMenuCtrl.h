@@ -84,7 +84,7 @@ public:
         long parentId = (*body).get("parentId", 0).asInt64();
         if (!SysMenuService::instance().checkMenuNameUnique(menuName, parentId))
             { RESP_ERR(cb, "新增菜单'" + menuName + "'失败，菜单名称已存在"); return; }
-        // isFrame=0(外链) 时 path 必须以 http(s):// 开头（对应 C# UserConstants.YES_FRAME）
+        // isFrame=0(外链) 时 path 必须以 http(s):// 开头（对应 java UserConstants.YES_FRAME）
         std::string isFrame = (*body).get("isFrame","1").asString();
         std::string path    = (*body).get("path","").asString();
         if (isFrame == "0" && path.substr(0, 7) != "http://" && path.substr(0, 8) != "https://")
@@ -115,7 +115,7 @@ public:
         long parentId = (*body).get("parentId", 0).asInt64();
         if (menuId == parentId) { RESP_ERR(cb, "修改菜单失败，上级菜单不能选择自己"); return; }
         std::string menuName = (*body).get("menuName","").asString();
-        // 菜单名唯一性（排除自身，对应 C# CheckMenuNameUnique）
+        // 菜单名唯一性（排除自身，对应 java CheckMenuNameUnique）
         auto nm = DatabaseService::instance().queryParams(
             "SELECT menu_id FROM sys_menu WHERE menu_name=$1 AND parent_id=$2 AND menu_id!=$3 LIMIT 1",
             {menuName, std::to_string(parentId), std::to_string(menuId)});

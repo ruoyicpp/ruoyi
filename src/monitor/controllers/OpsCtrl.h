@@ -6,8 +6,9 @@
 #include <chrono>
 #include <fstream>
 #include <sstream>
-#include <regex>
 #include <thread>
+#include <algorithm>
+#include <cctype>
 
 #ifdef _WIN32
 #  include <windows.h>
@@ -255,16 +256,23 @@ private:
             f.seekg(offset);
             std::string content((std::istreambuf_iterator<char>(f)), {});
 
-            static const std::regex kErrPat("(ERROR|FATAL|WARN|exception|失败|异常)", std::regex::icase);
+            static const char* kErrPatterns[] = {"ERROR", "FATAL", "WARN", "exception", "失败", "异常"};
             std::istringstream iss(content);
             std::string line;
             int errCnt = 0;
             std::vector<Json::Value> lines;
             while (std::getline(iss, line)) {
-                if (std::regex_search(line, kErrPat)) {
-                    errCnt++;
-                    Json::Value item; item["file"] = path; item["message"] = line;
-                    lines.push_back(item);
+                std::string lowerLine = line;
+                std::transform(lowerLine.begin(), lowerLine.end(), lowerLine.begin(), ::tolower);
+                for (const char* pat : kErrPatterns) {
+                    std::string lowerPat = pat;
+                    std::transform(lowerPat.begin(), lowerPat.end(), lowerPat.begin(), ::tolower);
+                    if (lowerLine.find(lowerPat) != std::string::npos) {
+                        errCnt++;
+                        Json::Value item; item["file"] = path; item["message"] = line;
+                        lines.push_back(item);
+                        break;
+                    }
                 }
             }
             result["error_count"] = result["error_count"].asInt() + errCnt;

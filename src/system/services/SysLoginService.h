@@ -1,3 +1,31 @@
+/**
+ * @file SysLoginService.h
+ * @brief 系统登录服务 — 处理用户认证、登录流程、登录日志等
+ * 
+ * 功能概述：
+ *   - 用户认证：验证用户名、密码、验证码
+ *   - 登录流程：多步骤验证、错误处理、日志记录
+ *   - 会话管理：生成 JWT 令牌、管理在线会话
+ *   - 安全防护：密码错误次数限制、账号锁定、IP 黑名单
+ *   - 登录日志：记录登录成功/失败、IP 地址、设备信息
+ * 
+ * 登录流程：
+ *   1. 验证码校验（Redis 缓存）
+ *   2. 前置检查（IP 黑名单、账号锁定等）
+ *   3. 数据库查询用户信息
+ *   4. 账号状态检查（是否删除、是否停用）
+ *   5. 密码验证（含错误次数限制）
+ *   6. 生成 JWT 令牌
+ *   7. 记录登录日志
+ * 
+ * 依赖服务：
+ *   - DatabaseService: PostgreSQL 数据库操作
+ *   - SysPasswordService: 密码验证和错误次数管理
+ *   - TokenService: JWT 令牌生成
+ *   - SysConfigService: 系统配置读取
+ *   - IpUtils: IP 地址和地理位置解析
+ */
+
 #pragma once
 #include "../../common/UaUtils.h"
 #include <string>
@@ -15,7 +43,15 @@
 #include "SysConfigService.h"
 #include "TokenService.h"
 
-// 对应 RuoYi.Net SysLoginService，使用直接 libpq 查询
+/**
+ * @class SysLoginService
+ * @brief 系统登录服务单例
+ * 
+ * 对应 RuoYi.Net 中的 SysLoginService，处理用户登录认证。
+ * 采用单例模式，全局唯一实例。
+ * 
+ * 使用 libpq 直接查询 PostgreSQL 数据库，支持完整的登录流程和安全防护。
+ */
 class SysLoginService {
 public:
     static SysLoginService &instance() {
@@ -23,7 +59,34 @@ public:
         return inst;
     }
 
-    // 登录成功后返回 JWT token 字符串
+    /**
+     * @brief 用户登录
+     * 
+     * 完整的登录流程：
+     *   1. 验证码校验（从 Redis 缓存中验证）
+     *   2. 前置检查（IP 黑名单、账号锁定等）
+     *   3. 查询用户信息（从 sys_user 表）
+     *   4. 检查账号状态（是否删除、是否停用）
+     *   5. 密码验证（使用 bcrypt，含错误次数限制）
+     *   6. 生成 JWT 令牌（包含用户信息和设备信息）
+     *   7. 记录登录日志（成功/失败、IP、设备等）
+     * 
+     * @param username 用户名
+     * @param password 密码（明文，会与数据库中的 bcrypt 哈希比对）
+     * @param code 验证码（从前端获取）
+     * @param uuid 验证码 UUID（用于从缓存中查询验证码）
+     * @param req HTTP 请求对象（用于提取 IP、User-Agent 等信息）
+     * 
+     * @return JWT 令牌字符串
+     * 
+     * @throw std::runtime_error 登录失败时抛出异常，包含错误信息
+     * 
+     * @note 
+     *   - 验证码错误、密码错误等都会记录到登录日志
+     *   - 密码错误次数超过限制（默认 5 次）会锁定账号 15 分钟
+     *   - 登录成功会清除密码错误计数
+     *   - 支持多终端登录（可配置是否踢掉旧会话）
+     */
     std::string login(const std::string &username, const std::string &password,
                       const std::string &code, const std::string &uuid,
                       const drogon::HttpRequestPtr &req) {
@@ -71,7 +134,7 @@ public:
         std::string encodedPwd = res.str(0, 4);  // password
 
         // 4. 密码验证（含错误次数限制）
-        // 传入 ip/ua，SysPasswordService 内部写登录已尝试N次（日志，对应 C# 同名日志行为）
+        // 传入 ip/ua，SysPasswordService 内部写登录已尝试N次（日志，对应 java 同名日志行为）
         try {
             std::string ip = IpUtils::getIpAddr(req);
             std::string ua = req->getHeader("User-Agent");

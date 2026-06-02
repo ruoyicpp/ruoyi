@@ -119,6 +119,7 @@ public:
     }
 
     void edit(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        long long startMs = OperLogUtils::nowMs();
         CHECK_PERM(req, cb, "system:role:edit");
         auto body = req->getJsonObject();
         if (!body) { RESP_ERR(cb, "请求体格式错误"); return; }
@@ -128,12 +129,25 @@ public:
         std::string rid      = std::to_string(roleId);
         std::string roleName = (*body).get("roleName","").asString();
         std::string roleKey  = (*body).get("roleKey","").asString();
-        // 角色名唯一性（排除自身，对应 C# CheckRoleNameUniqueAsync）
+        // 角色名唯一性（排除自身，对应 java CheckRoleNameUniqueAsync）
         auto n = db.queryParams("SELECT role_id FROM sys_role WHERE role_name=$1 AND del_flag='0' AND role_id!=$2 LIMIT 1", {roleName, rid});
         if (n.ok() && n.rows() > 0) { RESP_ERR(cb, "修改角色'" + roleName + "'失败，角色名称已存在"); return; }
-        // 角色权限字符唯一性（排除自身，对应 C# CheckRoleKeyUniqueAsync）
+        // 角色权限字符唯一性（排除自身，对应java CheckRoleKeyUniqueAsync）
         auto k = db.queryParams("SELECT role_id FROM sys_role WHERE role_key=$1 AND del_flag='0' AND role_id!=$2 LIMIT 1", {roleKey, rid});
         if (k.ok() && k.rows() > 0) { RESP_ERR(cb, "修改角色'" + roleName + "'失败，角色权限已存在"); return; }
+        // ── 审计快照：变更前角色数据 ──────────────────────────────────────
+        Json::Value beforeData;
+        auto beforeRes = db.queryParams(
+            "SELECT role_name,role_key,role_sort,data_scope,status,remark FROM sys_role WHERE role_id=$1",
+            {rid});
+        if (beforeRes.ok() && beforeRes.rows() > 0) {
+            beforeData["roleName"]  = beforeRes.str(0, 0);
+            beforeData["roleKey"]   = beforeRes.str(0, 1);
+            beforeData["roleSort"]  = beforeRes.str(0, 2);
+            beforeData["dataScope"] = beforeRes.str(0, 3);
+            beforeData["status"]    = beforeRes.str(0, 4);
+            beforeData["remark"]   = beforeRes.str(0, 5);
+        }
         db.execParams(
             "UPDATE sys_role SET role_name=$1,role_key=$2,role_sort=$3,data_scope=$4,"
             "menu_check_strictly=$5,dept_check_strictly=$6,status=$7,remark=$8,update_by=$9,update_time=NOW() "
@@ -190,7 +204,15 @@ public:
                 }
             }
         }
-        LOG_OPER(req, "角色管理", BusinessType::UPDATE);
+        // ── 审计快照：变更后角色数据 ──────────────────────────────────────
+        Json::Value afterData;
+        afterData["roleName"]  = roleName;
+        afterData["roleKey"]   = roleKey;
+        afterData["roleSort"]  = std::to_string((*body).get("roleSort", 0).asInt());
+        afterData["dataScope"] = (*body).get("dataScope", "1").asString();
+        afterData["status"]    = (*body).get("status", "0").asString();
+        afterData["remark"]    = (*body).get("remark", "").asString();
+        LOG_AUDIT_TIMED(req, "角色管理", BusinessType::UPDATE, beforeData, afterData, startMs);
         RESP_MSG(cb, "操作成功");
     }
 

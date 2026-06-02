@@ -119,7 +119,7 @@ private:
     std::vector<Sender> senders_;
     std::atomic<size_t> counter_{0};
 
-    // ── Windows 系统证书仓库 → OpenSSL X509_STORE（C# / SChannel 行为对齐）───
+    // ── Windows 系统证书仓库 → OpenSSL X509_STORE（java/ SChannel 行为对齐）───
     //   读取 "ROOT"（受信任的根证书颁发机构）和 "CA"（中间 CA），
     //   逐个 d2i_X509 转换后塞进 OpenSSL 的 trust store。
     //   返回成功导入的证书数。
@@ -200,7 +200,7 @@ private:
         freeaddrinfo(res);
         if (sock < 0) throw std::runtime_error("TCP 连接失败: " + host);
 
-        // 2. SSL wrap（Implicit TLS）—— C# / SChannel 行为：信任 Windows 系统证书仓库
+        // 2. SSL wrap（Implicit TLS）——java / SChannel 行为：信任 Windows 系统证书仓库
         SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
         if (!ctx) { closesocket(sock); throw std::runtime_error("SSL_CTX_new 失败: " + opensslLastError()); }
         SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);

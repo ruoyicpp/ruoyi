@@ -1,3 +1,24 @@
+/**
+ * @file SysPasswordService.h
+ * @brief 系统密码服务 — 处理密码验证、错误次数限制、账号锁定等
+ * 
+ * 功能概述：
+ *   - 密码验证：使用 bcrypt 验证用户密码
+ *   - 错误限制：限制密码错误次数，防止暴力破解
+ *   - 账号锁定：密码错误超过限制次数后锁定账号
+ *   - 日志记录：记录密码验证失败的日志
+ * 
+ * 核心特性：
+ *   - 密码哈希：使用 bcrypt 算法，不存储明文密码
+ *   - 缓存管理：使用 MemCache 存储密码错误计数
+ *   - 自动解锁：锁定时间到期后自动解锁（缓存过期）
+ *   - 日志追踪：记录所有密码验证尝试
+ * 
+ * 配置项（config.json）：
+ *   - user.max_retry_count: 最大重试次数（默认 5）
+ *   - user.lock_time_minutes: 锁定时间（分钟，默认 15）
+ */
+
 #pragma once
 #include <string>
 #include <stdexcept>
@@ -8,7 +29,15 @@
 #include "../../services/DatabaseService.h"
 #include "../../common/IpUtils.h"
 
-// 对应 RuoYi.Net SysPasswordService
+/**
+ * @class SysPasswordService
+ * @brief 系统密码服务单例
+ * 
+ * 对应 RuoYi.Net 中的 SysPasswordService，处理密码验证和安全防护。
+ * 采用单例模式，全局唯一实例。
+ * 
+ * 支持密码错误次数限制、账号锁定、日志记录等功能。
+ */
 class SysPasswordService {
 public:
     static SysPasswordService &instance() {
@@ -16,8 +45,30 @@ public:
         return inst;
     }
 
-    // 验证密码，失败则抛异常并记录错误次数
-    // ipAddr / ua 用于写登录日志，与 C# 保持一致，暂时写死传空
+    /**
+     * @brief 验证用户密码
+     * 
+     * 验证流程：
+     *   1. 从缓存中获取该用户的密码错误次数
+     *   2. 如果错误次数超过限制，抛出异常（账号已锁定）
+     *   3. 使用 bcrypt 比对密码
+     *   4. 如果密码错误，增加错误计数并设置缓存过期时间
+     *   5. 如果密码正确，清除错误计数
+     * 
+     * @param username 用户名
+     * @param rawPassword 明文密码（从前端获取）
+     * @param encodedPassword bcrypt 哈希密码（从数据库获取）
+     * @param ipAddr IP 地址（可选，用于日志记录）
+     * @param ua User-Agent（可选，用于日志记录）
+     * 
+     * @throw std::runtime_error 密码验证失败或账号已锁定时抛出异常
+     * 
+     * @note 
+     *   - 错误计数使用 MemCache 存储，键为 Constants::PWD_ERR_CNT_KEY + username
+     *   - 缓存过期时间为 lock_time_minutes * 60 秒
+     *   - 密码正确时自动清除错误计数
+     *   - 每次密码错误都会记录到登录日志
+     */
     void validate(const std::string &username, const std::string &rawPassword,
                   const std::string &encodedPassword,
                   const std::string &ipAddr = "", const std::string &ua = "") {
@@ -44,7 +95,7 @@ public:
             retryCount++;
             MemCache::instance().setString(cacheKey, std::to_string(retryCount),
                                            lockTime * 60);
-        // 对应 C# 同名日志：已尝试N次 + 密码不匹配
+        // 对应  同名日志：已尝试N次 + 密码不匹配
             writeLog(username, "1",
                      "密码输入错误" + std::to_string(retryCount) + "次",
                      ipAddr, ua);

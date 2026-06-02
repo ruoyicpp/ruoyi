@@ -394,9 +394,12 @@ public:
         CertManagerDriver::AutoStr r; r.drv = &drv_;
         r.p = drv_.ObtainCert(email.c_str(), domainList.c_str(), dnsProvider.c_str(),
                                envVarsJson.c_str(), keyType.c_str(), bundle);
-        std::string err; Json::Value data;
+        // 先复制字符串，避免 AutoStr 析构后访问已释放内存
+        std::string jsonStr = r.c_str();
         Json::Value root;
-        Json::CharReaderBuilder rb; std::istringstream ss(r.c_str()); std::string e;
+        Json::CharReaderBuilder rb;
+        std::istringstream ss(jsonStr);  // 使用复制的字符串
+        std::string e;
         if (Json::parseFromStream(rb, ss, &root, &e)) return root;
         return Json::Value();
     }
@@ -407,8 +410,9 @@ public:
         std::lock_guard<std::mutex> lk(mu_);
         CertManagerDriver::AutoStr r; r.drv = &drv_;
         r.p = drv_.RenewCert(certId.c_str(), bundle);
+        std::string jsonStr = r.c_str();  // 先复制
         Json::Value root; Json::CharReaderBuilder rb;
-        std::istringstream ss(r.c_str()); std::string e;
+        std::istringstream ss(jsonStr); std::string e;
         if (Json::parseFromStream(rb, ss, &root, &e)) return root;
         return Json::Value();
     }
@@ -419,8 +423,9 @@ public:
         std::lock_guard<std::mutex> lk(mu_);
         CertManagerDriver::AutoStr r; r.drv = &drv_;
         r.p = drv_.RevokeCert(certId.c_str());
+        std::string jsonStr = r.c_str();  // 先复制
         Json::Value root; Json::CharReaderBuilder rb;
-        std::istringstream ss(r.c_str()); std::string e;
+        std::istringstream ss(jsonStr); std::string e;
         if (Json::parseFromStream(rb, ss, &root, &e)) return root;
         return Json::Value();
     }
@@ -460,8 +465,9 @@ public:
         std::lock_guard<std::mutex> lk(mu_);
         CertManagerDriver::AutoStr r; r.drv = &drv_;
         r.p = drv_.RegisterAccount(email.c_str(), keyType.c_str());
+        std::string jsonStr = r.c_str();  // 先复制
         Json::Value root; Json::CharReaderBuilder rb;
-        std::istringstream ss(r.c_str()); std::string e;
+        std::istringstream ss(jsonStr); std::string e;
         if (Json::parseFromStream(rb, ss, &root, &e)) return root;
         return Json::Value();
     }
