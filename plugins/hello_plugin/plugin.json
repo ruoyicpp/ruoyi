@@ -1,0 +1,7 @@
+{
+    "name": "hello_plugin",
+    "version": "1.0.0",
+    "description": "示例插件：演示路由 + 菜单 + 前端组件热加载",
+    "type": "route",
+    "greeting": "你好"
+}
