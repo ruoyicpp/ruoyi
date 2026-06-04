@@ -90,9 +90,9 @@ inline std::string toBase64(const unsigned char *d, size_t n) {
     BIO_push(b64, mem);
     BIO_write(b64, d, (int)n);
     BIO_flush(b64);
-    BUF_MEM *ptr; BIO_get_mem_ptr(b64, &ptr);
+    BUF_MEM *ptr; BIO_get_mem_ptr(mem, &ptr);  // use 'mem' not 'b64' — avoids use-after-free
     std::string s(ptr->data, ptr->length);
-    BIO_free_all(b64);
+    BIO_free_all(b64);  // frees both b64 and mem; ptr->data is already copied into s
     return s;
 }
 
@@ -107,7 +107,8 @@ inline std::vector<unsigned char> fromBase64(const std::string &s) {
     BIO *mem = BIO_new_mem_buf(s.data(), (int)s.size());
     BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
     BIO_push(b64, mem);
-    std::vector<unsigned char> v(s.size());
+    // Base64 expands by ~33%, reserve generously then shrink
+    std::vector<unsigned char> v((s.size() / 4) * 3 + 3);
     int n = BIO_read(b64, v.data(), (int)v.size());
     BIO_free_all(b64);
     if (n < 0) throw std::runtime_error("GmCrypto: Base64 decode failed");

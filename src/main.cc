@@ -1037,7 +1037,8 @@ int main(int argc, char* argv[]) {
 
                 // 引导接口、重置接口、健康检查、版本接口完全放行
                 if (path == "/challenge" || path == "/resetPassword" || path == "/forgotPassword"
-                    || path == "/health" || path == "/version" || path == "/ssl-config") {
+                    || path == "/health" || path == "/version" || path == "/ssl-config"
+                    || path == "/api/druid") {
                     accb(); return;
                 }
                 // certmanager API + Web UI：handler 内部自行鉴权

@@ -125,6 +125,7 @@
 #include "common/controllers/DashboardCtrl.h"    // 仪表盘
 #include "common/controllers/LicenseApiCtrl.h"    // 许可证API
 #include "common/controllers/GmCryptoCtrl.h"    // 国密API
+#include "common/controllers/HealthCtrl.h"    // 健康检查
 
 // ── Tool 控制器 ──────────────────────────────────────────────────
 #include "tool/controllers/GenCtrl.h"    // 代码生成
@@ -144,3 +145,7 @@
 // 【物联网】— Modbus协议、设备网关
 #include "iot/ModbusGateway.h"        // Modbus TCP/RTU网关
 #include "iot/IotCtrl.h"              // IoT设备控制器
+
+// ── 插件系统 ─────────────────────────────────────────────────────
+// 【插件】— 用户 DLL/SO 运行时加载（前端触发热激活）
+#include "libs/plugin/PluginCtrl.h"   // 插件管理 API

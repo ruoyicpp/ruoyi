@@ -36,20 +36,26 @@ bool SecurityUtils::matchesPasswordInternal(const std::string &raw, const std::s
 #include <iostream>
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 #  include <openssl/provider.h>
+#  include <openssl/ssl.h>
 
 // 暴露给 main.cc 调用的接口
+// OpenSSL 3.x：使用标准 OPENSSL_init_ssl() 一次性完成全局初始化 + default provider 加载，
+// 必须在 main() 最早期、单线程下调用一次。
+// 不能等到 drogon worker 线程触发 lazy 加载——OpenSSL 3.x 在多线程下
+// 加载 provider 会与 system OpenSSL DLL（libpq.dll 间接拖入）的全局状态冲突，
+// 导致 RtlReAllocateHeap 堆损坏崩溃。
 extern "C" void ruoyi_init_openssl_provider() {
     static std::once_flag flag;
     std::call_once(flag, []() {
-        OSSL_PROVIDER *prov = OSSL_PROVIDER_load(nullptr, "default");
-        if (!prov) {
+        // OPENSSL_INIT_LOAD_CONFIG 让 config engine 也加载（与 legacy 兼容）
+        if (OPENSSL_init_ssl(OPENSSL_INIT_LOAD_CONFIG, nullptr) != 1) {
             unsigned long e = ERR_get_error();
             char buf[256] = {0};
             ERR_error_string_n(e, buf, sizeof(buf));
-            std::cerr << "[SecurityUtils] OSSL_PROVIDER_load(default) FAILED err="
+            std::cerr << "[SecurityUtils] OPENSSL_init_ssl FAILED err="
                       << e << " (" << buf << ")" << std::endl;
         } else {
-            std::cerr << "[SecurityUtils] OpenSSL default provider loaded "
+            std::cerr << "[SecurityUtils] OpenSSL initialized "
                          "(version=" << OPENSSL_VERSION_NUMBER << ")" << std::endl;
         }
     });
