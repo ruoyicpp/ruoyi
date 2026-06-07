@@ -12,7 +12,7 @@ out/
 *.dll
 *.pdb
 
-# ── 第三方大体积源码（用 scripts/download_sqlite3mc.ps1 按需下载，不入库）─────
+# ── 第三方大体积源码（用 scripts/download_sqlite3mc.ps1 脚本下载，不入库）─────
 src/third_party/sqlite3mc/sqlite3mc_amalgamation.c
 src/third_party/sqlite3mc/sqlite3mc_amalgamation.h
 src/third_party/sqlite3mc/_extracted/
