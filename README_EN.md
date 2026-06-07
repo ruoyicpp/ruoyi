@@ -466,12 +466,29 @@ After logging in, go to **System Management → Email Senders** to configure SMT
 
 ```
 ruoyi-cpp/
-├── config.json                      # Main config (see config.bat.template.json)
-├── web/                             # Frontend dist (place here, no Nginx needed)
-├── logs/                            # Log files (.log text + .jsonl structured)
-├── upload/                          # Local file upload directory
-├── src/
-│   ├── main.cc                      # Entry: middleware registration, service init
+├── .github/workflows/               # CI/CD pipelines (multi-platform tests & static analysis)
+├── build-nginx/                     # Production packaging & Nginx configurations
+│   └── 部署说明.md                  # Comprehensive deployment guide
+├── certmanager-web/                 # SSL certificate management frontend (Alpine + Tailwind)
+├── drogon/                          # Drogon precompiled static libraries
+├── k8s/                             # Kubernetes native orchestration (7 core resources)
+├── monitoring/                      # Observability stack: Prometheus + Grafana
+├── plugins/                         # Dynamic runtime loaded plugin modules (e.g., hello_plugin)
+├── scripts/                         # System utility scripts (e.g., SQLite3MC secure downloader)
+├── tests/                           # Modular test framework (unit/, mocks/, fixtures/, doctest)
+├── tools/                           # High-performance offline tools (e.g., SQLite encryption tool)
+├── vue-c++/                         # Modern Vue2 web frontend integrated with C++ backend
+├── watchdog/                        # Light-weight, high-availability daemon (auto-restart & heartbeats)
+├── logs/                            # Text and JSONL structured runtime log outputs
+├── upload/                          # Local file uploads and storage path
+├── src/                             # C++ backend main engine source
+│   ├── alert/                       # NEW: Real-time alerting, threshold aggregation & notification
+│   ├── analytics/                   # NEW: Real-time statistical analytics
+│   ├── cache/                       # NEW: Policy-driven multi-level high-performance cache
+│   ├── log/                         # NEW: Structured log adapters
+│   ├── monitor/                     # Metric collection and thread tracing modules
+│   ├── taskqueue/                   # NEW: Ultra-fast asynchronous task execution queue
+│   ├── main.cc                      # Entry: middleware registration, service initialization
 │   ├── AppIncludes.h                # Centralized global includes
 │   ├── codegen/                     # Code generation module (compiled as dynamic library)
 │   │   ├── CMakeLists.txt           # Dynamic library build config

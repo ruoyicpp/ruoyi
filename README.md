@@ -524,14 +524,28 @@ ninja
 
 ```
 ruoyi-cpp/
-├── build-nginx/
-│   ├── config.json                      # 主配置文件（不随 git 提交，敏感信息）
-│   ├── config.template.json             # 配置模板（git 提交，敏感值用占位符）
-│   └── ruoyi-cpp.exe                    # 编译产物
-├── web/                             # 前端 dist 目录（放这里即可，无需 Nginx）
-├── logs/                            # 日志目录（.log 文本 + .jsonl 结构化）
-├── upload/                          # 本地上传文件目录
-├── src/
+├── .github/workflows/               # CI/CD 自动化流水线（跨平台测试与静态检查）
+├── build-nginx/                     # 生产环境部署包与 Nginx 反向代理最佳实践
+│   └── 部署说明.md                  # 系统全面部署文档
+├── certmanager-web/                 # SSL 证书管理前端单页面（基于 Alpine + Tailwind）
+├── drogon/                          # Drogon 预编译静态库与模块目录
+├── k8s/                             # Kubernetes 资源编排配置（含 7 大核心资源编排）
+├── monitoring/                      # Observability 性能监控：Prometheus + Grafana
+├── plugins/                         # 系统运行时加载的动态加载插件模块（如 hello_plugin）
+├── scripts/                         # 系统维护 PowerShell 脚本（如 SQLite3MC 安全下载器）
+├── tests/                           # 模块化测试框架（支持 unit/、mocks/、fixtures/ 等）
+├── tools/                           # 高性能离线工具集（如 SQLite 两层多算法加密升级工具）
+├── vue-c++/                         # 现代前端 Web 源码项目（适配 C++ 后端代理与长连接）
+├── watchdog/                        # 跨平台轻量高可用守护进程（支持自动拉起与心跳健康状态监控）
+├── logs/                            # 运行时产生的文本/JSONL 结构化日志输出目录
+├── upload/                          # 本地默认上传文件与存储目录
+├── src/                             # C++ 后端主引擎源码
+│   ├── alert/                       # 新增：高性能实时告警监测与阈值合并转发引擎
+│   ├── analytics/                   # 新增：实时业务数据分析统计模块
+│   ├── cache/                       # 新增：基于策略的多级高速缓存管理机制
+│   ├── log/                         # 新增：高可靠结构化日志适配系统
+│   ├── monitor/                     # 指标采集与主线程全链路追踪探测模块
+│   ├── taskqueue/                   # 新增：超高性能异步流式后台任务执行队列
 │   ├── main.cc                      # 入口：中间件注册、服务初始化
 │   ├── AppIncludes.h                # 全局集中 include
 │   ├── codegen/                     # 代码生成模块（编译为动态库）
