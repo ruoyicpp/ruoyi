@@ -8,7 +8,7 @@ services:
       - "18080:18080"
     environment:
       TZ: Asia/Shanghai
-      # 敏感配置通过环境变量注入，config.json 中对应字段留空即可
+      # 敏感配置通过环境变量注入，支持 config.json 配置覆盖
       RUOYI_DATABASE_HOST: postgres
       RUOYI_DATABASE_PASSWD: ${DB_PASSWORD:-ruoyi123}
       RUOYI_REDIS_HOST: redis
