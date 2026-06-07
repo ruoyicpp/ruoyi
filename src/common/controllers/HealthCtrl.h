@@ -13,6 +13,7 @@
 #  include <unistd.h>
 #  include <sys/resource.h>
 #  include <sys/statvfs.h>
+#  include <sys/sysinfo.h>
 #endif
 #include "../../common/AjaxResult.h"
 #include "../../services/DatabaseService.h"
