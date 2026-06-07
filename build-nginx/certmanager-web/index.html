@@ -1,0 +1,897 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN" x-data="app()" x-init="init()" :class="{ 'dark': darkMode }">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CertManager - SSL Certificate Management</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        brand: { 50:'#eff6ff',100:'#dbeafe',200:'#bfdbfe',300:'#93c5fd',400:'#60a5fa',500:'#3b82f6',600:'#2563eb',700:'#1d4ed8',800:'#1e40af',900:'#1e3a8a' }
+      }
+    }
+  }
+}
+</script>
+<style>
+[x-cloak]{display:none!important}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif}
+.fade-in{animation:fadeIn .3s ease-in-out}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#475569;border-radius:3px}
+</style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 min-h-screen">
+
+<!-- Layout -->
+<div class="flex h-screen overflow-hidden">
+
+<!-- Sidebar -->
+<aside class="w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col flex-shrink-0">
+  <div class="p-5 border-b border-gray-200 dark:border-gray-800">
+    <h1 class="text-xl font-bold text-brand-600 dark:text-brand-400 flex items-center gap-2">
+      <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+      CertManager
+    </h1>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">SSL Certificate Management</p>
+  </div>
+
+  <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+    <template x-for="item in navItems" :key="item.id">
+      <button @click="page=item.id" :class="page===item.id ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors">
+        <span x-html="item.icon" class="w-5 h-5 flex-shrink-0"></span>
+        <span x-text="item.label"></span>
+        <span x-show="item.id==='certs' && certs.length>0" x-text="certs.length" class="ml-auto bg-gray-200 dark:bg-gray-700 text-xs px-2 py-0.5 rounded-full"></span>
+      </button>
+    </template>
+  </nav>
+
+  <div class="p-3 border-t border-gray-200 dark:border-gray-800">
+    <button @click="darkMode=!darkMode" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+      <svg x-show="!darkMode" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"/></svg>
+      <svg x-show="darkMode" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"/></svg>
+      <span x-text="darkMode ? 'Light Mode' : 'Dark Mode'"></span>
+    </button>
+    <div class="mt-2 px-3 text-xs text-gray-400" x-show="serverInfo.version">
+      v<span x-text="serverInfo.version"></span> · <span x-text="serverInfo.platform"></span>
+    </div>
+  </div>
+</aside>
+
+<!-- Main -->
+<main class="flex-1 overflow-y-auto">
+
+<!-- Dashboard -->
+<div x-show="page==='dashboard'" x-cloak class="fade-in p-6 max-w-7xl mx-auto">
+  <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+    <div class="bg-white dark:bg-gray-900 rounded-xl p-5 border border-gray-200 dark:border-gray-800">
+      <div class="text-3xl font-bold text-brand-600" x-text="certs.length">0</div>
+      <div class="text-sm text-gray-500 mt-1">Total Certificates</div>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-xl p-5 border border-gray-200 dark:border-gray-800">
+      <div class="text-3xl font-bold text-green-600" x-text="certs.filter(c=>c.status==='valid').length">0</div>
+      <div class="text-sm text-gray-500 mt-1">Valid</div>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-xl p-5 border border-gray-200 dark:border-gray-800">
+      <div class="text-3xl font-bold text-amber-500" x-text="certs.filter(c=>c.status==='expiring').length">0</div>
+      <div class="text-sm text-gray-500 mt-1">Expiring Soon</div>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-xl p-5 border border-gray-200 dark:border-gray-800">
+      <div class="text-3xl font-bold text-red-500" x-text="certs.filter(c=>c.status==='expired').length">0</div>
+      <div class="text-sm text-gray-500 mt-1">Expired</div>
+    </div>
+  </div>
+
+  <!-- Recent Certificates -->
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800">
+    <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center">
+      <h3 class="font-semibold">Recent Certificates</h3>
+      <button @click="page='obtain'" class="text-sm text-brand-600 hover:text-brand-700 font-medium">+ New Certificate</button>
+    </div>
+    <div x-show="certs.length===0" class="p-10 text-center text-gray-400">
+      <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+      <p>No certificates yet</p>
+      <button @click="page='obtain'" class="mt-3 text-brand-600 hover:underline text-sm">Obtain your first certificate</button>
+    </div>
+    <div x-show="certs.length>0" class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead><tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
+          <th class="px-5 py-3 font-medium">Domain</th>
+          <th class="px-5 py-3 font-medium">Status</th>
+          <th class="px-5 py-3 font-medium">Issuer</th>
+          <th class="px-5 py-3 font-medium">Expires</th>
+          <th class="px-5 py-3 font-medium">Days Left</th>
+          <th class="px-5 py-3 font-medium">Actions</th>
+        </tr></thead>
+        <tbody>
+          <template x-for="cert in certs.slice(0,10)" :key="cert.id">
+            <tr class="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
+              <td class="px-5 py-3">
+                <div class="font-medium" x-text="cert.id"></div>
+                <div x-show="cert.domains && cert.domains.length>1" class="text-xs text-gray-400 mt-0.5" x-text="'+ ' + (cert.domains.length-1) + ' more'"></div>
+              </td>
+              <td class="px-5 py-3">
+                <span :class="{'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400': cert.status==='valid', 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400': cert.status==='expiring', 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400': cert.status==='expired'}" class="px-2 py-0.5 rounded-full text-xs font-medium" x-text="cert.status"></span>
+              </td>
+              <td class="px-5 py-3 text-gray-500" x-text="cert.issuer || '-'"></td>
+              <td class="px-5 py-3 text-gray-500" x-text="cert.notAfter ? new Date(cert.notAfter).toLocaleDateString() : '-'"></td>
+              <td class="px-5 py-3">
+                <span :class="cert.daysLeft < 0 ? 'text-red-500' : cert.daysLeft < 30 ? 'text-amber-500' : 'text-green-600'" x-text="cert.daysLeft + 'd'"></span>
+              </td>
+              <td class="px-5 py-3">
+                <div class="flex gap-2">
+                  <button @click="downloadCert(cert.id,'cert')" class="text-brand-600 hover:text-brand-700 text-xs font-medium">Download</button>
+                  <button @click="revokeCert(cert.id)" class="text-red-500 hover:text-red-600 text-xs font-medium">Revoke</button>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Certificates Page -->
+<div x-show="page==='certs'" x-cloak class="fade-in p-6 max-w-7xl mx-auto">
+  <div class="flex justify-between items-center mb-6">
+    <h2 class="text-2xl font-bold">Certificates</h2>
+    <div class="flex gap-3">
+      <input x-model="certSearch" type="text" placeholder="Search domain..." class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+      <button @click="loadCerts()" class="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-800 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-700">Refresh</button>
+      <button @click="page='obtain'" class="px-4 py-2 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 font-medium">+ New</button>
+    </div>
+  </div>
+
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">
+        <th class="px-5 py-3 font-medium">Domain</th>
+        <th class="px-5 py-3 font-medium">SANs</th>
+        <th class="px-5 py-3 font-medium">Status</th>
+        <th class="px-5 py-3 font-medium">Key Type</th>
+        <th class="px-5 py-3 font-medium">Issuer</th>
+        <th class="px-5 py-3 font-medium">Valid From</th>
+        <th class="px-5 py-3 font-medium">Expires</th>
+        <th class="px-5 py-3 font-medium">Days</th>
+        <th class="px-5 py-3 font-medium">Actions</th>
+      </tr></thead>
+      <tbody>
+        <template x-for="cert in filteredCerts" :key="cert.id">
+          <tr class="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
+            <td class="px-5 py-3 font-medium" x-text="cert.id"></td>
+            <td class="px-5 py-3 text-gray-500 text-xs">
+              <template x-for="d in (cert.domains||[]).slice(0,3)" :key="d">
+                <span class="inline-block bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 mr-1 mb-0.5" x-text="d"></span>
+              </template>
+              <span x-show="(cert.domains||[]).length>3" class="text-gray-400" x-text="'+' + ((cert.domains||[]).length - 3)"></span>
+            </td>
+            <td class="px-5 py-3">
+              <span :class="{'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400': cert.status==='valid', 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400': cert.status==='expiring', 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400': cert.status==='expired'}" class="px-2 py-0.5 rounded-full text-xs font-medium" x-text="cert.status"></span>
+            </td>
+            <td class="px-5 py-3 text-gray-500 text-xs" x-text="cert.keyType || '-'"></td>
+            <td class="px-5 py-3 text-gray-500 text-xs" x-text="cert.issuer || '-'"></td>
+            <td class="px-5 py-3 text-gray-500 text-xs" x-text="cert.notBefore ? new Date(cert.notBefore).toLocaleDateString() : '-'"></td>
+            <td class="px-5 py-3 text-gray-500 text-xs" x-text="cert.notAfter ? new Date(cert.notAfter).toLocaleDateString() : '-'"></td>
+            <td class="px-5 py-3">
+              <span :class="cert.daysLeft < 0 ? 'text-red-500 font-bold' : cert.daysLeft < 30 ? 'text-amber-500 font-medium' : 'text-green-600'" x-text="cert.daysLeft"></span>
+            </td>
+            <td class="px-5 py-3">
+              <div class="flex gap-1">
+                <div class="relative" x-data="{open:false}">
+                  <button @click="open=!open" class="px-2 py-1 text-xs bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 rounded hover:bg-brand-100 dark:hover:bg-brand-900/50 font-medium">Download ▾</button>
+                  <div x-show="open" @click.away="open=false" class="absolute right-0 mt-1 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10 py-1">
+                    <button @click="downloadCert(cert.id,'cert');open=false" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700">Certificate (.crt)</button>
+                    <button @click="downloadCert(cert.id,'key');open=false" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700">Private Key (.key)</button>
+                    <button @click="downloadCert(cert.id,'issuer');open=false" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700">Issuer Cert (.crt)</button>
+                    <button @click="downloadCert(cert.id,'json');open=false" class="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700">Metadata (.json)</button>
+                  </div>
+                </div>
+                <button @click="renewCert(cert.id)" class="px-2 py-1 text-xs bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded hover:bg-green-100 font-medium">Renew</button>
+                <button @click="revokeCert(cert.id)" class="px-2 py-1 text-xs bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 rounded hover:bg-red-100 font-medium">Revoke</button>
+              </div>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div x-show="filteredCerts.length===0" class="p-10 text-center text-gray-400">No certificates found</div>
+  </div>
+</div>
+
+<!-- Obtain Certificate Page -->
+<div x-show="page==='obtain'" x-cloak class="fade-in p-6 max-w-3xl mx-auto">
+  <h2 class="text-2xl font-bold mb-6">Obtain New Certificate</h2>
+
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6">
+    <div class="space-y-5">
+      <!-- Email -->
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Email <span class="text-red-500">*</span></label>
+        <input x-model="obtainForm.email" type="email" placeholder="admin@example.com" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+      </div>
+
+      <!-- Domains -->
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Domains <span class="text-red-500">*</span></label>
+        <textarea x-model="obtainForm.domainsText" placeholder="example.com&#10;*.example.com&#10;sub.example.com" rows="3" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono"></textarea>
+        <p class="text-xs text-gray-400 mt-1">One domain per line. Supports wildcard (*.example.com).</p>
+      </div>
+
+      <!-- Saved Credential or Manual -->
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Validation Method</label>
+        <div class="flex gap-2 mb-4">
+          <button @click="obtainForm.challengeType='http'" :disabled="hasWildcardInput()" :class="obtainForm.challengeType==='http' ? 'bg-brand-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">HTTP Validation (no API key)</button>
+          <button @click="obtainForm.challengeType='dns'" :class="obtainForm.challengeType==='dns' ? 'bg-brand-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">DNS Validation (wildcard)</button>
+        </div>
+        <div x-show="hasWildcardInput()" class="mb-4 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
+          Wildcard domains (*.example.com) require DNS validation.
+        </div>
+      </div>
+
+      <!-- HTTP Webroot -->
+      <div x-show="obtainForm.challengeType==='http'" class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+        <h4 class="text-sm font-medium mb-3">HTTP Validation</h4>
+        <label class="block text-sm font-medium mb-1.5">Website Root Path <span class="text-red-500">*</span></label>
+        <input x-model="obtainForm.webroot" type="text" placeholder="/var/www/example.com or D:\\www\\example.com" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+        <p class="text-xs text-gray-400 mt-2">The server must be able to access http://domain/.well-known/acme-challenge/ from this directory.</p>
+      </div>
+
+      <!-- DNS Credentials -->
+      <div x-show="obtainForm.challengeType==='dns'">
+        <label class="block text-sm font-medium mb-1.5">DNS Credentials</label>
+        <div class="flex gap-2 mb-3">
+          <button @click="obtainForm.credMode='saved'" :class="obtainForm.credMode==='saved' ? 'bg-brand-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">Saved Credentials</button>
+          <button @click="obtainForm.credMode='manual'" :class="obtainForm.credMode==='manual' ? 'bg-brand-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'" class="px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">Manual Input</button>
+        </div>
+
+        <!-- Saved Credential Selector -->
+        <div x-show="obtainForm.credMode==='saved'">
+          <select x-model="obtainForm.credentialId" @change="onCredentialSelect()" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="">-- Select Saved Credential --</option>
+            <template x-for="c in credentials" :key="c.id">
+              <option :value="c.id" x-text="c.name + ' (' + c.provider + ')'"></option>
+            </template>
+          </select>
+          <div x-show="credentials.length===0" class="mt-2 text-sm text-gray-400">
+            No saved credentials. <button @click="page='credentials'" class="text-brand-600 hover:underline">Add one</button> or switch to Manual Input.
+          </div>
+          <div x-show="obtainForm.credentialId" class="mt-2 text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Credential selected — no need to enter keys manually
+          </div>
+        </div>
+
+        <!-- Manual Mode: DNS Provider + Env Vars -->
+        <div x-show="obtainForm.credMode==='manual'">
+          <select x-model="obtainForm.dnsProvider" @change="onProviderChange()" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="">-- Select Provider --</option>
+            <template x-for="cat in providerCategories" :key="cat">
+              <optgroup :label="cat">
+                <template x-for="p in dnsProviders.filter(p=>p.category===cat)" :key="p.name">
+                  <option :value="p.name" x-text="p.name"></option>
+                </template>
+              </optgroup>
+            </template>
+          </select>
+
+          <!-- DNS Provider Env Vars -->
+          <div x-show="selectedProvider" class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 mt-3">
+            <h4 class="text-sm font-medium mb-3">Provider Credentials</h4>
+            <div class="space-y-3">
+              <template x-for="envVar in (selectedProvider?.envVars || [])" :key="envVar">
+                <div>
+                  <label class="block text-xs font-mono text-gray-500 mb-1" x-text="envVar"></label>
+                  <input :placeholder="envVar" @input="obtainForm.envVars[envVar] = $event.target.value" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+                </div>
+              </template>
+            </div>
+
+            <!-- Save credential option -->
+            <div class="mt-3 flex items-center gap-2">
+              <input x-model="obtainForm.saveCred" type="checkbox" id="saveCred" class="rounded border-gray-300 dark:border-gray-600">
+              <label for="saveCred" class="text-sm text-gray-600 dark:text-gray-400">Save this credential for future use</label>
+            </div>
+            <div x-show="obtainForm.saveCred" class="mt-2">
+              <input x-model="obtainForm.credName" type="text" placeholder="Credential name (e.g. My Cloudflare)" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DNS Provider (hidden, auto-filled from credential) -->
+      <div x-show="obtainForm.challengeType==='dns' && obtainForm.credMode==='saved' && obtainForm.credentialId">
+        <label class="block text-sm font-medium mb-1.5">DNS Provider</label>
+        <div class="px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 rounded-lg" x-text="credentialProvider || 'Auto-detected from saved credential'"></div>
+      </div>
+
+      <!-- Key Type -->
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Key Type</label>
+        <select x-model="obtainForm.keyType" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+          <option value="EC256">EC256 (recommended)</option>
+          <option value="EC384">EC384</option>
+          <option value="RSA2048">RSA2048</option>
+          <option value="RSA4096">RSA4096</option>
+          <option value="RSA8192">RSA8192</option>
+        </select>
+      </div>
+
+      <!-- Bundle -->
+      <div class="flex items-center gap-2">
+        <input x-model="obtainForm.bundle" type="checkbox" id="bundle" class="rounded border-gray-300 dark:border-gray-600">
+        <label for="bundle" class="text-sm">Bundle certificate with issuer</label>
+      </div>
+
+      <!-- Submit -->
+      <div class="pt-3 flex gap-3">
+        <button @click="submitObtain()" :disabled="obtaining" class="px-6 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 font-medium text-sm flex items-center gap-2">
+          <svg x-show="obtaining" class="w-4 h-4 spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+          <span x-text="obtaining ? 'Obtaining...' : 'Obtain Certificate'"></span>
+        </button>
+        <button @click="page='certs'" class="px-6 py-2.5 bg-gray-200 dark:bg-gray-800 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-700 font-medium text-sm">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Accounts Page -->
+<div x-show="page==='accounts'" x-cloak class="fade-in p-6 max-w-5xl mx-auto">
+  <div class="flex justify-between items-center mb-6">
+    <h2 class="text-2xl font-bold">Accounts</h2>
+    <button @click="showRegister=!showRegister" class="px-4 py-2 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 font-medium">+ Register Account</button>
+  </div>
+
+  <!-- Register Form -->
+  <div x-show="showRegister" x-cloak class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 mb-6 fade-in">
+    <h3 class="font-semibold mb-4">Register New ACME Account</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Email</label>
+        <input x-model="registerForm.email" type="email" placeholder="admin@example.com" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1.5">Key Type</label>
+        <select x-model="registerForm.keyType" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+          <option value="EC256">EC256</option>
+          <option value="EC384">EC384</option>
+          <option value="RSA2048">RSA2048</option>
+          <option value="RSA4096">RSA4096</option>
+        </select>
+      </div>
+    </div>
+    <div class="mt-4 flex gap-3">
+      <button @click="submitRegister()" :disabled="registering" class="px-5 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 font-medium text-sm">
+        <span x-text="registering ? 'Registering...' : 'Register'"></span>
+      </button>
+      <button @click="showRegister=false" class="px-5 py-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-sm">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Accounts Table -->
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">
+        <th class="px-5 py-3 font-medium">ID</th>
+        <th class="px-5 py-3 font-medium">Email</th>
+        <th class="px-5 py-3 font-medium">Server</th>
+        <th class="px-5 py-3 font-medium">Key Type</th>
+        <th class="px-5 py-3 font-medium">Registered</th>
+      </tr></thead>
+      <tbody>
+        <template x-for="acct in accounts" :key="acct.id">
+          <tr class="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
+            <td class="px-5 py-3 font-mono text-xs" x-text="acct.id"></td>
+            <td class="px-5 py-3" x-text="acct.email || '-'"></td>
+            <td class="px-5 py-3 text-xs text-gray-500 max-w-xs truncate" x-text="acct.server"></td>
+            <td class="px-5 py-3 text-xs" x-text="acct.keyType"></td>
+            <td class="px-5 py-3">
+              <span :class="acct.hasRegistration ? 'text-green-600' : 'text-gray-400'" x-text="acct.hasRegistration ? 'Yes' : 'No'"></span>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div x-show="accounts.length===0" class="p-10 text-center text-gray-400">No accounts found</div>
+  </div>
+</div>
+
+<!-- DNS Providers Page -->
+<div x-show="page==='providers'" x-cloak class="fade-in p-6 max-w-5xl mx-auto">
+  <h2 class="text-2xl font-bold mb-6">DNS Providers Reference</h2>
+
+  <div class="mb-4">
+    <input x-model="providerSearch" type="text" placeholder="Search provider..." class="px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 w-64">
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <template x-for="p in filteredProviders" :key="p.name">
+      <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-medium" x-text="p.name"></span>
+          <span class="text-xs bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-0.5" x-text="p.category"></span>
+        </div>
+        <div class="space-y-1">
+          <template x-for="env in p.envVars" :key="env">
+            <div class="text-xs font-mono text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded px-2 py-1" x-text="env"></div>
+          </template>
+          <div x-show="p.envVars.length===0" class="text-xs text-gray-400 italic">No environment variables needed</div>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<!-- Credentials Management Page -->
+<div x-show="page==='credentials'" x-cloak class="fade-in p-6 max-w-5xl mx-auto">
+  <div class="flex justify-between items-center mb-6">
+    <h2 class="text-2xl font-bold">Saved Credentials</h2>
+    <button @click="showAddCred=!showAddCred" class="px-4 py-2 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-700 font-medium">+ Add Credential</button>
+  </div>
+
+  <!-- Add Credential Form -->
+  <div x-show="showAddCred" x-cloak class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 mb-6 fade-in">
+    <h3 class="font-semibold mb-4">New DNS Credential</h3>
+    <div class="space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1.5">Name <span class="text-red-500">*</span></label>
+          <input x-model="credForm.name" type="text" placeholder="e.g. My Cloudflare Account" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5">DNS Provider <span class="text-red-500">*</span></label>
+          <select x-model="credForm.provider" @change="onCredFormProviderChange()" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="">-- Select --</option>
+            <template x-for="p in dnsProviders" :key="p.name">
+              <option :value="p.name" x-text="p.name"></option>
+            </template>
+          </select>
+        </div>
+      </div>
+      <div x-show="credFormProvider" class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+        <h4 class="text-sm font-medium mb-3">API Keys</h4>
+        <div class="space-y-3">
+          <template x-for="envVar in (credFormProvider?.envVars || [])" :key="envVar">
+            <div>
+              <label class="block text-xs font-mono text-gray-500 mb-1" x-text="envVar"></label>
+              <input :placeholder="envVar" @input="credForm.envVars[envVar] = $event.target.value" class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <button @click="submitCredential()" class="px-5 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 font-medium text-sm">Save</button>
+        <button @click="showAddCred=false" class="px-5 py-2 bg-gray-200 dark:bg-gray-800 rounded-lg text-sm">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credentials Table -->
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead><tr class="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800">
+        <th class="px-5 py-3 font-medium">Name</th>
+        <th class="px-5 py-3 font-medium">Provider</th>
+        <th class="px-5 py-3 font-medium">Keys</th>
+        <th class="px-5 py-3 font-medium">Created</th>
+        <th class="px-5 py-3 font-medium">Actions</th>
+      </tr></thead>
+      <tbody>
+        <template x-for="c in credentials" :key="c.id">
+          <tr class="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30">
+            <td class="px-5 py-3 font-medium" x-text="c.name"></td>
+            <td class="px-5 py-3"><span class="bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-0.5 text-xs" x-text="c.provider"></span></td>
+            <td class="px-5 py-3 text-xs font-mono text-gray-500">
+              <template x-for="(v,k) in c.envVars" :key="k">
+                <div><span class="text-gray-400" x-text="k + ': '"></span><span x-text="v"></span></div>
+              </template>
+            </td>
+            <td class="px-5 py-3 text-gray-500 text-xs" x-text="c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '-'"></td>
+            <td class="px-5 py-3">
+              <button @click="deleteCredential(c.id)" class="px-2 py-1 text-xs bg-red-50 dark:bg-red-900/30 text-red-500 rounded hover:bg-red-100 font-medium">Delete</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div x-show="credentials.length===0" class="p-10 text-center text-gray-400">
+      <p>No saved credentials</p>
+      <p class="text-xs mt-1">Add a credential to skip entering API keys every time you request a certificate.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Page -->
+<div x-show="page==='settings'" x-cloak class="fade-in p-6 max-w-3xl mx-auto">
+  <h2 class="text-2xl font-bold mb-6">Settings</h2>
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+    <div>
+      <label class="block text-sm font-medium mb-1">Storage Path</label>
+      <div class="px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 rounded-lg font-mono" x-text="serverInfo.storage || '-'"></div>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">CA Server</label>
+      <div class="px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 rounded-lg font-mono" x-text="serverInfo.caServer || '-'"></div>
+    </div>
+    <div>
+      <label class="block text-sm font-medium mb-1">Version</label>
+      <div class="px-3 py-2 text-sm bg-gray-50 dark:bg-gray-800 rounded-lg" x-text="serverInfo.version + ' (' + serverInfo.platform + ')'"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Documentation Page -->
+<div x-show="page==='docs'" x-cloak class="fade-in p-6 max-w-4xl mx-auto">
+  <h2 class="text-2xl font-bold mb-6">Developer Documentation</h2>
+  <div class="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 space-y-6 text-sm leading-7">
+    <section>
+      <h3 class="text-lg font-semibold mb-2">Does this project need a database?</h3>
+      <p class="text-gray-600 dark:text-gray-400">Current version does not require MySQL, PostgreSQL, Redis, or any external database. Data is stored under the path specified by <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">--path</code>, defaulting to <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">.lego</code>.</p>
+      <ul class="mt-2 list-disc pl-5 text-gray-600 dark:text-gray-400">
+        <li><code>.lego/accounts/</code>: ACME account information and account private keys</li>
+        <li><code>.lego/certificates/</code>: certificate files, private keys, issuer certificates, and metadata</li>
+        <li><code>.lego/credentials.json</code>: saved DNS provider credentials</li>
+      </ul>
+    </section>
+
+    <section>
+      <h3 class="text-lg font-semibold mb-2">HTTP Validation</h3>
+      <p class="text-gray-600 dark:text-gray-400">HTTP validation is suitable for normal domains like <code>example.com</code> and <code>www.example.com</code>. It does not require DNS API keys.</p>
+      <div class="mt-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+        <p class="font-medium mb-2">Requirements:</p>
+        <ul class="list-disc pl-5 text-gray-600 dark:text-gray-400">
+          <li>The domain must resolve to the current web server.</li>
+          <li>Port 80 must be publicly accessible.</li>
+          <li>CertManager must be able to write to the website root directory.</li>
+          <li>The Webroot must match the actual website root configured in Nginx/Apache.</li>
+        </ul>
+      </div>
+      <p class="mt-3 text-gray-600 dark:text-gray-400">Example Nginx root:</p>
+      <pre class="mt-2 p-3 bg-gray-950 text-gray-100 rounded-lg overflow-x-auto text-xs"><code>root /var/www/example.com;</code></pre>
+      <p class="mt-2 text-gray-600 dark:text-gray-400">Then Webroot should be:</p>
+      <pre class="mt-2 p-3 bg-gray-950 text-gray-100 rounded-lg overflow-x-auto text-xs"><code>/var/www/example.com</code></pre>
+      <p class="mt-3 text-amber-600 dark:text-amber-400">Wildcard domains such as <code>*.example.com</code> cannot use HTTP validation.</p>
+    </section>
+
+    <section>
+      <h3 class="text-lg font-semibold mb-2">DNS Validation</h3>
+      <p class="text-gray-600 dark:text-gray-400">DNS validation is required for wildcard certificates and is also useful when the website is not on the same server. It requires DNS provider API credentials so CertManager can create and delete ACME TXT records automatically.</p>
+      <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3">
+          <p class="font-medium">Tencent Cloud</p>
+          <code class="block text-xs mt-1">TENCENTCLOUD_SECRET_ID</code>
+          <code class="block text-xs">TENCENTCLOUD_SECRET_KEY</code>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3">
+          <p class="font-medium">AliDNS</p>
+          <code class="block text-xs mt-1">ALICLOUD_ACCESS_KEY</code>
+          <code class="block text-xs">ALICLOUD_SECRET_KEY</code>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3">
+          <p class="font-medium">Cloudflare</p>
+          <code class="block text-xs mt-1">CF_DNS_API_TOKEN</code>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3 class="text-lg font-semibold mb-2">Saved Credentials</h3>
+      <p class="text-gray-600 dark:text-gray-400">To avoid asking users to enter API keys every time, add credentials in the <button @click="page='credentials'" class="text-brand-600 hover:underline font-medium">Credentials</button> page. Users can then select saved credentials when requesting certificates.</p>
+    </section>
+
+    <section>
+      <h3 class="text-lg font-semibold mb-2">Recommended choice</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+          <tbody>
+            <tr class="border-b border-gray-200 dark:border-gray-800"><td class="px-3 py-2 font-medium">Normal domain on current server</td><td class="px-3 py-2 text-gray-600 dark:text-gray-400">HTTP Validation</td></tr>
+            <tr class="border-b border-gray-200 dark:border-gray-800"><td class="px-3 py-2 font-medium">Wildcard domain</td><td class="px-3 py-2 text-gray-600 dark:text-gray-400">DNS Validation</td></tr>
+            <tr class="border-b border-gray-200 dark:border-gray-800"><td class="px-3 py-2 font-medium">Website not on this server</td><td class="px-3 py-2 text-gray-600 dark:text-gray-400">DNS Validation</td></tr>
+            <tr><td class="px-3 py-2 font-medium">Do not want users to enter keys</td><td class="px-3 py-2 text-gray-600 dark:text-gray-400">Admin pre-configures Saved Credentials</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+</main>
+</div>
+
+<!-- Toast Notification -->
+<div x-show="toast.show" x-cloak x-transition.opacity class="fixed bottom-6 right-6 max-w-sm z-50">
+  <div :class="toast.type==='error' ? 'bg-red-600' : toast.type==='success' ? 'bg-green-600' : 'bg-brand-600'" class="text-white px-5 py-3 rounded-xl shadow-lg text-sm flex items-center gap-3">
+    <span x-text="toast.message"></span>
+    <button @click="toast.show=false" class="ml-2 opacity-70 hover:opacity-100">&times;</button>
+  </div>
+</div>
+
+<script>
+function app() {
+  return {
+    page: 'dashboard',
+    darkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
+    serverInfo: {},
+    certs: [],
+    accounts: [],
+    dnsProviders: [],
+    credentials: [],
+    certSearch: '',
+    providerSearch: '',
+    toast: { show: false, message: '', type: 'info' },
+    obtaining: false,
+    registering: false,
+    showRegister: false,
+    showAddCred: false,
+    selectedProvider: null,
+    credentialProvider: '',
+    credFormProvider: null,
+
+    obtainForm: {
+      email: '',
+      domainsText: '',
+      challengeType: 'http',
+      webroot: '',
+      credMode: 'saved',
+      credentialId: '',
+      dnsProvider: '',
+      envVars: {},
+      keyType: 'EC256',
+      bundle: true,
+      saveCred: false,
+      credName: '',
+    },
+    registerForm: { email: '', keyType: 'EC256' },
+    credForm: { name: '', provider: '', envVars: {} },
+
+    navItems: [
+      { id: 'dashboard', label: 'Dashboard', icon: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/></svg>' },
+      { id: 'certs', label: 'Certificates', icon: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>' },
+      { id: 'obtain', label: 'New Certificate', icon: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>' },
+      { id: 'accounts', label: 'Accounts', icon: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/></svg>' },
+      { id: 'credentials', label: 'Credentials', icon: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>' },
+      { id: 'providers', label: 'DNS Providers', icon: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"/></svg>' },
+      { id: 'docs', label: 'Developer Docs', icon: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25A8.966 8.966 0 0118 3.75c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>' },
+      { id: 'settings', label: 'Settings', icon: '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>' },
+    ],
+
+    get filteredCerts() {
+      if (!this.certSearch) return this.certs;
+      const q = this.certSearch.toLowerCase();
+      return this.certs.filter(c => c.id.toLowerCase().includes(q) || (c.domains||[]).some(d => d.toLowerCase().includes(q)));
+    },
+
+    get filteredProviders() {
+      if (!this.providerSearch) return this.dnsProviders;
+      const q = this.providerSearch.toLowerCase();
+      return this.dnsProviders.filter(p => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q));
+    },
+
+    get providerCategories() {
+      return [...new Set(this.dnsProviders.map(p => p.category))];
+    },
+
+    async init() {
+      await Promise.all([this.loadInfo(), this.loadCerts(), this.loadAccounts(), this.loadProviders(), this.loadCredentials()]);
+      // Auto-switch to saved mode if credentials exist
+      if (this.credentials.length > 0) this.obtainForm.credMode = 'saved';
+      else this.obtainForm.credMode = 'manual';
+    },
+
+    async api(method, path, body) {
+      try {
+        const opts = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch('/certmanager/api' + path, opts);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+        return data;
+      } catch (e) {
+        throw e;
+      }
+    },
+
+    showToast(message, type = 'info') {
+      this.toast = { show: true, message, type };
+      setTimeout(() => this.toast.show = false, 4000);
+    },
+
+    async loadInfo() {
+      try { this.serverInfo = await this.api('GET', '/info'); } catch(e) { console.error(e); }
+    },
+    async loadCerts() {
+      try { this.certs = await this.api('GET', '/certificates'); } catch(e) { console.error(e); }
+    },
+    async loadAccounts() {
+      try { this.accounts = await this.api('GET', '/accounts'); } catch(e) { console.error(e); }
+    },
+    async loadProviders() {
+      try { this.dnsProviders = await this.api('GET', '/dns-providers'); } catch(e) { console.error(e); }
+    },
+    async loadCredentials() {
+      try { this.credentials = await this.api('GET', '/credentials'); } catch(e) { console.error(e); }
+    },
+
+    onProviderChange() {
+      this.selectedProvider = this.dnsProviders.find(p => p.name === this.obtainForm.dnsProvider) || null;
+      this.obtainForm.envVars = {};
+    },
+
+    onCredentialSelect() {
+      const cred = this.credentials.find(c => c.id === this.obtainForm.credentialId);
+      if (cred) {
+        this.obtainForm.dnsProvider = cred.provider;
+        this.credentialProvider = cred.provider;
+      } else {
+        this.credentialProvider = '';
+      }
+    },
+
+    onCredFormProviderChange() {
+      this.credFormProvider = this.dnsProviders.find(p => p.name === this.credForm.provider) || null;
+      this.credForm.envVars = {};
+    },
+
+    hasWildcardInput() {
+      const domains = this.obtainForm.domainsText.split('\n').map(d => d.trim()).filter(Boolean);
+      const hasWildcard = domains.some(d => d.startsWith('*.'));
+      if (hasWildcard && this.obtainForm.challengeType === 'http') this.obtainForm.challengeType = 'dns';
+      return hasWildcard;
+    },
+
+    async submitObtain() {
+      const domains = this.obtainForm.domainsText.split('\n').map(d => d.trim()).filter(Boolean);
+      if (!this.obtainForm.email || domains.length === 0) {
+        this.showToast('Email and domains are required', 'error');
+        return;
+      }
+
+      if (this.obtainForm.challengeType === 'http' && !this.obtainForm.webroot) {
+        this.showToast('Website root path is required for HTTP validation', 'error');
+        return;
+      }
+      if (this.obtainForm.challengeType === 'http' && domains.some(d => d.startsWith('*.'))) {
+        this.showToast('Wildcard domains require DNS validation', 'error');
+        return;
+      }
+
+      const useSaved = this.obtainForm.challengeType === 'dns' && this.obtainForm.credMode === 'saved';
+      if (this.obtainForm.challengeType === 'dns' && useSaved && !this.obtainForm.credentialId) {
+        this.showToast('Please select a saved credential', 'error');
+        return;
+      }
+      if (this.obtainForm.challengeType === 'dns' && !useSaved && !this.obtainForm.dnsProvider) {
+        this.showToast('Please select a DNS provider', 'error');
+        return;
+      }
+
+      this.obtaining = true;
+      try {
+        const body = {
+          email: this.obtainForm.email,
+          domains: domains,
+          challengeType: this.obtainForm.challengeType,
+          webroot: this.obtainForm.webroot,
+          dnsProvider: this.obtainForm.dnsProvider,
+          keyType: this.obtainForm.keyType,
+          bundle: this.obtainForm.bundle,
+        };
+        if (useSaved) {
+          body.credentialId = this.obtainForm.credentialId;
+        } else {
+          body.envVars = this.obtainForm.envVars;
+          body.saveCred = this.obtainForm.saveCred;
+          body.credName = this.obtainForm.credName;
+        }
+
+        await this.api('POST', '/certificates/obtain', body);
+        this.showToast('Certificate obtained successfully!', 'success');
+        await Promise.all([this.loadCerts(), this.loadCredentials()]);
+        this.page = 'certs';
+        this.obtainForm = { email: this.obtainForm.email, domainsText: '', challengeType: 'http', webroot: this.obtainForm.webroot, credMode: this.credentials.length > 0 ? 'saved' : 'manual', credentialId: '', dnsProvider: '', envVars: {}, keyType: 'EC256', bundle: true, saveCred: false, credName: '' };
+        this.selectedProvider = null;
+        this.credentialProvider = '';
+      } catch (e) {
+        this.showToast('Failed: ' + e.message, 'error');
+      } finally {
+        this.obtaining = false;
+      }
+    },
+
+    async submitRegister() {
+      if (!this.registerForm.email) {
+        this.showToast('Email is required', 'error');
+        return;
+      }
+      this.registering = true;
+      try {
+        await this.api('POST', '/accounts', this.registerForm);
+        this.showToast('Account registered successfully!', 'success');
+        await this.loadAccounts();
+        this.showRegister = false;
+        this.registerForm = { email: '', keyType: 'EC256' };
+      } catch (e) {
+        this.showToast('Failed: ' + e.message, 'error');
+      } finally {
+        this.registering = false;
+      }
+    },
+
+    downloadCert(certId, type) {
+      window.open('/certmanager/api/certificates/' + encodeURIComponent(certId) + '/download/' + type, '_blank');
+    },
+
+    async renewCert(certId) {
+      if (!confirm('Renew certificate for ' + certId + '?')) return;
+      try {
+        await this.api('POST', '/certificates/renew', { certId: certId, bundle: true });
+        this.showToast('Certificate renewed successfully!', 'success');
+        await this.loadCerts();
+      } catch (e) {
+        this.showToast('Renew failed: ' + e.message, 'error');
+      }
+    },
+
+    async revokeCert(certId) {
+      if (!confirm('Revoke certificate for ' + certId + '? This cannot be undone!')) return;
+      try {
+        await this.api('POST', '/certificates/revoke', { certId: certId });
+        this.showToast('Certificate revoked', 'success');
+        await this.loadCerts();
+      } catch (e) {
+        this.showToast('Revoke failed: ' + e.message, 'error');
+      }
+    },
+
+    async submitCredential() {
+      if (!this.credForm.name || !this.credForm.provider || Object.keys(this.credForm.envVars).length === 0) {
+        this.showToast('Please fill in name, provider, and at least one key', 'error');
+        return;
+      }
+      const id = this.credForm.provider + '-' + Date.now();
+      try {
+        await this.api('POST', '/credentials', {
+          id: id,
+          name: this.credForm.name,
+          provider: this.credForm.provider,
+          envVars: this.credForm.envVars,
+        });
+        this.showToast('Credential saved!', 'success');
+        await this.loadCredentials();
+        this.showAddCred = false;
+        this.credForm = { name: '', provider: '', envVars: {} };
+        this.credFormProvider = null;
+      } catch (e) {
+        this.showToast('Failed: ' + e.message, 'error');
+      }
+    },
+
+    async deleteCredential(id) {
+      if (!confirm('Delete this credential?')) return;
+      try {
+        await this.api('DELETE', '/credentials/' + encodeURIComponent(id));
+        this.showToast('Credential deleted', 'success');
+        await this.loadCredentials();
+      } catch (e) {
+        this.showToast('Failed: ' + e.message, 'error');
+      }
+    },
+  }
+}
+</script>
+
+</body>
+</html>
+
