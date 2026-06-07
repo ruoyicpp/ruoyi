@@ -1,3 +1,47 @@
+/**
+ * @file ErrorLogger.h
+ * @brief 错误日志工具 — 专用的错误日志记录
+ * 
+ * 功能概述：
+ *   - 错误记录：记录系统错误、警告、致命错误
+ *   - NDJSON 格式：每行一个 JSON 对象，便于日志分析
+ *   - 日志轮转：超过大小限制自动轮转日志文件
+ *   - 线程安全：使用 mutex 保护并发写入
+ * 
+ * 日志文件：
+ *   - 主日志：logs/error.json
+ *   - 轮转文件：logs/error.1.json、logs/error.2.json 等
+ *   - 轮转策略：当日志文件超过 maxBytes 时自动轮转
+ * 
+ * 日志格式（NDJSON）：
+ *   每行一个 JSON 对象，包含以下字段：
+ *   - time: 时间戳（格式：YYYY-MM-DD HH:MM:SS.mmm）
+ *   - level: 日志级别（WARN、ERROR、FATAL）
+ *   - source: 日志来源（如 "Redis"、"Database" 等）
+ *   - msg: 日志消息
+ * 
+ * 使用示例：
+ *   // 初始化
+ *   ErrorLogger::instance().init("logs", 10*1024*1024, 5);
+ *   
+ *   // 记录错误
+ *   ErrorLogger::instance().error("Redis", "SETEX failed, key=captcha_codes:abc");
+ *   ErrorLogger::instance().warn("Database", "Slow query detected");
+ *   ErrorLogger::instance().fatal("System", "Critical error occurred");
+ * 
+ * 特性：
+ *   - 零外部依赖：不依赖 jsoncpp，自实现 JSON 转义
+ *   - 线程安全：所有操作都通过 mutex 保护
+ *   - 自动轮转：日志文件超过限制自动轮转
+ *   - 时间戳：精确到毫秒
+ * 
+ * 配置项（config.json）：
+ *   - errorlog.enabled: 是否启用错误日志（默认 true）
+ *   - errorlog.dir: 日志目录（默认 "logs"）
+ *   - errorlog.maxBytes: 单个日志文件最大大小（默认 10MB）
+ *   - errorlog.maxFiles: 最多保留的日志文件数（默认 5）
+ */
+
 #pragma once
 #include <string>
 #include <fstream>
@@ -7,12 +51,13 @@
 #include <filesystem>
 #include <sstream>
 
-// 专用错误日志（NDJSON 格式，每行一个 JSON 对象）
-// 文件：logs/error.log  轮转：超过 maxBytes 时 → error.1.log … error.N.log
-// 线程安全；零外部依赖
-//
-// 输出示例：
-// {"time":"2026-05-16 10:41:00.123","level":"ERROR","source":"Redis","msg":"SETEX failed, key=captcha_codes:abc"}
+/**
+ * @class ErrorLogger
+ * @brief 错误日志记录器单例
+ * 
+ * 提供专用的错误日志记录功能，支持日志轮转和线程安全。
+ * 日志格式为 NDJSON（Newline Delimited JSON），每行一个 JSON 对象。
+ */
 class ErrorLogger {
 public:
     static ErrorLogger& instance() {

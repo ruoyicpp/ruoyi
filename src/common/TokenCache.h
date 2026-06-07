@@ -1,3 +1,44 @@
+/**
+ * @file TokenCache.h
+ * @brief 令牌缓存 — 管理在线用户会话和权限
+ * 
+ * 功能概述：
+ *   - 会话管理：存储在线用户的令牌和权限信息
+ *   - 权限缓存：缓存用户的权限字符串和角色列表
+ *   - Redis 支持：支持 Redis 后端实现分布式会话
+ *   - 内存降级：Redis 不可用时自动降级到内存实现
+ *   - VRAM 缓存：可选的 GPU VRAM 缓存加速
+ * 
+ * 核心特性：
+ *   - 双层存储：内存缓存 + Redis 持久化
+ *   - 自动过期：支持 TTL 自动过期机制
+ *   - 权限刷新：修改用户权限后自动失效缓存
+ *   - 跨进程共享：Redis 后端支持多进程/多机器共享会话
+ * 
+ * 使用示例：
+ *   // 存储用户会话
+ *   LoginUser user;
+ *   user.token = token;
+ *   user.userId = 1;
+ *   user.userName = "admin";
+ *   user.permissions = {"system:user:list", "system:user:add"};
+ *   TokenCache::instance().put(token, user);
+ *   
+ *   // 获取用户会话
+ *   auto userOpt = TokenCache::instance().get(token);
+ *   if (userOpt) {
+ *       std::cout << "User: " << userOpt->userName << std::endl;
+ *   }
+ * 
+ * 配置项（config.json）：
+ *   - redis.enabled: 是否启用 Redis（默认 false）
+ *   - redis.host: Redis 主机（默认 127.0.0.1）
+ *   - redis.port: Redis 端口（默认 6379）
+ *   - redis.password: Redis 密码（可选）
+ *   - redis.db: Redis 数据库号（默认 0）
+ *   - redis.key_prefix: Redis key 前缀（默认空）
+ */
+
 #pragma once
 #include "ErrorLogger.h"
 #include <string>

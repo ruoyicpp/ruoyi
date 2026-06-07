@@ -1,3 +1,40 @@
+/**
+ * @file SysDictCtrl.h
+ * @brief 系统字典管理控制器
+ * 
+ * 功能概述：
+ *   - 字典类型管理：CRUD 操作，支持分页、搜索
+ *   - 字典数据管理：管理字典类型下的字典数据
+ *   - 字典缓存：支持字典缓存和缓存刷新
+ *   - 字典查询：按类型查询字典数据
+ * 
+ * API 端点（字典类型）：
+ *   - GET    /system/dict/type/list         - 字典类型列表（分页）
+ *   - GET    /system/dict/type/{id}         - 获取字典类型详情
+ *   - POST   /system/dict/type              - 新增字典类型
+ *   - PUT    /system/dict/type              - 修改字典类型
+ *   - DELETE /system/dict/type/{ids}        - 删除字典类型（支持批量）
+ *   - DELETE /system/dict/type/refreshCache - 刷新字典缓存
+ *   - GET    /system/dict/type/optionselect - 获取字典类型选项列表
+ * 
+ * 权限要求：
+ *   - system:dict:list   - 查看字典列表
+ *   - system:dict:add    - 新增字典
+ *   - system:dict:edit   - 修改字典
+ *   - system:dict:remove - 删除字典
+ * 
+ * 核心特性：
+ *   - 字典缓存：所有字典都会被缓存，提高查询性能
+ *   - 缓存刷新：修改字典后自动或手动刷新缓存
+ *   - 字典类型：支持不同类型的字典（如性别、状态等）
+ *   - 操作日志：所有修改操作自动记录到 sys_oper_log
+ * 
+ * 使用场景：
+ *   - 性别字典：male（男）、female（女）
+ *   - 状态字典：0（正常）、1（禁用）
+ *   - 用户类型字典：0（管理员）、1（普通用户）
+ */
+
 #pragma once
 #include "../../common/OperLogUtils.h"
 #include <drogon/HttpController.h>
@@ -7,7 +44,13 @@
 #include "../../services/DatabaseService.h"
 #include "../services/SysDictService.h"
 
-// 字典类型管理 /system/dict/type
+/**
+ * @class SysDictTypeCtrl
+ * @brief 系统字典类型管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 SysDictTypeController，提供字典类型管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
+ */
 class SysDictTypeCtrl : public drogon::HttpController<SysDictTypeCtrl> {
 public:
     METHOD_LIST_BEGIN

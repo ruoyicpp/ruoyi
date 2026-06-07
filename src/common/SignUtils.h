@@ -1,3 +1,64 @@
+/**
+ * @file SignUtils.h
+ * @brief 接口签名工具 — 请求签名验证
+ * 
+ * 功能概述：
+ *   - 签名生成：生成请求签名
+ *   - 签名验证：验证请求签名的有效性
+ *   - 时间戳验证：防止过期请求重放
+ *   - Nonce 验证：防止请求重放攻击
+ *   - App 管理：管理多个应用的密钥
+ * 
+ * 签名算法：
+ *   签名内容 = appId + "\n" + timestamp + "\n" + nonce + "\n" + path + "\n" + md5(body)
+ *   签名值 = HMAC-SHA256(secret, 签名内容)
+ * 
+ * 请求头要求：
+ *   - X-App-Id: 应用标识（必需）
+ *   - X-Timestamp: Unix 时间戳（秒，必需）
+ *   - X-Nonce: 随机字符串，每次唯一（必需）
+ *   - X-Sign: 签名值（必需）
+ * 
+ * 使用示例：
+ *   // 配置应用列表
+ *   std::vector<SignUtils::AppInfo> apps = {
+ *       {"app1", "secret1", true},
+ *       {"app2", "secret2", true}
+ *   };
+ *   SignUtils::instance().configure(apps, 300);  // 时间戳容差 300 秒
+ *   
+ *   // 验证请求签名
+ *   std::string errMsg;
+ *   if (!SignUtils::instance().verify(req, errMsg)) {
+ *       LOG_WARN << "签名验证失败: " << errMsg;
+ *       return;
+ *   }
+ * 
+ * 安全特性：
+ *   - 时间戳验证：防止过期请求重放（默认容差 300 秒）
+ *   - Nonce 防重放：记录已使用的 nonce，防止重复使用
+ *   - HMAC-SHA256：使用强加密算法生成签名
+ *   - 多应用支持：支持多个应用的密钥管理
+ * 
+ * 防护机制：
+ *   1. 时间戳验证：请求时间戳与服务器时间偏差超过容差值时拒绝
+ *   2. Nonce 防重放：同一 nonce 在容差时间内只能使用一次
+ *   3. 签名验证：验证 HMAC-SHA256 签名的正确性
+ *   4. 应用验证：验证应用 ID 是否存在且启用
+ * 
+ * 配置项（config.json）：
+ *   {
+ *     "sign": {
+ *       "enabled": true,
+ *       "timestamp_tolerance": 300,
+ *       "apps": [
+ *         {"appId": "app1", "secret": "secret1", "enabled": true},
+ *         {"appId": "app2", "secret": "secret2", "enabled": true}
+ *       ]
+ *     }
+ *   }
+ */
+
 #pragma once
 #include <string>
 #include <unordered_map>
@@ -11,12 +72,13 @@
 #include <drogon/HttpRequest.h>
 #include <trantor/utils/Logger.h>
 
-// 接口签名验签工具
-// 请求方需在 Header 中传入：
-//   X-App-Id    : 应用标识
-//   X-Timestamp : 当前 Unix 时间戳（秒）
-//   X-Nonce     : 随机字符串（防重放，每次唯一）
-//   X-Sign      : HMAC-SHA256(secret, appId+"\n"+timestamp+"\n"+nonce+"\n"+path+"\n"+md5(body))
+/**
+ * @class SignUtils
+ * @brief 接口签名工具单例
+ * 
+ * 提供请求签名生成和验证功能。
+ * 支持多应用管理和防重放攻击。
+ */
 class SignUtils {
 public:
     struct AppInfo {

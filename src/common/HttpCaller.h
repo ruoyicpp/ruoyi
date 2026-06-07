@@ -1,12 +1,56 @@
-// HttpCaller — 异步 HTTP 客户端调用封装（移植自 wepay-cpp）
-//
-// 用法：
-//   HttpCaller::asyncGet(url, [](bool ok, int status, const std::string& body){ ... });
-//   HttpCaller::asyncPost(url, body, "application/json", cb);
-//
-// 与现有 drogon::HttpClient 直接调用方式可共存。
-// 优点：自动 URL 拆 base+path、统一错误回调签名、默认 15s 超时、
-//       回调可选（nullptr = 发了不管）。
+/**
+ * @file HttpCaller.h
+ * @brief HTTP 客户端调用工具 — 异步 HTTP 请求封装
+ * 
+ * 功能概述：
+ *   - 异步 GET：发送异步 GET 请求
+ *   - 异步 POST：发送异步 POST 请求
+ *   - 自动 URL 解析：自动拆分 URL 为 base 和 path
+ *   - 统一回调：统一的错误处理和回调签名
+ * 
+ * 特性：
+ *   - 异步非阻塞：所有请求都是异步的，不阻塞主线程
+ *   - 可选回调：回调可以为 nullptr，表示"发了不管"
+ *   - 默认超时：默认 15 秒超时
+ *   - 自动 URL 解析：自动拆分 URL 为 base 和 path
+ *   - 统一签名：所有回调都使用相同的签名
+ * 
+ * 使用示例：
+ *   // 异步 GET 请求
+ *   HttpCaller::asyncGet("http://api.example.com/users", 
+ *       [](bool ok, int status, const std::string& body) {
+ *           if (ok && status == 200) {
+ *               std::cout << "Response: " << body << std::endl;
+ *           } else {
+ *               std::cout << "Error: " << status << std::endl;
+ *           }
+ *       });
+ *   
+ *   // 异步 POST 请求
+ *   std::string jsonBody = R"({"name":"John","age":30})";
+ *   HttpCaller::asyncPost("http://api.example.com/users", jsonBody, 
+ *       "application/json",
+ *       [](bool ok, int status, const std::string& body) {
+ *           if (ok && status == 201) {
+ *               std::cout << "Created: " << body << std::endl;
+ *           }
+ *       });
+ *   
+ *   // 发了不管（无回调）
+ *   HttpCaller::asyncPost("http://api.example.com/log", logData);
+ * 
+ * 回调签名：
+ *   void callback(bool ok, int httpStatus, const std::string& body)
+ *   - ok: 请求是否成功（网络层）
+ *   - httpStatus: HTTP 状态码（200、404、500 等）
+ *   - body: 响应体内容
+ * 
+ * 配置项（config.json）：
+ *   - http.timeout: HTTP 请求超时时间（秒，默认 15）
+ *   - http.user_agent: User-Agent 字符串（默认 "RuoYi-Cpp/1.0"）
+ *   - http.max_retries: 最大重试次数（默认 0）
+ */
+
 #pragma once
 #include <drogon/HttpClient.h>
 #include <drogon/HttpRequest.h>

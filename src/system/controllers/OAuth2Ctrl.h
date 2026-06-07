@@ -1,3 +1,46 @@
+/**
+ * @file OAuth2Ctrl.h
+ * @brief OAuth2 第三方登录控制器
+ * 
+ * 功能概述：
+ *   - 第三方登录：支持 GitHub、Google、微信等第三方 OAuth2 登录
+ *   - 账号绑定：将第三方账号绑定到本地账号
+ *   - 账号解绑：解除第三方账号绑定
+ *   - Provider 管理：获取已启用的第三方登录提供商列表
+ * 
+ * API 端点：
+ *   - GET    /oauth2/providers            - 获取已启用 provider 列表
+ *   - GET    /oauth2/authorize/{provider} - 获取授权 URL + state
+ *   - GET    /oauth2/callback/{provider}  - OAuth2 回调（处理 code）
+ *   - POST   /oauth2/bind/{provider}      - 绑定第三方账号
+ *   - DELETE /oauth2/bind/{provider}      - 解绑第三方账号
+ * 
+ * 支持的 Provider：
+ *   - GitHub：GitHub OAuth2
+ *   - Google：Google OAuth2
+ *   - WeChat：微信 OAuth2
+ *   - QQ：QQ OAuth2
+ *   - 自定义：支持自定义 OAuth2 提供商
+ * 
+ * OAuth2 流程：
+ *   1. 前端调用 /oauth2/authorize/{provider} 获取授权 URL
+ *   2. 用户跳转到第三方授权页面
+ *   3. 用户授权后，第三方重定向到 /oauth2/callback/{provider}
+ *   4. 后端处理 code，获取用户信息，返回 JWT
+ *   5. 前端使用 JWT 进行后续操作
+ * 
+ * 核心特性：
+ *   - 状态验证：使用 state 参数防止 CSRF 攻击
+ *   - 自动注册：首次登录时自动创建本地账号
+ *   - 账号绑定：支持将第三方账号绑定到现有账号
+ *   - 多 Provider：支持多个第三方登录提供商
+ * 
+ * 使用场景：
+ *   - 快速登录：用户可以使用第三方账号快速登录
+ *   - 账号关联：用户可以关联多个第三方账号
+ *   - 社交登录：支持社交媒体账号登录
+ */
+
 #pragma once
 #include <drogon/drogon.h>
 #include "../../common/AjaxResult.h"
@@ -7,12 +50,13 @@
 #include "../../services/DatabaseService.h"
 #include "../services/TokenService.h"
 
-// OAuth2 第三方登录控制器
-// GET  /oauth2/providers              — 获取已启用 provider 列表
-// GET  /oauth2/authorize/{provider}   — 获取授权 URL + state
-// GET  /oauth2/callback/{provider}    — code 回调，返回 JWT
-// POST /oauth2/bind/{provider}        — 绑定到当前登录账号
-// DELETE /oauth2/bind/{provider}      — 解绑
+/**
+ * @class OAuth2Ctrl
+ * @brief OAuth2 第三方登录控制器
+ * 
+ * 提供 OAuth2 第三方登录和账号绑定的所有 API 端点。
+ * 支持多个第三方登录提供商（GitHub、Google、微信等）。
+ */
 class OAuth2Ctrl : public drogon::HttpController<OAuth2Ctrl> {
 public:
     METHOD_LIST_BEGIN

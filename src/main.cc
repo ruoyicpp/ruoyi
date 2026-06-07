@@ -504,7 +504,7 @@ int main(int argc, char* argv[]) {
                     // 限流配置
                     if (sec.isMember("rate_limit")) {
                         auto& rl = sec["rate_limit"];
-                        RateLimiter::Config cfg;
+                        ::RateLimiter::Config cfg;
                         cfg.enabled       = rl.get("enabled", true).asBool();
                         cfg.maxRequests   = rl.get("max_requests", 200).asInt();
                         cfg.windowSeconds = rl.get("window_seconds", 60).asInt();
@@ -512,11 +512,11 @@ int main(int argc, char* argv[]) {
                         if (rl.isMember("whitelist"))
                             for (auto& ip : rl["whitelist"])
                                 cfg.whitelist.push_back(ip.asString());
-                        RateLimiter::instance().configure(cfg);
+                        ::RateLimiter::instance().configure(cfg);
 
                         // ── P3-12: 注入 Redis 后端，实现跨进程限流计数 ─────
                         // Redis 不可用时 RateLimiter 自动降级到内存
-                        RateLimiter::RedisBackend rb;
+                        ::RateLimiter::RedisBackend rb;
                         rb.incrAndExpire = [](const std::string& key, int sec) -> long {
                             auto& rc = RedisConn::instance();
                             auto* c = rc.ctx();
@@ -544,7 +544,7 @@ int main(int argc, char* argv[]) {
                             redisDel(key);
                         };
                         if (RedisConn::instance().enabledByConfig()) {
-                            RateLimiter::instance().setRedisBackend(rb);
+                            ::RateLimiter::instance().setRedisBackend(rb);
                         }
 
                         LOG_INFO << "[RateLimit] enabled=" << cfg.enabled
@@ -690,7 +690,7 @@ int main(int argc, char* argv[]) {
                 });
         }
 
-        // ── 前端托管（参考 wepay-cpp 设计；两种模式二选一）────────────────────
+        // ── 前端托管（两种模式二选一）────────────────────
         //   模式 A: "frontend"           — 外部 ./web 目录（方便热更新）
         //   模式 B: "embedded_frontend"  — 编译进 exe（单文件分发，需 cmake -DRUOYI_EMBED_FRONTEND=ON）
         // 共享状态供后续错误处理器/限流器使用：
@@ -859,7 +859,7 @@ int main(int argc, char* argv[]) {
                     if (!isApi && hasExt) { accb(); return; }
                 }
                 std::string ip = IpUtils::getIpAddr(req);
-                if (!RateLimiter::instance().allow(ip)) {
+                if (!::RateLimiter::instance().allow(ip)) {
                     MetricsCollector::instance().onRateLimited();
                     auto resp = drogon::HttpResponse::newHttpResponse();
                     resp->setStatusCode((drogon::HttpStatusCode)429);
@@ -879,6 +879,14 @@ int main(int argc, char* argv[]) {
                drogon::AdviceChainCallback &&accb) {
                 // OPTIONS 预检请求放行
                 if (req->method() == drogon::Options) { accb(); return; }
+                
+                // IM 公开接口白名单（无需认证，允许 Bot 访问）
+                std::string path = req->path();
+                if (path.find("/im/") == 0) {
+                    accb();
+                    return;
+                }
+                
                 std::string ua = req->getHeader("User-Agent");
                 if (isBotUserAgent(ua)) {
                     LOG_WARN << "[Security] Bot UA blocked (global): "
@@ -1116,7 +1124,7 @@ int main(int argc, char* argv[]) {
 
         // ── 定期清理限流器过期记录（每2分钟）────────────────────────────────
         drogon::app().getLoop()->runEvery(120.0, []{
-            RateLimiter::instance().cleanup();
+            ::RateLimiter::instance().cleanup();
         });
 
         // 静态文件服务：/profile/{dir}/{file} → uploads/{dir}/{file}
@@ -2143,7 +2151,7 @@ load();
             std::thread([]() {
                 while (true) {
                     std::this_thread::sleep_for(std::chrono::seconds(60));
-                    RateLimiter::instance().cleanup();
+                    ::RateLimiter::instance().cleanup();
                 }
             }).detach();
 

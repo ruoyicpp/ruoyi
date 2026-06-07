@@ -1,3 +1,42 @@
+/**
+ * @file XssUtils.h
+ * @brief XSS 和 SQL 注入防御工具
+ * 
+ * 功能概述：
+ *   - HTML 转义：转义特殊字符，防止 XSS 攻击
+ *   - XSS 净化：移除危险标签和事件属性
+ *   - SQL 注入防御：参数化查询（主防线）
+ *   - 格式校验：邮箱、URL、电话等格式验证
+ *   - JSON 净化：递归净化 JSON 对象中的所有字符串
+ * 
+ * 安全策略：
+ *   - 主防线：所有 SQL 查询使用参数化查询（$1、$2 等占位符）
+ *   - 辅助防线：输入净化、HTML 转义、格式校验
+ *   - 告警机制：检测到注入特征时记录日志
+ * 
+ * 使用示例：
+ *   // HTML 转义（输出到 HTML 页面时）
+ *   std::string escaped = XssUtils::htmlEscape(userInput);
+ *   
+ *   // XSS 净化（存入数据库前）
+ *   std::string sanitized = XssUtils::sanitize(userInput);
+ *   
+ *   // 格式校验
+ *   if (!XssUtils::isValidEmail(email)) {
+ *       return error("邮箱格式不正确");
+ *   }
+ *   
+ *   // JSON 净化
+ *   Json::Value data = req->getJsonObject();
+ *   XssUtils::sanitizeJson(data);
+ * 
+ * 防御的危险标签：
+ *   - <script>、<iframe>、<object>、<embed>
+ *   - <link>、<style>、<base>、<form>
+ *   - 事件属性：onerror、onclick、onload 等
+ *   - 危险协议：javascript:、vbscript:、data:text/html
+ */
+
 #pragma once
 #include <string>
 #include <vector>
@@ -5,9 +44,19 @@
 #include <cctype>
 #include <json/json.h>
 
-// XSS 防御 + SQL 注入防御工具
-// 主防线：控制器层全部使用参数化查询 ($N)
-// 辅助：标识符白名单、输入净化、注入特征告警
+/**
+ * @class XssUtils
+ * @brief XSS 和 SQL 注入防御工具类
+ * 
+ * 提供多层防御机制，保护应用免受 XSS 和 SQL 注入攻击。
+ * 所有方法都是静态的，无需创建实例。
+ * 
+ * 防御层次：
+ *   1. 参数化查询（最重要）：所有 SQL 查询使用占位符
+ *   2. 输入净化：移除危险标签和属性
+ *   3. 输出转义：输出到 HTML 时转义特殊字符
+ *   4. 格式校验：验证输入格式的合法性
+ */
 class XssUtils {
 public:
     // ── HTML 转义（输出到 HTML 页面时使用）────────────────────────────────────

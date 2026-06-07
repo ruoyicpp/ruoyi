@@ -1,3 +1,48 @@
+/**
+ * @file SysUserCtrl.h
+ * @brief 系统用户管理控制器
+ * 
+ * 功能概述：
+ *   - 用户列表查询：支持分页、搜索、数据权限过滤
+ *   - 用户增删改查：CRUD 操作，支持批量删除
+ *   - 密码管理：重置密码、修改密码、密码复杂度验证
+ *   - 状态管理：启用/禁用用户、解锁账户
+ *   - 角色授权：为用户分配角色
+ *   - 个人资料：查看和修改个人信息、头像上传
+ *   - 数据导入导出：支持 CSV 导入导出
+ * 
+ * API 端点：
+ *   - GET    /system/user/list              - 用户列表（分页）
+ *   - GET    /system/user/{userId}          - 获取用户详情
+ *   - POST   /system/user                   - 新增用户
+ *   - PUT    /system/user                   - 修改用户
+ *   - DELETE /system/user/{ids}             - 删除用户（支持批量）
+ *   - PUT    /system/user/resetPwd          - 重置密码
+ *   - PUT    /system/user/changeStatus      - 修改状态
+ *   - GET    /system/user/authRole/{userId} - 获取用户角色
+ *   - PUT    /system/user/authRole          - 分配角色
+ *   - GET    /system/user/deptTree          - 部门树
+ *   - GET    /system/user/profile           - 个人资料
+ *   - PUT    /system/user/profile           - 修改个人资料
+ *   - PUT    /system/user/profile/updatePwd - 修改密码
+ *   - POST   /system/user/export            - 导出用户数据
+ *   - POST   /system/user/importData        - 导入用户数据
+ *   - POST   /system/user/profile/avatar    - 上传头像
+ *   - DELETE /system/user/unlock/{userName} - 解锁账户
+ * 
+ * 权限要求：
+ *   - system:user:list   - 查看用户列表
+ *   - system:user:add    - 新增用户
+ *   - system:user:edit   - 修改用户
+ *   - system:user:remove - 删除用户
+ * 
+ * 核心特性：
+ *   - 数据权限过滤：支持按部门权限过滤用户列表
+ *   - 操作日志记录：所有修改操作自动记录到 sys_oper_log
+ *   - 缓存失效：修改用户/角色后自动失效相关缓存
+ *   - 批量操作：支持批量删除、批量导入
+ */
+
 #pragma once
 #include <drogon/HttpController.h>
 #include <filesystem>
@@ -20,7 +65,13 @@
 #include "../../services/StorageService.h"
 #include "SysLoginCtrl.h"
 
-// /system/user 用户管理，使用直接 libpq 查询
+/**
+ * @class SysUserCtrl
+ * @brief 系统用户管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 SysUserController，提供用户管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
+ */
 class SysUserCtrl : public drogon::HttpController<SysUserCtrl> {
 public:
     METHOD_LIST_BEGIN

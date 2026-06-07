@@ -1,3 +1,50 @@
+/**
+ * @file ApiKeyService.h
+ * @brief API Key 服务 — 管理和验证 API 密钥
+ * 
+ * 功能概述：
+ *   - API Key 生成：生成安全的随机 API Key
+ *   - API Key 验证：验证 API Key 并返回对应的用户信息
+ *   - 权限继承：API Key 继承绑定用户的所有权限
+ *   - 缓存管理：缓存验证结果，提高性能
+ * 
+ * API Key 格式：
+ *   - 前缀：ak_（便于识别和日志记录）
+ *   - 长度：51 字符（ak_ + 48 个十六进制字符）
+ *   - 生成：使用 OpenSSL RAND_bytes 生成随机数据
+ * 
+ * 工作流程：
+ *   1. 管理员通过 /system/apikey 创建 API Key
+ *   2. 系统生成 48 字符随机 key（仅返回一次）
+ *   3. 数据库存储 SHA256(key) 哈希（防止泄漏）
+ *   4. 客户端在请求中提供 API Key：
+ *      - Header: X-API-Key: <key>
+ *      - Query: ?apiKey=<key>
+ *   5. 中间件验证 key，加载对应用户权限
+ * 
+ * 安全特性：
+ *   - 哈希存储：数据库仅存储 SHA256 哈希，不存储明文
+ *   - 一次性返回：创建时仅返回一次明文 key
+ *   - 缓存 TTL：验证结果缓存 5 分钟，减少数据库查询
+ *   - 权限继承：API Key 继承绑定用户的所有权限和角色
+ * 
+ * 使用示例：
+ *   // 生成 API Key
+ *   std::string key = ApiKeyService::generateKey();
+ *   std::string hash = ApiKeyService::hashKey(key);
+ *   
+ *   // 验证 API Key
+ *   auto user = ApiKeyService::instance().verifyKey(key);
+ *   if (user) {
+ *       std::cout << "User: " << user->userName << std::endl;
+ *   }
+ * 
+ * 配置项（config.json）：
+ *   - apikey.enabled: 是否启用 API Key 认证（默认 true）
+ *   - apikey.cache_ttl: 缓存过期时间（秒，默认 300）
+ *   - apikey.max_cache_size: 最大缓存条目数（默认 1000）
+ */
+
 #pragma once
 #include <string>
 #include <optional>
@@ -9,14 +56,13 @@
 #include "../services/DatabaseService.h"
 #include "LoginUser.h"
 
-// f16 API Key 管理服务（header-only）
-//
-// 工作流：
-//   1) 管理员通过 /system/apikey 接口创建 key，绑定到一个 user_id（继承其权限）
-//   2) 服务端生成 48 字符随机 key（如 "ak_xxxxxxxxxxx..."），仅此一次明文返回
-//   3) DB 存储 sha256(key) 防止泄漏（同 git/github access token 模式）
-//   4) 客户端后续调用：Header `X-API-Key: <key>` 或 query `?apiKey=<key>`
-//   5) 中间件查 sha256 命中 sys_apikey → 加载对应 user → 模拟登录态注入
+/**
+ * @class ApiKeyService
+ * @brief API Key 管理服务单例
+ * 
+ * 提供 API Key 的生成、验证和缓存功能。
+ * 支持 API Key 认证，用于第三方应用和自动化脚本的访问。
+ */
 class ApiKeyService {
 public:
     // 验签产出的"虚拟登录用户"快照（含权限角色，5 分钟 TTL 缓存）

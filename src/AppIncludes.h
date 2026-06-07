@@ -120,6 +120,10 @@
 #include "monitor/controllers/SysRestartCtrl.h"    // 服务重启
 #include "monitor/controllers/OpsCtrl.h"    // 运维工具
 
+// ── 任务队列 ──────────────────────────────────────────────────────
+#include "taskqueue/TaskQueue.h"    // 异步任务队列核心
+#include "taskqueue/TaskQueueCtrl.h"    // 任务队列管理API
+
 // ── Common 控制器 ────────────────────────────────────────────────
 #include "common/controllers/CommonCtrl.h"    // 通用接口（文件上传/下载）
 #include "common/controllers/DashboardCtrl.h"    // 仪表盘
@@ -145,6 +149,13 @@
 // 【物联网】— Modbus协议、设备网关
 #include "iot/ModbusGateway.h"        // Modbus TCP/RTU网关
 #include "iot/IotCtrl.h"              // IoT设备控制器
+
+// ── IM 即时通讯 ──────────────────────────────────────────────────
+// 【IM系统】— 唐僧叨叨 CGO DLL 集成（运行时动态加载）
+#include "im/TangSengDaoDaoWrapper.h"  // IM系统C++包装类（单例）
+#include "im/ImProxy.h"                // IM系统代理（生命周期管理）
+#include "im/ImCtrl.h"                 // IM HTTP控制器（RESTful API）
+#include "im/ImPublicCtrl.h"           // IM公开控制器（无需认证）
 
 // ── 插件系统 ─────────────────────────────────────────────────────
 // 【插件】— 用户 DLL/SO 运行时加载（前端触发热激活）

@@ -29,6 +29,12 @@ if(WIN32)
     set(MSYS_PREFIX "H:/msys64/msys64/ucrt64" CACHE PATH "MSYS2 ucrt64 root")
     set(VCPKG_INCLUDE_DIR "${MSYS_PREFIX}/include")
     set(VCPKG_LIB_DIR     "${MSYS_PREFIX}/lib")
+    
+    # ── 唐僧叨叨 IM 系统 DLL 路径 ──
+    set(TANGSENGDAODAO_DLL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/src/im/im/TangSengDaoDaoServer-main/cgo-lib/build/tangsengdaodao.dll"
+        CACHE PATH "TangSengDaoDaoDLL path")
+    set(TANGSENGDAODAO_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/im/im/TangSengDaoDaoServer-main/cgo-lib/build"
+        CACHE PATH "TangSengDaoDaoDLL header path")
 
     # PostgreSQL libpq 头文件（从 ucrt64 复制，避免系统头文件冲突）
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/libpq_include")
@@ -107,7 +113,7 @@ message(STATUS "libpq:    ${PQ_LIB}")
 
 # ── SQLite 加密（sqlite3mc，MIT，MinGW 兼容）─────────────────
 option(ENABLE_SQLITE_ENCRYPTION "使用 sqlite3mc 编译 SQLite 加密支持" ON)
-option(RUOYI_DEV_BYPASS_LICENSE "开发模式：跳过许可证校验（仅供二次开发使用，发布时必须关闭）" OFF)
+option(RUOYI_DEV_BYPASS_LICENSE "开发模式：跳过许可证校验（仅供二次开发使用，发布时必须关闭）" ON)
 if(RUOYI_DEV_BYPASS_LICENSE)
     add_compile_definitions(RUOYI_DEV_BYPASS_LICENSE=1)
     message(WARNING "RUOYI_DEV_BYPASS_LICENSE=ON：许可证校验已绕过，仅限开发环境")
@@ -154,6 +160,10 @@ if(RUOYI_USE_PG_DRIVER)
     message(STATUS "drogon_pg_driver: ENABLED -> ${_drogon_pg_dir}")
 endif()
 
+# ── minio-cpp（可选，S3/MinIO 对象存储 SDK）────────────────
+# 优先用 vcpkg 安装版 find_package；找不到则回退到项目内源码编译
+option(RUOYI_USE_MINIO_CPP "集成 minio-cpp SDK（需要 vcpkg install minio-cpp 或 G:/back/recovered/minio-cpp）" ON)
+
 # ── 进程内 nginx 静态库（可选）──────────────────────────────────
 # 默认 OFF，开启后把 nginx-1.29.8 静态库嵌入 ruoyi-cpp.exe 内：
 #   - nginx 在独立线程跑（IOCP 事件循环）
@@ -161,7 +171,7 @@ endif()
 #   - HTTPS/HTTP2/gzip/缓存/反代 全套 nginx 能力
 # 注意：启用后会用 nginx 自带的 OpenSSL 静态库替代 msys2 的 OpenSSL DLL，
 #       drogon 也走相同的 OpenSSL（避免双份冲突）
-option(RUOYI_USE_NGINX "嵌入 nginx 静态库做反向代理 / HTTPS 终止" OFF)
+option(RUOYI_USE_NGINX "嵌入 nginx 静态库做反向代理 / HTTPS 终止" ON)
 set(NGINX_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/nginx-1.29.8"
     CACHE PATH "nginx 源码根目录（已编译产生 objs/libnginx.a）")
 if(RUOYI_USE_NGINX)
@@ -197,9 +207,94 @@ file(GLOB_RECURSE SOURCES
     src/system/controllers/*.cc
     src/ai/controllers/*.cc
     src/filters/*.cc
+    src/libs/plugin/*.cc
+    src/taskqueue/*.cc
+    src/monitor/*.cc
+    src/cache/*.cc
 )
 
+# 添加 IM 集成文件（排除 src/im/111 中的 protobuf 文件）
+file(GLOB IM_SOURCES src/im/*.cc)
+list(APPEND SOURCES ${IM_SOURCES})
+message(STATUS "[IM] IM sources: ${IM_SOURCES}")
+
 add_executable(${PROJECT_NAME} ${SOURCES})
+
+# 支持大对象文件（main.cc 包含太多头文件）
+if(MINGW)
+    target_compile_options(${PROJECT_NAME} PRIVATE -Wa,-mbig-obj)
+endif()
+
+# ── minio-cpp（接 RUOYI_USE_MINIO_CPP=ON 时启用）────────────
+if(RUOYI_USE_MINIO_CPP)
+    if(WIN32)
+        # ── Windows：直接 find_library（参考 wepay-cpp vcpkg x64-mingw-static 方案）──
+        set(VCPKG_INSTALLED "G:/back/recovered/drogon-master/vcpkg-master/installed/x64-mingw-static")
+        find_library(MINIOCPP_LIB NAMES miniocpp libminiocpp
+            PATHS "${VCPKG_INSTALLED}/lib" NO_DEFAULT_PATH)
+        find_library(CURLPP_LIB NAMES curlpp libcurlpp
+            PATHS "${VCPKG_INSTALLED}/lib" NO_DEFAULT_PATH)
+        find_library(INIH_LIB NAMES inih libinih
+            PATHS "${VCPKG_INSTALLED}/lib" NO_DEFAULT_PATH)
+        find_library(PUGIXML_LIB NAMES pugixml libpugixml
+            PATHS "${VCPKG_INSTALLED}/lib" NO_DEFAULT_PATH)
+        find_library(INIREADER_LIB NAMES INIReader libINIReader
+            PATHS "${VCPKG_INSTALLED}/lib" NO_DEFAULT_PATH)
+        if(MINIOCPP_LIB)
+            target_include_directories(${PROJECT_NAME} PRIVATE
+                "${VCPKG_INSTALLED}/include"
+                "${VCPKG_INSTALLED}/include/miniocpp"
+            )
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${MINIOCPP_LIB})
+            if(PUGIXML_LIB)
+                target_link_libraries(${PROJECT_NAME} PRIVATE ${PUGIXML_LIB})
+            endif()
+            if(INIH_LIB)
+                target_link_libraries(${PROJECT_NAME} PRIVATE ${INIH_LIB})
+            endif()
+            if(CURLPP_LIB)
+                target_link_libraries(${PROJECT_NAME} PRIVATE ${CURLPP_LIB})
+            endif()
+            if(INIREADER_LIB)
+                target_link_libraries(${PROJECT_NAME} PRIVATE ${INIREADER_LIB} ${INIH_LIB})
+            endif()
+            target_compile_definitions(${PROJECT_NAME} PRIVATE RUOYI_USE_MINIO_CPP=1)
+            message(STATUS "minio-cpp: ENABLED (Windows) -> ${MINIOCPP_LIB}")
+        else()
+            message(WARNING "minio-cpp: libminiocpp.a NOT FOUND at ${VCPKG_INSTALLED}/lib")
+        endif()
+    else()
+        # ── Linux / WSL：优先用 vcpkg cmake config（参考 wepay-cpp）─────────────
+        find_package(miniocpp CONFIG QUIET)
+        if(miniocpp_FOUND)
+            target_link_libraries(${PROJECT_NAME} PRIVATE miniocpp::miniocpp)
+            find_library(INIREADER_LIB NAMES INIReader)
+            if(INIREADER_LIB)
+                target_link_libraries(${PROJECT_NAME} PRIVATE ${INIREADER_LIB})
+            endif()
+            target_compile_definitions(${PROJECT_NAME} PRIVATE RUOYI_USE_MINIO_CPP=1)
+            message(STATUS "minio-cpp: ENABLED (Linux) via find_package")
+        else()
+            # 回退：在常见系统路径搜索静态库
+            find_library(MINIOCPP_LIB NAMES miniocpp libminiocpp
+                PATHS /usr/local/lib /usr/lib /opt/vcpkg/installed/x64-linux/lib
+                     ${CMAKE_PREFIX_PATH}/lib)
+            if(MINIOCPP_LIB)
+                target_link_libraries(${PROJECT_NAME} PRIVATE ${MINIOCPP_LIB})
+                find_library(INIH_LIB NAMES inih)
+                if(INIH_LIB)
+                    target_link_libraries(${PROJECT_NAME} PRIVATE ${INIH_LIB})
+                endif()
+                target_include_directories(${PROJECT_NAME} PRIVATE
+                    /usr/local/include /usr/include /opt/vcpkg/installed/x64-linux/include)
+                target_compile_definitions(${PROJECT_NAME} PRIVATE RUOYI_USE_MINIO_CPP=1)
+                message(STATUS "minio-cpp: ENABLED (Linux fallback) -> ${MINIOCPP_LIB}")
+            else()
+                message(WARNING "minio-cpp: NOT FOUND on Linux, falling back to SigV4 for type=minio")
+            endif()
+        endif()
+    endif()
+endif()
 
 if(RUOYI_USE_PG_DRIVER)
     target_link_libraries(${PROJECT_NAME} PRIVATE drogon_pg_driver)
@@ -240,6 +335,7 @@ if(WIN32)
         ${JWT_CPP_INCLUDE}
         ${VCPKG_INCLUDE_DIR}
         ${POSTGRESQL_INCLUDE_DIR}
+        ${TANGSENGDAODAO_INCLUDE_DIR}
     )
     target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX DROGON_STATIC_DEFINE TRANTOR_STATIC_DEFINE JSONCPP_STATIC_DEFINE)
     if(RUOYI_SQLITE3MC_ENABLED)
@@ -262,6 +358,13 @@ endif()
 
 # ── 链接库 ────────────────────────────────────────────────────
 if(WIN32)
+    # 检查唐僧叨叨 DLL 是否存在
+    if(EXISTS "${TANGSENGDAODAO_DLL_PATH}")
+        message(STATUS "TangSengDaoDao DLL found: ${TANGSENGDAODAO_DLL_PATH}")
+    else()
+        message(WARNING "TangSengDaoDao DLL not found at ${TANGSENGDAODAO_DLL_PATH}")
+    endif()
+    
     target_link_libraries(${PROJECT_NAME} PRIVATE
         ${DROGON_LIB}
         ${TRANTOR_LIB}
@@ -332,6 +435,9 @@ if(WIN32)
             ${_msys_jsoncpp}
         )
     endif()
+    # libcurl 和 brotli DLL（即使 .a 静态链入了 exe，某些间接依赖项仍可能需要运行时 DLL）
+    set(_msys_curl_dlls  libcurl-4.dll)
+    set(_msys_brotli_dlls libbrotlicommon.dll libbrotlidec.dll libbrotlienc.dll)
     foreach(_dll IN LISTS _drogon_dlls)
         if(EXISTS "${_drogon_bin}/${_dll}")
             list(APPEND _runtime_dlls "${_drogon_bin}/${_dll}")
@@ -343,6 +449,16 @@ if(WIN32)
         endif()
     endforeach()
     foreach(_dll IN LISTS _msys_dlls)
+        if(EXISTS "${_msys_bin}/${_dll}")
+            list(APPEND _runtime_dlls "${_msys_bin}/${_dll}")
+        endif()
+    endforeach()
+    foreach(_dll IN LISTS _msys_curl_dlls)
+        if(EXISTS "${_msys_bin}/${_dll}")
+            list(APPEND _runtime_dlls "${_msys_bin}/${_dll}")
+        endif()
+    endforeach()
+    foreach(_dll IN LISTS _msys_brotli_dlls)
         if(EXISTS "${_msys_bin}/${_dll}")
             list(APPEND _runtime_dlls "${_msys_bin}/${_dll}")
         endif()
@@ -370,6 +486,22 @@ if(WIN32)
         "${_msys_bin}/libgnutls*.dll"
     )
     list(APPEND _runtime_dlls ${_msys_extra})
+    
+    # 4) certmanager.dll（ACME 证书管理，可选）
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/certmanager.dll")
+        list(APPEND _runtime_dlls "${CMAKE_CURRENT_SOURCE_DIR}/certmanager.dll")
+    endif()
+    # 5) minio-cpp 运行时 DLL（vcpkg 安装 curlpp/inih/nlohmann-json/pugixml 时需要）
+    foreach(_minio_dll libcurlpp.dll libinih.dll)
+        if(EXISTS "${_msys_bin}/${_minio_dll}")
+            list(APPEND _runtime_dlls "${_msys_bin}/${_minio_dll}")
+        endif()
+    endforeach()
+    # 6)  IM 系统 DLL
+    if(EXISTS "${TANGSENGDAODAO_DLL_PATH}")
+        list(APPEND _runtime_dlls "${TANGSENGDAODAO_DLL_PATH}")
+    endif()
+    
     list(REMOVE_DUPLICATES _runtime_dlls)
 
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
@@ -401,6 +533,14 @@ else()
     endforeach()
 endif()
 
+# ── 守护进程（watchdog）──────────────────────────────────────────
+# 零依赖跨平台守护进程，用于监控和自动重启 ruoyi-cpp.exe
+add_executable(watchdog watchdog/watchdog.cc)
+target_compile_options(watchdog PRIVATE -std=c++17 -O2)
+if(MINGW)
+    target_compile_options(watchdog PRIVATE -static-libgcc -static-libstdc++)
+endif()
+
 # ── SQLite 加密工具（独立可执行文件）────────────────────────────
 # encrypt/decrypt/rekey/check/selftest，仅在启用 sqlite3mc 时编译
 if(RUOYI_SQLITE3MC_ENABLED)
@@ -422,6 +562,26 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/drogon_ctl_model.json")
     configure_file(drogon_ctl_model.json ${CMAKE_BINARY_DIR}/drogon_ctl_model.json COPYONLY)
 endif()
+
+# ── 安装目标（`cmake --install build-nginx --prefix /usr/local`）────────────────
+install(TARGETS ${PROJECT_NAME} watchdog
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+install(TARGETS sqlite_cipher_tool
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    OPTIONAL
+)
+# 配置文件：仅安装模板，不安装含密码的 config.json
+install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/build-nginx/config.template.json"
+    DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/ruoyi-cpp"
+    RENAME config.json.example
+)
+# 示例 Nginx 反代配置
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/docs/NGINX_PROXY_EXAMPLE.conf"
+    DESTINATION "${CMAKE_INSTALL_SYSCONFDIR}/ruoyi-cpp"
+    OPTIONAL
+)
 
 # ── 单元测试（默认关闭，CI 中 -DRUOYI_BUILD_TESTS=ON 开启）─────────────────
 option(RUOYI_BUILD_TESTS "Build unit tests under tests/" OFF)

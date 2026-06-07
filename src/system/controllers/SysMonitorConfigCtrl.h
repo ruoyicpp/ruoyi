@@ -1,18 +1,57 @@
-#pragma once
 /**
- * SysMonitorConfigCtrl —— 服务器监控告警配置
- *
- * 5 个键持久化在 sys_config（与 RuoYi 风格一致）：
- *   sys.monitor.enabled        ("0"|"1")  默认 "1"
- *   sys.monitor.alertEmail     (string)   逗号分隔多收件人
- *   sys.monitor.memThreshold   (50~99)    默认 "90"（百分比）
- *   sys.monitor.diskThreshold  (50~99)    默认 "90"（百分比）
- *   sys.monitor.crashAlert     ("0"|"1")  默认 "1"
- *
- * 端点：
- *   GET  /system/monitorConfig         读取配置（key 不存在返回默认值）
- *   POST /system/monitorConfig         保存（一次写 5 个键）
- *   POST /system/monitorConfig/test    立即触发一次检测（同步采集 mem/disk 与阈值比对，命中则发邮件）
+ * @file SysMonitorConfigCtrl.h
+ * @brief 服务器监控告警配置控制器
+ * 
+ * 功能概述：
+ *   - 监控配置管理：读取和保存服务器监控配置
+ *   - 内存监控：监控内存使用率，超过阈值告警
+ *   - 磁盘监控：监控磁盘使用率，超过阈值告警
+ *   - 崩溃告警：监控应用崩溃，发送告警邮件
+ *   - 测试告警：立即触发一次监控检测
+ * 
+ * API 端点：
+ *   - GET  /system/monitorConfig       - 读取监控配置
+ *   - POST /system/monitorConfig       - 保存监控配置
+ *   - POST /system/monitorConfig/test  - 测试监控告警
+ * 
+ * 权限要求：
+ *   - system:monitorConfig:query - 查看监控配置
+ *   - system:monitorConfig:edit  - 修改监控配置
+ * 
+ * 配置项（sys_config）：
+ *   - sys.monitor.enabled: 是否启用监控（"0" 或 "1"，默认 "1"）
+ *   - sys.monitor.alertEmail: 告警邮件收件人（逗号分隔多个）
+ *   - sys.monitor.memThreshold: 内存告警阈值（50-99，默认 90）
+ *   - sys.monitor.diskThreshold: 磁盘告警阈值（50-99，默认 90）
+ *   - sys.monitor.crashAlert: 崩溃告警开关（"0" 或 "1"，默认 "1"）
+ * 
+ * 核心特性：
+ *   - 实时监控：实时采集服务器资源使用情况
+ *   - 阈值告警：超过阈值自动发送告警邮件
+ *   - 跨平台：支持 Windows 和 Linux
+ *   - 邮件通知：告警时发送邮件通知管理员
+ *   - 测试功能：支持手动测试告警功能
+ * 
+ * 使用场景：
+ *   - 内存监控：监控应用内存使用，防止内存泄漏
+ *   - 磁盘监控：监控磁盘空间，防止磁盘满
+ *   - 崩溃告警：监控应用崩溃，及时通知管理员
+ *   - 性能告警：监控系统性能，及时发现问题
+ * 
+ * 监控配置示例：
+ *   {
+ *     "enabled": "1",
+ *     "alertEmail": "admin@example.com,ops@example.com",
+ *     "memThreshold": "85",
+ *     "diskThreshold": "90",
+ *     "crashAlert": "1"
+ *   }
+ * 
+ * 告警流程：
+ *   1. 后台定时任务采集内存和磁盘使用率
+ *   2. 与配置的阈值比对
+ *   3. 超过阈值时发送告警邮件
+ *   4. 邮件包含告警类型、当前值、阈值等信息
  */
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"

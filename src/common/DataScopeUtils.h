@@ -1,3 +1,34 @@
+/**
+ * @file DataScopeUtils.h
+ * @brief 数据权限工具 — 基于部门和角色的数据访问控制
+ * 
+ * 功能概述：
+ *   - 数据权限过滤：根据用户角色生成 SQL WHERE 条件
+ *   - 权限范围：全部、本部门、本部门及下级、自定义部门、仅本人
+ *   - SQL 注入防御：字符串转义、整数防御
+ *   - 管理员豁免：管理员（userId=1）无数据权限限制
+ * 
+ * 权限范围定义：
+ *   - 1 = 全部：可访问所有数据
+ *   - 2 = 自定义：可访问指定部门的数据（sys_role_dept）
+ *   - 3 = 本部门：仅可访问本部门的数据
+ *   - 4 = 本部门及下级：可访问本部门及下级部门的数据
+ *   - 5 = 仅本人：仅可访问本人创建的数据
+ * 
+ * 使用示例：
+ *   // 在查询中添加数据权限过滤
+ *   std::string sql = "SELECT * FROM sys_user WHERE del_flag='0'";
+ *   sql += DATA_SCOPE_FILTER(req, "u", "u");
+ *   
+ *   // 或手动调用
+ *   auto user = GET_LOGIN_USER(req);
+ *   std::string filter = DataScopeUtils::getScopeFilter(user, "u", "u");
+ *   sql += filter;
+ * 
+ * 配置项（config.json）：
+ *   - datascope.enabled: 是否启用数据权限（默认 true）
+ */
+
 #pragma once
 #include <string>
 #include <vector>
@@ -5,6 +36,13 @@
 #include "LoginUser.h"
 #include "../services/DatabaseService.h"
 
+/**
+ * @namespace DataScopeUtils
+ * @brief 数据权限工具命名空间
+ * 
+ * 提供数据权限过滤和 SQL 注入防御功能。
+ * 所有函数都是内联的，无需编译链接。
+ */
 namespace DataScopeUtils {
 
     // SQL 字符串字面量转义：双写单引号；用于 userName 等不便参数化的拼接场景

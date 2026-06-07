@@ -1,3 +1,60 @@
+/**
+ * @file SysEmailConfigCtrl.h
+ * @brief 邮件配置管理控制器
+ * 
+ * 功能概述：
+ *   - 邮件配置查询：读取当前邮件发送配置
+ *   - 邮件配置保存：保存和更新邮件配置
+ *   - 测试邮件发送：发送测试邮件验证配置
+ *   - 发件人管理：管理多个邮箱发件人
+ * 
+ * API 端点：
+ *   - GET  /system/emailConfig       - 读取邮件配置
+ *   - POST /system/emailConfig       - 保存邮件配置
+ *   - POST /system/emailConfig/test  - 发送测试邮件
+ * 
+ * 权限要求：
+ *   - system:emailConfig:query - 查看邮件配置
+ *   - system:emailConfig:edit  - 修改邮件配置
+ * 
+ * 配置项（sys_config）：
+ *   - sys.email.host: SMTP 服务器地址（如 "smtp.qq.com"）
+ *   - sys.email.port: SMTP 端口（通常 465 或 587）
+ *   - sys.email.fromName: 发件人显示名称（如 "系统通知"）
+ *   - sys.email.senders: 发件人列表（JSON 数组）
+ *     格式：[{"email":"user@qq.com","authCode":"xxxx"}, ...]
+ * 
+ * 核心特性：
+ *   - 多发件人：支持配置多个邮箱发件人
+ *   - 轮询发送：多个发件人时自动轮询
+ *   - 安全脱敏：authCode 脱敏，只返回前 2 位 + ***
+ *   - 测试邮件：支持发送测试邮件验证配置
+ *   - 动态加载：配置修改后自动生效
+ * 
+ * 使用场景：
+ *   - 系统通知：发送系统通知邮件
+ *   - 用户邮件：发送用户相关邮件（注册、重置密码等）
+ *   - 告警邮件：发送系统告警邮件
+ *   - 定时报告：发送定时报告邮件
+ * 
+ * 邮件发件人配置示例：
+ *   {
+ *     "host": "smtp.qq.com",
+ *     "port": "465",
+ *     "fromName": "系统通知",
+ *     "senders": [
+ *       {
+ *         "email": "noreply@qq.com",
+ *         "authCode": "xxxxxxxxxxxx"
+ *       },
+ *       {
+ *         "email": "support@qq.com",
+ *         "authCode": "xxxxxxxxxxxx"
+ *       }
+ *     ]
+ *   }
+ */
+
 #pragma once
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"
@@ -8,10 +65,11 @@
 #include "../../services/DatabaseService.h"
 
 /**
- * 邮件发件箱配置 /system/emailConfig
- *   GET  /system/emailConfig        — 读取当前配置
- *   POST /system/emailConfig        — 保存全量配置
- *   POST /system/emailConfig/test   — 发送测试邮件
+ * @class SysEmailConfigCtrl
+ * @brief 邮件配置管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 SysEmailConfigController，提供邮件配置管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
  */
 class SysEmailConfigCtrl : public drogon::HttpController<SysEmailConfigCtrl> {
 public:

@@ -1,8 +1,44 @@
+/**
+ * @file DataMaskUtils.h
+ * @brief 数据脱敏工具 — 保护敏感个人信息
+ * 
+ * 功能概述：
+ *   - 手机号脱敏：138****8888
+ *   - 身份证脱敏：110***********1234
+ *   - 银行卡脱敏：6222***********1234
+ *   - 邮箱脱敏：ab***@qq.com
+ *   - 姓名脱敏：张*三（保留首尾）
+ *   - JSON 自动脱敏：自动识别敏感字段并脱敏
+ * 
+ * 使用场景：
+ *   - 日志输出：在日志中脱敏敏感信息
+ *   - API 响应：在返回给前端的数据中脱敏敏感信息
+ *   - 审计日志：在操作日志中脱敏敏感信息
+ * 
+ * 使用示例：
+ *   // 脱敏单个字段
+ *   std::string masked = DataMaskUtils::maskPhone("13812345678");
+ *   // 结果：138****5678
+ *   
+ *   // 自动脱敏 JSON 对象
+ *   Json::Value user;
+ *   user["phonenumber"] = "13812345678";
+ *   user["email"] = "user@qq.com";
+ *   DataMaskUtils::maskJsonValue(user);
+ *   // 结果：phonenumber = "138****5678", email = "us***@qq.com"
+ */
+
 #pragma once
 #include <string>
 #include <json/json.h>
 
-// 数据脱敏工具：手机、身份证、银行卡、邮箱、姓名
+/**
+ * @struct DataMaskUtils
+ * @brief 数据脱敏工具类
+ * 
+ * 提供多种敏感信息脱敏方法，支持自动识别 JSON 对象中的敏感字段。
+ * 所有方法都是静态的，无需创建实例。
+ */
 struct DataMaskUtils {
     // 手机号：138****8888
     static std::string maskPhone(const std::string &s) {

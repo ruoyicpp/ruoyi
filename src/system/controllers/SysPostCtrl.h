@@ -1,3 +1,38 @@
+/**
+ * @file SysPostCtrl.h
+ * @brief 系统岗位管理控制器
+ * 
+ * 功能概述：
+ *   - 岗位列表查询：支持分页、搜索、过滤
+ *   - 岗位增删改查：CRUD 操作
+ *   - 岗位选项：获取岗位选项列表（用于下拉框）
+ * 
+ * API 端点：
+ *   - GET    /system/post/list         - 岗位列表（分页）
+ *   - GET    /system/post/{id}         - 获取岗位详情
+ *   - POST   /system/post              - 新增岗位
+ *   - PUT    /system/post              - 修改岗位
+ *   - DELETE /system/post/{ids}        - 删除岗位（支持批量）
+ *   - GET    /system/post/optionselect - 获取岗位选项列表
+ * 
+ * 权限要求：
+ *   - system:post:list   - 查看岗位列表
+ *   - system:post:add    - 新增岗位
+ *   - system:post:edit   - 修改岗位
+ *   - system:post:remove - 删除岗位
+ * 
+ * 核心特性：
+ *   - 岗位编码：唯一的岗位编码（如 "SE"、"HR" 等）
+ *   - 岗位排序：支持自定义岗位显示顺序
+ *   - 状态管理：启用/禁用岗位
+ *   - 操作日志：所有修改操作自动记录到 sys_oper_log
+ * 
+ * 使用场景：
+ *   - 员工管理：为员工分配岗位
+ *   - 组织结构：定义公司的岗位体系
+ *   - 权限管理：基于岗位的权限分配
+ */
+
 #pragma once
 #include "../../common/OperLogUtils.h"
 #include <drogon/HttpController.h>
@@ -6,6 +41,13 @@
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
 
+/**
+ * @class SysPostCtrl
+ * @brief 系统岗位管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 SysPostController，提供岗位管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
+ */
 class SysPostCtrl : public drogon::HttpController<SysPostCtrl> {
 public:
     METHOD_LIST_BEGIN
