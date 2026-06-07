@@ -1,0 +1,192 @@
+# ═══════════════════════════════════════════════════════════════════
+# K8s 部署配置
+# 使用: kubectl apply -f k8s/
+# ═══════════════════════════════════════════════════════════════════
+
+---
+# ConfigMap: 应用配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ruoyi-cpp-config
+  namespace: ruoyi
+data:
+  config.json: |
+    {
+      "server": {
+        "port": 8080,
+        "threads": 4
+      },
+      "database": {
+        "host": "postgres-service",
+        "port": 5432,
+        "name": "ruoyi"
+      },
+      "redis": {
+        "host": "redis-service",
+        "port": 6379
+      }
+    }
+
+---
+# Secret: 敏感配置
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ruoyi-cpp-secret
+  namespace: ruoyi
+type: Opaque
+stringData:
+  database-password: "CHANGE_ME"
+  jwt-secret: "CHANGE_ME_IN_PRODUCTION"
+
+---
+# Deployment: 应用部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ruoyi-cpp
+  namespace: ruoyi
+  labels:
+    app: ruoyi-cpp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ruoyi-cpp
+  template:
+    metadata:
+      labels:
+        app: ruoyi-cpp
+    spec:
+      containers:
+        - name: ruoyi-cpp
+          image: ghcr.io/your-org/ruoyi-cpp:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: RUOYI_DB_HOST
+              value: "postgres-service"
+            - name: RUOYI_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ruoyi-cpp-secret
+                  key: database-password
+            - name: RUOYI_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ruoyi-cpp-secret
+                  key: jwt-secret
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.json
+              subPath: config.json
+      volumes:
+        - name: config
+          configMap:
+            name: ruoyi-cpp-config
+
+---
+# Service: 应用服务
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-cpp-service
+  namespace: ruoyi
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: ruoyi-cpp
+
+---
+# Service: LoadBalancer (公网访问)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ruoyi-cpp-lb
+  namespace: ruoyi
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 8080
+  selector:
+    app: ruoyi-cpp
+
+---
+# HPA: 自动扩缩容
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ruoyi-cpp-hpa
+  namespace: ruoyi
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ruoyi-cpp
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# Ingress: HTTP 入口
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ruoyi-cpp-ingress
+  namespace: ruoyi
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.ruoyi.com
+      secretName: ruoyi-cpp-tls
+  rules:
+    - host: api.ruoyi.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ruoyi-cpp-service
+                port:
+                  number: 8080
