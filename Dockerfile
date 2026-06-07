@@ -51,8 +51,8 @@ WORKDIR /opt/ruoyi-cpp
 
 # 复制二进制和必要文件
 COPY --from=builder /app/build/ruoyi-cpp .
-COPY --from=builder /app/config.json.example ./config.json
-COPY --from=builder /app/dist/ ./dist/
+COPY --from=builder /app/config.json ./config.json
+COPY --from=builder /app/vue-c++/dist/ ./dist/
 
 # 日志和上传目录
 RUN mkdir -p logs upload
