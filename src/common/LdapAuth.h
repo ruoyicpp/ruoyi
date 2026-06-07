@@ -1,12 +1,83 @@
+/**
+ * @file LdapAuth.h
+ * @brief LDAP/Active Directory 认证工具
+ * 
+ * 功能概述：
+ *   - LDAP 认证：支持 LDAP 和 Active Directory 认证
+ *   - 用户查询：查询 LDAP 目录中的用户信息
+ *   - 密码验证：验证用户密码
+ *   - 本地回退：LDAP 认证失败时可回退到本地认证
+ *   - 跨平台支持：Windows 和 Linux 都支持
+ * 
+ * 认证流程：
+ *   1. 使用 bind_dn 和 bind_pass 连接到 LDAP 服务器
+ *   2. 根据 user_filter 查询用户 DN
+ *   3. 使用用户 DN 和密码尝试 bind
+ *   4. 如果 LDAP 认证失败且启用本地回退，则使用本地数据库认证
+ * 
+ * 配置格式（config.json）：
+ *   {
+ *     "ldap": {
+ *       "enabled": true,
+ *       "host": "192.168.1.100",
+ *       "port": 389,
+ *       "base_dn": "DC=example,DC=com",
+ *       "bind_dn": "CN=svc,OU=SA,DC=example,DC=com",
+ *       "bind_pass": "password",
+ *       "user_filter": "(&(objectClass=person)(sAMAccountName={username}))",
+ *       "fallback_local": true
+ *     }
+ *   }
+ * 
+ * 配置项说明：
+ *   - enabled: 是否启用 LDAP 认证（默认 false）
+ *   - host: LDAP 服务器地址（默认 127.0.0.1）
+ *   - port: LDAP 服务器端口（默认 389，加密 636）
+ *   - base_dn: LDAP 基础 DN（如 DC=example,DC=com）
+ *   - bind_dn: 绑定用户 DN（用于查询用户）
+ *   - bind_pass: 绑定用户密码
+ *   - user_filter: 用户查询过滤器（{username} 会被替换为实际用户名）
+ *   - fallback_local: LDAP 失败时是否回退到本地认证（默认 true）
+ * 
+ * 使用示例：
+ *   // 初始化 LDAP 认证
+ *   Json::Value cfg;
+ *   // ... 从 config.json 读取 cfg ...
+ *   LdapAuth::instance().init(cfg);
+ *   
+ *   // 验证用户
+ *   if (LdapAuth::instance().authenticate("username", "password")) {
+ *       // 认证成功
+ *   }
+ * 
+ * 常见 LDAP 过滤器：
+ *   - Active Directory: (&(objectClass=person)(sAMAccountName={username}))
+ *   - OpenLDAP: (&(objectClass=inetOrgPerson)(uid={username}))
+ *   - 通用: (&(objectClass=*)(cn={username}))
+ * 
+ * 特性：
+ *   - 多目录支持：支持 Active Directory 和 OpenLDAP
+ *   - 灵活配置：通过 config.json 配置 LDAP 参数
+ *   - 本地回退：LDAP 失败时可回退到本地认证
+ *   - 跨平台：Windows（MSYS2）和 Linux 都支持
+ *   - 安全性：使用 LDAP bind 验证密码，不传输明文
+ * 
+ * 平台要求：
+ *   - Windows: 需要安装 MSYS2 openldap-client 包
+ *   - Linux: 需要安装 ldap-utils 包
+ */
+
 #pragma once
 #include <string>
 #include <json/json.h>
 
-// LDAP/Active Directory 认证
-// config.json: { "ldap": { "enabled": false, "host": "192.168.1.100", "port": 389,
-//   "base_dn": "DC=example,DC=com", "bind_dn": "CN=svc,OU=SA,DC=example,DC=com",
-//   "bind_pass": "pass", "user_filter": "(&(objectClass=person)(sAMAccountName={username}))",
-//   "fallback_local": true } }
+/**
+ * @struct LdapAuth
+ * @brief LDAP/Active Directory 认证单例
+ * 
+ * 提供 LDAP 和 Active Directory 认证功能。
+ * 支持用户查询和密码验证。
+ */
 struct LdapAuth {
     struct Config {
         bool        enabled       = false;

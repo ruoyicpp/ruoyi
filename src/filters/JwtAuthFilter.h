@@ -1,3 +1,68 @@
+/**
+ * @file JwtAuthFilter.h
+ * @brief JWT 认证中间件 — 请求认证和授权
+ * 
+ * 功能概述：
+ *   - JWT 验证：验证请求中的 JWT token
+ *   - API Key 认证：支持 API Key 作为 JWT 的备选认证方式
+ *   - Token 绑定：支持 IP 和 User-Agent 绑定防止 token 盗用
+ *   - Bot 检测：检测和阻止爬虫和恶意工具
+ *   - 权限检查：验证用户权限和数据权限
+ * 
+ * 认证流程：
+ *   1. Bot UA 检测（第二道防线，第一道在 nginx）
+ *   2. Token 提取（Header 或 Query 参数）
+ *   3. Token 验证（JWT 签名、过期时间）
+ *   4. Token 绑定验证（IP、User-Agent）
+ *   5. API Key 备选认证（如果 JWT 失败）
+ *   6. 权限检查（基于权限字符串）
+ * 
+ * Token 提取位置：
+ *   - Header: Authorization: Bearer <token>
+ *   - Header: X-Access-Token: <token>
+ *   - Query: ?token=<token>
+ *   - Query: ?accessToken=<token>
+ * 
+ * API Key 认证：
+ *   - Header: X-API-Key: <key>
+ *   - Query: ?apiKey=<key>
+ * 
+ * Token 绑定配置（config.json）：
+ *   {
+ *     "security": {
+ *       "token_binding": {
+ *         "check_ip": false,   // 是否绑定 IP（移动端 IP 易变，默认关）
+ *         "check_ua": true     // 是否绑定 User-Agent（防止 token 盗用，默认开）
+ *       }
+ *     }
+ *   }
+ * 
+ * Bot 检测特征：
+ *   - Python requests、Scrapy、curl、wget 等工具
+ *   - 爬虫工具：zgrab、masscan、sqlmap、nikto 等
+ *   - 自动化工具：httpclient、httpie 等
+ * 
+ * 使用示例：
+ *   // 在 drogon 中注册中间件
+ *   app.registerMiddleware<JwtAuthFilter>();
+ *   
+ *   // 在控制器中使用 JwtAuthFilter
+ *   ADD_METHOD_TO(MyCtrl::myMethod, "/api/path", drogon::Get, "JwtAuthFilter");
+ * 
+ * 特性：
+ *   - 多认证方式：支持 JWT 和 API Key
+ *   - 防盗用：支持 Token 绑定（IP、User-Agent）
+ *   - Bot 防护：检测和阻止爬虫和恶意工具
+ *   - 缓存优化：使用 TokenCache 缓存验证结果
+ *   - 灵活配置：支持通过 config.json 配置
+ * 
+ * 配置项（config.json）：
+ *   - security.token_binding.check_ip: 是否绑定 IP（默认 false）
+ *   - security.token_binding.check_ua: 是否绑定 User-Agent（默认 true）
+ *   - jwt.secret: JWT 密钥
+ *   - jwt.ttl: JWT 过期时间（秒）
+ */
+
 #pragma once
 #include <drogon/HttpMiddleware.h>
 #include <algorithm>
@@ -12,7 +77,13 @@
 #include "../common/IpUtils.h"
 #include "../system/services/TokenService.h"
 
-// ── 防滥用配置（启动时从 config.json 加载一次）──────────────────────────────
+/**
+ * @struct AntiAbuseConfig
+ * @brief 防滥用配置
+ * 
+ * 配置 Token 绑定和防护参数。
+ * 启动时从 config.json 加载一次，之后使用单例模式。
+ */
 struct AntiAbuseConfig {
     bool checkIp = false;  // IP 绑定：移动端 IP 易变，默认关
     bool checkUa = true;   // UA 绑定：防止 token 被抓包盗用，默认开

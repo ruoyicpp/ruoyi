@@ -1,3 +1,35 @@
+/**
+ * @file CsvUtils.h
+ * @brief CSV 导出工具 — 生成和导出 CSV 文件
+ * 
+ * 功能概述：
+ *   - CSV 生成：从 JSON 或二维数组生成 CSV 格式数据
+ *   - 单元格转义：自动转义含有特殊字符的单元格
+ *   - UTF-8 BOM：自动添加 UTF-8 BOM，确保 Excel 正确显示中文
+ *   - HTTP 响应：直接生成 CSV 下载响应
+ * 
+ * 使用示例：
+ *   // 从 JSON 数组生成 CSV
+ *   Json::Value rows;
+ *   rows[0]["name"] = "张三";
+ *   rows[0]["email"] = "zhangsan@example.com";
+ *   
+ *   std::vector<std::pair<std::string,std::string>> headers = {
+ *       {"姓名", "name"},
+ *       {"邮箱", "email"}
+ *   };
+ *   
+ *   std::string csv = CsvUtils::toCsv(rows, headers);
+ *   auto resp = CsvUtils::makeCsvResponse(csv, "users.csv");
+ *   cb(resp);
+ * 
+ * 特性：
+ *   - UTF-8 BOM：自动添加 EF BB BF，确保 Excel 正确显示中文
+ *   - 单元格转义：逗号、引号、换行等特殊字符自动转义
+ *   - 灵活生成：支持 JSON 和二维数组两种数据源
+ *   - HTTP 集成：直接生成 HTTP 响应，支持自定义文件名
+ */
+
 #pragma once
 #include <string>
 #include <vector>
@@ -5,6 +37,13 @@
 #include <drogon/drogon.h>
 #include <json/json.h>
 
+/**
+ * @namespace CsvUtils
+ * @brief CSV 导出工具命名空间
+ * 
+ * 提供 CSV 文件生成和 HTTP 响应功能。
+ * 所有函数都是内联的，无需编译链接。
+ */
 namespace CsvUtils {
 
     // 转义 CSV 单元格（含逗号/引号/换行时加双引号包裹）

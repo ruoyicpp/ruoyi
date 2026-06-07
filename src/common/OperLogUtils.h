@@ -1,3 +1,44 @@
+/**
+ * @file OperLogUtils.h
+ * @brief 操作日志工具 — 记录用户操作审计日志
+ * 
+ * 功能概述：
+ *   - 操作记录：记录用户的增删改查等操作
+ *   - 审计日志：记录操作前后的数据快照，用于审计和追溯
+ *   - 异步写入：后台单线程异步队列，不阻塞主线程
+ *   - 自动脱敏：敏感信息自动脱敏，保护隐私
+ * 
+ * 日志字段：
+ *   - title: 操作标题（如 "新增用户"）
+ *   - businessType: 业务类型（INSERT、UPDATE、DELETE 等）
+ *   - operName: 操作人员名称
+ *   - url: 请求 URL
+ *   - ip: 操作人 IP 地址
+ *   - location: IP 地理位置
+ *   - param: 请求参数（JSON 格式）
+ *   - result: 返回结果（JSON 格式）
+ *   - beforeData: 操作前数据快照（审计用）
+ *   - afterData: 操作后数据快照（审计用）
+ *   - costTime: 操作耗时（毫秒）
+ *   - status: 操作状态（0 成功，1 失败）
+ * 
+ * 使用示例：
+ *   OperLogUtils::LogEntry log;
+ *   log.title = "新增用户";
+ *   log.businessType = (int)BusinessType::INSERT;
+ *   log.operName = user.userName;
+ *   log.url = req->getPath();
+ *   log.ip = IpUtils::getIpAddr(req);
+ *   log.param = jsonParam;
+ *   log.result = jsonResult;
+ *   log.costTime = duration;
+ *   OperLogUtils::write(log);
+ * 
+ * 配置项（config.json）：
+ *   - operlog.enabled: 是否启用操作日志（默认 true）
+ *   - operlog.maskSensitive: 是否脱敏敏感信息（默认 true）
+ */
+
 #pragma once
 #include <string>
 #include <queue>
@@ -11,21 +52,32 @@
 #include "IpUtils.h"
 #include "../filters/PermFilter.h"
 
+/**
+ * @enum BusinessType
+ * @brief 业务类型枚举
+ * 
+ * 用于分类操作日志的业务类型。
+ */
 enum class BusinessType : int {
-    OTHER   = 0,
-    INSERT  = 1,
-    UPDATE  = 2,
-    REMOVE  = 3,
-    GRANT   = 4,
-    EXPORT  = 5,
-    IMPORT  = 6,
-    FORCE   = 7,
-    GENCODE = 8,
-    CLEAN   = 9,
+    OTHER   = 0,  ///< 其他
+    INSERT  = 1,  ///< 新增
+    UPDATE  = 2,  ///< 修改
+    REMOVE  = 3,  ///< 删除
+    GRANT   = 4,  ///< 授权
+    EXPORT  = 5,  ///< 导出
+    IMPORT  = 6,  ///< 导入
+    FORCE   = 7,  ///< 强制
+    GENCODE = 8,  ///< 代码生成
+    CLEAN   = 9,  ///< 清理
 };
 
-// 操作日志工具（对应 [Log] AOP 属性）
-// write() 立即返回，DB 写入在后台单线程队列中异步执行
+/**
+ * @namespace OperLogUtils
+ * @brief 操作日志工具命名空间
+ * 
+ * 提供操作日志的记录和管理功能。
+ * 采用异步队列模式，write() 立即返回，DB 写入在后台单线程中执行。
+ */
 namespace OperLogUtils {
 
     // ── 日志条目（纯数据，不持有 HttpRequest 引用）──────────────────────

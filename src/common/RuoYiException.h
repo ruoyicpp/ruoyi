@@ -1,21 +1,75 @@
+/**
+ * @file RuoYiException.h
+ * @brief 统一异常体系 — 业务异常定义
+ * 
+ * 功能概述：
+ *   - 异常分类：按 HTTP 状态码分类异常
+ *   - 统一处理：统一的异常处理和响应格式
+ *   - 错误信息：包含错误消息和详细信息
+ *   - JSON 响应：自动转换为 JSON 响应
+ * 
+ * HTTP 状态码约定：
+ *   - 400：参数验证错误、格式错误
+ *   - 401：未认证（未登录/Token 过期）
+ *   - 403：无权限（禁止访问）
+ *   - 404：资源不存在
+ *   - 409：业务冲突（用户名重复、数据已存在）
+ *   - 429：请求过于频繁（限流）
+ *   - 500：服务器内部错误
+ * 
+ * 异常类型：
+ *   - RuoYiException：基础异常
+ *   - UnauthorizedException：未认证异常（401）
+ *   - TokenExpiredException：Token 过期异常
+ *   - TokenInvalidException：Token 无效异常
+ *   - ForbiddenException：无权限异常（403）
+ *   - NotFoundException：资源不存在异常（404）
+ *   - ConflictException：业务冲突异常（409）
+ *   - RateLimitException：限流异常（429）
+ *   - ValidationException：参数验证异常（400）
+ *   - InternalException：内部错误异常（500）
+ * 
+ * 使用示例：
+ *   // 抛出异常
+ *   throw ValidationException("用户名不能为空");
+ *   throw UnauthorizedException("请先登录");
+ *   throw ForbiddenException("无权限访问该资源");
+ *   throw NotFoundException("用户不存在");
+ *   throw ConflictException("用户名已存在");
+ *   throw RateLimitException("请求过于频繁，请稍后再试");
+ *   
+ *   // 捕获异常
+ *   try {
+ *       // 业务代码
+ *   } catch (const RuoYiException& e) {
+ *       // 返回 JSON 响应
+ *       auto resp = drogon::HttpResponse::newHttpJsonResponse(
+ *           Json::Value{{"code", e.httpCode()}, {"msg", e.what()}}
+ *       );
+ *       resp->setStatusCode(e.httpCode());
+ *       return resp;
+ *   }
+ * 
+ * 特性：
+ *   - 继承自 std::runtime_error：兼容标准异常
+ *   - HTTP 状态码：每个异常都有对应的 HTTP 状态码
+ *   - 详细信息：支持错误消息和详细信息
+ *   - JSON 转换：自动转换为 JSON 响应
+ *   - 类型名称：每个异常都有类型名称，便于识别
+ * 
+ * 异常处理流程：
+ *   1. 业务代码抛出异常
+ *   2. 异常处理器捕获异常
+ *   3. 获取 HTTP 状态码和错误消息
+ *   4. 转换为 JSON 响应
+ *   5. 返回给客户端
+ */
+
 #pragma once
 #include <string>
 #include <stdexcept>
 #include <map>
 #include <memory>
-
-// ════════════════════════════════════════════════════════════════════════════
-// RuoYiException.h — 统一异常类体系
-//
-// HTTP状态码约定：
-//   400 — 参数验证错误、格式错误
-//   401 — 未认证（未登录/Token过期）
-//   403 — 无权限（禁止访问）
-//   404 — 资源不存在
-//   409 — 业务冲突（用户名重复、数据已存在）
-//   429 — 请求过于频繁
-//   500 — 服务器内部错误
-// ════════════════════════════════════════════════════════════════════════════
 
 // 前向声明
 namespace drogon { using HttpRequestPtr = std::shared_ptr<class HttpRequest>; }

@@ -1,16 +1,42 @@
-#pragma once
 /**
- * UnlockScreenCtrl —— 锁屏解锁
- *
- * 端点：POST /unlockscreen   body: {"password": "xxx"}
- *
- * 行为：
- *   1) 当前 JWT 必须有效（JwtAuthFilter 拦截非法 token）
- *   2) 取当前用户的 sys_user.password 哈希
- *   3) 用 SecurityUtils::matchesPassword 校验
- *   4) 通过即返 success；不通过返 401（前端会显示 "密码错误"）
- *
- * 不做：不重新签发 token、不刷新会话——前端 store/lock 仅切本地状态。
+ * @file UnlockScreenCtrl.h
+ * @brief 锁屏解锁控制器
+ * 
+ * 功能概述：
+ *   - 锁屏验证：验证用户密码以解锁锁屏状态
+ *   - 会话保持：解锁时不重新签发 token，保持现有会话
+ *   - 安全验证：使用 bcrypt 验证密码，防止暴力破解
+ * 
+ * API 端点：
+ *   - POST /unlockscreen - 解锁锁屏（需要提供密码）
+ * 
+ * 请求格式：
+ *   {
+ *     "password": "用户密码"
+ *   }
+ * 
+ * 响应格式：
+ *   成功：{"code": 200, "msg": "解锁成功"}
+ *   失败：{"code": 401, "msg": "密码错误"}
+ * 
+ * 核心特性：
+ *   - JWT 认证：必须提供有效的 JWT token
+ *   - 密码验证：使用 bcrypt 验证用户密码
+ *   - 会话保持：解锁时不刷新 token，保持现有会话
+ *   - 本地状态：前端仅切换本地锁屏状态，后端不维护锁屏状态
+ * 
+ * 使用场景：
+ *   - 屏幕保护：用户离开时锁定屏幕
+ *   - 安全保护：防止他人未经授权使用用户账号
+ *   - 会话保持：解锁时保持现有会话，无需重新登录
+ * 
+ * 工作流程：
+ *   1. 用户在前端点击"锁屏"，前端记录锁屏状态
+ *   2. 用户返回时输入密码，前端调用 /unlockscreen
+ *   3. 后端验证 JWT token 有效性
+ *   4. 后端验证用户密码
+ *   5. 验证成功则返回 200，前端解除锁屏状态
+ *   6. 验证失败则返回 401，前端提示"密码错误"
  */
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"

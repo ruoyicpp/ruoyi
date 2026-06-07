@@ -1,3 +1,41 @@
+/**
+ * @file ApiKeyCtrl.h
+ * @brief API Key 管理控制器
+ * 
+ * 功能概述：
+ *   - API Key 创建：生成新的 API Key（仅返回一次明文）
+ *   - API Key 列表：查看所有 API Key（不显示明文）
+ *   - API Key 更新：修改 API Key 的启用状态、名称、过期时间
+ *   - API Key 删除：删除 API Key 并失效缓存
+ *   - API Key 管理页面：自包含的 HTML 管理界面
+ * 
+ * API 端点：
+ *   - POST   /system/apikey       - 创建 API Key
+ *   - GET    /system/apikey/list  - API Key 列表
+ *   - PUT    /system/apikey/{id}  - 更新 API Key
+ *   - DELETE /system/apikey/{id}  - 删除 API Key
+ *   - GET    /system/apikey/page  - 管理页面（HTML）
+ * 
+ * 权限要求：
+ *   - system:apikey:create - 创建 API Key
+ *   - system:apikey:list   - 查看 API Key 列表
+ *   - system:apikey:edit   - 修改 API Key
+ *   - system:apikey:remove - 删除 API Key
+ * 
+ * 核心特性：
+ *   - 安全存储：数据库仅存储 SHA256 哈希，不存储明文
+ *   - 一次性返回：创建时仅返回一次明文 key，之后无法查看
+ *   - 过期管理：支持设置 API Key 过期时间
+ *   - 启用/禁用：支持启用和禁用 API Key，无需删除
+ *   - 缓存管理：修改或删除时自动失效缓存
+ * 
+ * 使用场景：
+ *   - 第三方集成：为第三方应用提供 API 访问权限
+ *   - 自动化脚本：为自动化脚本提供认证凭证
+ *   - 移动应用：为移动应用提供 API 访问权限
+ *   - 微服务调用：为微服务之间的调用提供认证
+ */
+
 #pragma once
 #include <drogon/drogon.h>
 #include "../../common/AjaxResult.h"
@@ -7,11 +45,13 @@
 #include "../../filters/PermFilter.h"
 #include "../../system/services/TokenService.h"
 
-// f16 API Key 管理
-//   POST   /system/apikey         创建（仅当时返回明文 key，DB 仅存 sha256）
-//   GET    /system/apikey/list    列表（不含 key 明文，仅显示 prefix）
-//   PUT    /system/apikey/{id}    更新（启用/禁用 / name / expire）
-//   DELETE /system/apikey/{id}    删除（一并失效缓存）
+/**
+ * @class ApiKeyCtrl
+ * @brief API Key 管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 ApiKeyController，提供 API Key 管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
+ */
 class ApiKeyCtrl : public drogon::HttpController<ApiKeyCtrl> {
 public:
     METHOD_LIST_BEGIN

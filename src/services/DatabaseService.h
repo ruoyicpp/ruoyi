@@ -1,3 +1,48 @@
+/**
+ * @file DatabaseService.h
+ * @brief 数据库服务层 — 统一的数据库访问接口
+ * 
+ * 功能概述：
+ *   - 双驱动支持：支持 PostgreSQL 和 SQLite 两种数据库
+ *   - 自动降级：PostgreSQL 不可用时自动切换到 SQLite
+ *   - 连接池管理：支持连接池和单连接两种模式
+ *   - 参数化查询：防止 SQL 注入，支持 $1、$2 等占位符
+ *   - 事务支持：支持事务的开始、提交、回滚
+ *   - 性能监控：集成性能指标收集
+ * 
+ * 核心特性：
+ *   - 双驱动分发：根据编译选项选择 PostgreSQL 或 SQLite 驱动
+ *   - libpq-lite 连接池：可选的轻量级连接池（运行时加载）
+ *   - SQLite 加密：支持 SQLite3MultipleCiphers 和文件级加密
+ *   - 自动故障转移：PG 故障时自动切换到 SQLite，恢复后自动同步
+ * 
+ * 编译选项：
+ *   - RUOYI_USE_PG_DRIVER ON  → 使用自研 drogon_pg_driver（连接池 + 熔断）
+ *   - RUOYI_USE_PG_DRIVER OFF → 使用官方 libpq（单连接或 libpq-lite 池）
+ * 
+ * 使用示例：
+ *   // 查询
+ *   auto res = DatabaseService::instance().queryParams(
+ *       "SELECT * FROM sys_user WHERE user_id = $1", {userId});
+ *   if (res.ok() && res.rows() > 0) {
+ *       std::string name = res.str(0, 1);
+ *   }
+ *   
+ *   // 执行
+ *   DatabaseService::instance().execParams(
+ *       "UPDATE sys_user SET status = $1 WHERE user_id = $2",
+ *       {status, userId});
+ * 
+ * 配置项（config.json）：
+ *   - database.type: "postgresql" 或 "sqlite"
+ *   - database.host: PostgreSQL 主机
+ *   - database.port: PostgreSQL 端口
+ *   - database.dbname: 数据库名称
+ *   - database.user: 用户名
+ *   - database.passwd: 密码
+ *   - database.sqlite_path: SQLite 文件路径
+ */
+
 #pragma once
 
 // =============================================================

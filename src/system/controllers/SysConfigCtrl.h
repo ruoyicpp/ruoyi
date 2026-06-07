@@ -1,3 +1,35 @@
+/**
+ * @file SysConfigCtrl.h
+ * @brief 系统配置管理控制器
+ * 
+ * 功能概述：
+ *   - 配置列表查询：支持分页、搜索、过滤
+ *   - 配置增删改查：CRUD 操作
+ *   - 配置缓存刷新：手动刷新配置缓存
+ *   - 配置查询：按 ID 或 key 查询配置
+ * 
+ * API 端点：
+ *   - GET    /system/config/list                - 配置列表（分页）
+ *   - GET    /system/config/{id}                - 获取配置详情
+ *   - GET    /system/config/configKey/{key}    - 按 key 获取配置
+ *   - POST   /system/config                     - 新增配置
+ *   - PUT    /system/config                     - 修改配置
+ *   - DELETE /system/config/{ids}               - 删除配置（支持批量）
+ *   - DELETE /system/config/refreshCache        - 刷新配置缓存
+ * 
+ * 权限要求：
+ *   - system:config:list   - 查看配置列表
+ *   - system:config:add    - 新增配置
+ *   - system:config:edit   - 修改配置
+ *   - system:config:remove - 删除配置
+ * 
+ * 核心特性：
+ *   - 配置缓存：所有配置都会被缓存，提高查询性能
+ *   - 缓存刷新：修改配置后自动或手动刷新缓存
+ *   - 配置类型：支持不同类型的配置（如字符串、数字、布尔值）
+ *   - 操作日志：所有修改操作自动记录到 sys_oper_log
+ */
+
 #pragma once
 #include "../../common/OperLogUtils.h"
 #include <drogon/HttpController.h>
@@ -13,6 +45,13 @@
 #include <fstream>
 #include <json/json.h>
 
+/**
+ * @class SysConfigCtrl
+ * @brief 系统配置管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 SysConfigController，提供系统配置管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
+ */
 class SysConfigCtrl : public drogon::HttpController<SysConfigCtrl> {
 public:
     METHOD_LIST_BEGIN

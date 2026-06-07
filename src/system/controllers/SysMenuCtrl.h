@@ -1,3 +1,37 @@
+/**
+ * @file SysMenuCtrl.h
+ * @brief 系统菜单管理控制器
+ * 
+ * 功能概述：
+ *   - 菜单列表查询：支持树形结构、搜索、权限过滤
+ *   - 菜单增删改查：CRUD 操作，支持树形菜单
+ *   - 菜单排序：调整菜单显示顺序
+ *   - 权限配置：为菜单配置权限字符串
+ *   - 角色菜单：获取角色对应的菜单树
+ * 
+ * API 端点：
+ *   - GET    /system/menu/list                        - 菜单列表（树形）
+ *   - GET    /system/menu/{menuId}                    - 获取菜单详情
+ *   - GET    /system/menu/treeselect                  - 菜单树选择
+ *   - GET    /system/menu/roleMenuTreeselect/{roleId} - 角色菜单树
+ *   - POST   /system/menu                             - 新增菜单
+ *   - PUT    /system/menu                             - 修改菜单
+ *   - PUT    /system/menu/updateSort                  - 更新菜单排序
+ *   - DELETE /system/menu/{menuId}                    - 删除菜单
+ * 
+ * 权限要求：
+ *   - system:menu:list   - 查看菜单列表
+ *   - system:menu:add    - 新增菜单
+ *   - system:menu:edit   - 修改菜单
+ *   - system:menu:remove - 删除菜单
+ * 
+ * 核心特性：
+ *   - 树形结构：支持无限级菜单树
+ *   - 权限字符串：每个菜单可配置权限字符串（如 system:user:list）
+ *   - 菜单类型：支持目录、菜单、按钮三种类型
+ *   - 缓存失效：修改菜单后自动失效所有用户的菜单缓存
+ */
+
 #pragma once
 #include "../../common/OperLogUtils.h"
 #include <drogon/HttpController.h>
@@ -8,6 +42,13 @@
 #include "../../services/DatabaseService.h"
 #include "../services/SysMenuService.h"
 
+/**
+ * @class SysMenuCtrl
+ * @brief 系统菜单管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 SysMenuController，提供菜单管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
+ */
 class SysMenuCtrl : public drogon::HttpController<SysMenuCtrl> {
 public:
     METHOD_LIST_BEGIN

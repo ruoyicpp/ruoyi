@@ -1,3 +1,45 @@
+/**
+ * @file CronUtils.h
+ * @brief Cron expression parser - scheduled task scheduling
+ * 
+ * Features:
+ *   - Parse Quartz-style Cron expressions
+ *   - Match time against Cron expressions
+ *   - Calculate next execution time
+ *   - Optimized algorithm for fast computation
+ * 
+ * Cron expression format: sec min hour dom month dow [year]
+ * 
+ * Field descriptions:
+ *   - sec (0-59): seconds
+ *   - min (0-59): minutes
+ *   - hour (0-23): hours
+ *   - dom (1-31): day of month
+ *   - month (1-12): month
+ *   - dow (1-7): day of week (1=Sunday, 2=Monday, ..., 7=Saturday)
+ *   - year (optional): year
+ * 
+ * Special characters:
+ *   - asterisk: any value
+ *   - question mark: no specific value (for dom or dow)
+ *   - hyphen: range (e.g., 1-5 means 1,2,3,4,5)
+ *   - comma: list (e.g., 1,3,5 means 1 or 3 or 5)
+ *   - slash: step (e.g., every 5 units)
+ * 
+ * Common expressions:
+ *   - 0 0 0 asterisk asterisk question: every day at midnight
+ *   - 0 0 12 asterisk asterisk question: every day at noon
+ *   - 0 0 0 question asterisk MON: every Monday at midnight
+ *   - 0 0 0 1 asterisk question: first day of month at midnight
+ *   - 0 0 0 question asterisk 1: every Sunday at midnight
+ * 
+ * Features:
+ *   - Quartz compatible: supports Quartz Cron format
+ *   - Efficient algorithm: fast computation
+ *   - Flexible matching: supports complex expressions
+ *   - Error handling: throws on invalid expressions
+ */
+
 #pragma once
 #include <string>
 #include <set>
@@ -7,8 +49,13 @@
 #include <stdexcept>
 #include <algorithm>
 
-// Quartz-style Cron 表达式工具（6字段: sec min hour dom month dow [year]）
-// dow: 1=Sun, 2=Mon, ..., 7=Sat
+/**
+ * @class CronUtils
+ * @brief Cron 表达式工具
+ * 
+ * 提供 Cron 表达式的解析、匹配和下次执行时间计算功能。
+ * 支持 Quartz 风格的 Cron 表达式（6 字段或 7 字段）。
+ */
 class CronUtils {
 public:
     struct Field {

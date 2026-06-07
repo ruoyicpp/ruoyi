@@ -24,6 +24,32 @@
  *   - jwt.public_key_file: RS256 公钥文件路径（可选）
  */
 
+/**
+ * @file JwtUtils.h
+ * @brief JWT 令牌生成和验证工具
+ * 
+ * 功能概述：
+ *   - JWT 令牌生成：使用 HS256 算法签名，支持自定义过期时间和声明
+ *   - JWT 令牌验证：验证签名、过期时间、声明内容
+ *   - 自动续期：支持令牌自动续期机制
+ *   - 黑名单管理：支持令牌黑名单，防止已注销的令牌被重用
+ * 
+ * 使用示例：
+ *   // 生成令牌
+ *   std::string token = JwtUtils::generateToken(userId, "admin");
+ *   
+ *   // 验证令牌
+ *   auto claims = JwtUtils::verifyToken(token);
+ *   if (claims) {
+ *       long userId = claims->get<long>("userId");
+ *   }
+ * 
+ * 配置项（config.json）：
+ *   - jwt.secret: 签名密钥（至少 16 位）
+ *   - jwt.expireSeconds: 令牌过期时间（秒）
+ *   - jwt.refreshThreshold: 自动续期阈值（秒）
+ */
+
 #pragma once
 #include <string>
 #include <chrono>

@@ -1,3 +1,45 @@
+/**
+ * @file MetricsCollector.h
+ * @brief 性能指标收集器 — Prometheus 风格的监控指标
+ * 
+ * 功能概述：
+ *   - 请求统计：统计请求总数、状态码分布、响应时间
+ *   - 数据库监控：统计查询数、执行数、慢查询、错误数
+ *   - 登录统计：统计登录成功/失败次数
+ *   - 限流统计：统计被限流的请求数
+ *   - Prometheus 导出：支持 Prometheus 文本格式导出
+ * 
+ * 核心指标：
+ *   - 请求指标：总数、2xx/3xx/4xx/5xx、慢请求、耗时分布
+ *   - 数据库指标：查询数、执行数、慢查询、错误数
+ *   - 登录指标：成功数、失败数
+ *   - 限流指标：被拒绝的请求数
+ *   - 系统指标：运行时间、应用信息
+ * 
+ * HTTP 端点：
+ *   - GET  /actuator/health    - 健康检查
+ *   - GET  /actuator/info      - 应用信息
+ *   - GET  /actuator/metrics   - Prometheus 文本输出
+ *   - GET  /actuator/db        - 数据库状态
+ *   - POST /actuator/reload    - 热重载配置（受保护）
+ * 
+ * 使用示例：
+ *   // 记录请求
+ *   MetricsCollector::instance().onRequest(200, 150);
+ *   
+ *   // 记录登录
+ *   MetricsCollector::instance().onLoginSuccess();
+ *   MetricsCollector::instance().onLoginFail();
+ *   
+ *   // 获取 Prometheus 格式的指标
+ *   std::string metrics = MetricsCollector::instance().toPrometheus();
+ * 
+ * 配置项（config.json）：
+ *   - metrics.enabled: 是否启用指标收集（默认 true）
+ *   - metrics.slow_request_ms: 慢请求阈值（毫秒，默认 1000）
+ *   - metrics.slow_query_ms: 慢查询阈值（毫秒，默认 100）
+ */
+
 #pragma once
 #include <drogon/drogon.h>
 #include <json/json.h>
@@ -13,34 +55,18 @@
 #include "AjaxResult.h"
 #include "../services/DatabaseService.h"
 
-// =============================================================================
-// MetricsCollector — Prometheus 风格指标收集 + /actuator/* 端点
-//
-// 指标清单（Prometheus 文本格式）
-//   ruoyi_requests_total{status="2xx|3xx|4xx|5xx"}    counter
-//   ruoyi_errors_total                                 counter (5xx)
-//   ruoyi_request_duration_ms_bucket{le="..."}         histogram (12 buckets)
-//   ruoyi_request_duration_ms_count                    counter
-//   ruoyi_request_duration_ms_sum                      counter
-//   ruoyi_slow_requests_total                          counter (>1s)
-//   ruoyi_db_queries_total{op="query|exec"}            counter
-//   ruoyi_db_slow_queries_total                        counter (>=warn 阈值)
-//   ruoyi_db_errors_total                              counter
-//   ruoyi_uptime_seconds                               gauge
-//   ruoyi_login_success_total                          counter
-//   ruoyi_login_fail_total                             counter
-//   ruoyi_rate_limit_rejected_total                    counter
-//
-// HTTP 端点
-//   GET  /actuator/health                  健康检查
-//   GET  /actuator/info                    应用信息
-//   GET  /actuator/metrics                 Prometheus 文本输出
-//   GET  /actuator/db                      数据库状态
-//   POST /actuator/reload                  热重载配置（受保护）
-//
-// 自动接入：调用 MetricsCollector::instance().attachAdvice() 后，
-//   drogon advice 自动统计 method/status/耗时，并打印慢请求 WARN 日志。
-// =============================================================================
+/**
+ * @struct MetricsCollector
+ * @brief 性能指标收集器单例
+ * 
+ * 提供 Prometheus 风格的性能指标收集和导出功能。
+ * 支持请求、数据库、登录等多维度的监控指标。
+ * 
+ * 指标类型：
+ *   - Counter（计数器）：只增不减，用于统计总数
+ *   - Gauge（仪表）：可增可减，用于表示当前值
+ *   - Histogram（直方图）：统计数据分布，用于响应时间分析
+ */
 struct MetricsCollector {
     // ── 计数器 ───────────────────────────────────────────────────────────
     std::atomic<uint64_t> reqTotal{0};

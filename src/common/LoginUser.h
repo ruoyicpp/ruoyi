@@ -1,9 +1,46 @@
+/**
+ * @file LoginUser.h
+ * @brief 登录用户信息结构体
+ * 
+ * 功能概述：
+ *   - 用户信息存储：存储登录用户的基本信息、权限和角色
+ *   - 会话管理：包含令牌、登录时间、过期时间等会话信息
+ *   - 设备信息：记录登录设备的浏览器和操作系统
+ *   - 序列化：支持 JSON 序列化和反序列化，用于缓存存储
+ * 
+ * 使用场景：
+ *   - 登录后存储在 TokenCache 中
+ *   - 从 HTTP 请求的 Attributes 中提取
+ *   - 序列化后存入 Redis 缓存
+ * 
+ * 字段说明：
+ *   - userId: 用户 ID（唯一标识）
+ *   - deptId: 部门 ID
+ *   - userName: 用户名
+ *   - token: JWT 令牌（UUID 格式）
+ *   - loginTime: 登录时间戳（毫秒）
+ *   - expireTime: 令牌过期时间戳（毫秒）
+ *   - ipAddr: 登录 IP 地址
+ *   - loginLocation: IP 地理位置
+ *   - browser: 浏览器名称
+ *   - os: 操作系统名称
+ *   - deptName: 部门名称
+ *   - permissions: 权限字符串列表（如 "system:user:list"）
+ *   - roles: 角色 key 列表（如 "admin"）
+ */
+
 #pragma once
 #include <string>
 #include <vector>
 #include <json/json.h>
 
-// 若依框架 LoginUser
+/**
+ * @struct LoginUser
+ * @brief 登录用户信息
+ * 
+ * 对应 RuoYi.Net 中的 LoginUser，存储登录用户的完整信息。
+ * 支持 JSON 序列化和反序列化，用于会话管理和缓存存储。
+ */
 struct LoginUser {
     long        userId      = 0;
     long        deptId      = 0;

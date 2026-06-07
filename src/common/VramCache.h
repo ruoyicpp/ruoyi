@@ -1,3 +1,50 @@
+/**
+ * @file VramCache.h
+ * @brief GPU 显存缓存 — 利用 GPU 显存加速缓存
+ * 
+ * 功能概述：
+ *   - GPU 缓存：利用 GPU 显存存储热数据，加速访问
+ *   - 动态加载：运行时动态加载 CUDA，无编译期依赖
+ *   - 自动检测：自动检测 CUDA 可用性，不可用时自动降级
+ *   - 三层缓存：Redis > VramCache > MemCache(RAM)
+ * 
+ * 缓存层级：
+ *   1. Redis：分布式缓存，支持跨进程/跨机器共享
+ *   2. VramCache：GPU 显存缓存，单机最快
+ *   3. MemCache：内存缓存，单机快速
+ * 
+ * 支持的 GPU：
+ *   - NVIDIA GPU（通过 CUDA）
+ *   - 自动检测可用性，不可用时自动降级
+ * 
+ * 使用示例：
+ *   // 检查 GPU 缓存是否可用
+ *   if (VramCache::instance().available()) {
+ *       std::cout << "GPU 缓存已启用: " << VramCache::instance().backendInfo() << std::endl;
+ *   }
+ *   
+ *   // 存储数据到 GPU 显存
+ *   VramCache::instance().setString("key", "value", 3600);
+ *   
+ *   // 从 GPU 显存读取数据
+ *   auto val = VramCache::instance().getString("key");
+ *   if (val) {
+ *       std::cout << "Value: " << *val << std::endl;
+ *   }
+ * 
+ * 特性：
+ *   - 动态加载：运行时加载 CUDA，无编译期依赖
+ *   - 自动降级：CUDA 不可用时自动降级到内存缓存
+ *   - TTL 支持：支持过期时间设置
+ *   - 线程安全：所有操作都通过 mutex 保护
+ *   - 内存管理：自动清理过期数据和释放显存
+ * 
+ * 配置项（config.json）：
+ *   - vramcache.enabled: 是否启用 GPU 缓存（默认 false）
+ *   - vramcache.device: GPU 设备号（默认 0）
+ *   - vramcache.maxSize: 最大显存使用量（字节）
+ */
+
 #pragma once
 #include <string>
 #include <unordered_map>
@@ -16,10 +63,15 @@
 #  include <dlfcn.h>
 #endif
 
-// VramCache: GPU 显存缓存层
-// 通过动态加载 CUDA runtime（cudart.dll / libcudart.so）实现，
-// 无编译期 CUDA 依赖，自动检测可用性。
-// 优先级：Redis > VramCache > MemCache(RAM)
+/**
+ * @class VramCache
+ * @brief GPU 显存缓存单例
+ * 
+ * 提供 GPU 显存缓存功能，用于加速热数据访问。
+ * 通过动态加载 CUDA 实现，无编译期依赖。
+ * 
+ * 缓存优先级：Redis > VramCache > MemCache(RAM)
+ */
 class VramCache {
 public:
     static VramCache& instance() {

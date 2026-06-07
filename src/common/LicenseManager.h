@@ -1,6 +1,76 @@
-// AI 轨迹片段重构恢复 - 来自 cb68a004 Steps 6283, 6466, 6768, 6819 等多次迭代
-// 商业版核心：企业级许可证管理器
-// license.lic 放在可执行文件同目录，格式：key=value，最后一行 sig=<HMAC-SHA256>
+/**
+ * @file LicenseManager.h
+ * @brief 许可证管理器 — 企业级软件许可证验证
+ * 
+ * 功能概述：
+ *   - 许可证验证：验证软件许可证的有效性
+ *   - 硬件绑定：将许可证绑定到特定硬件
+ *   - 过期管理：管理许可证的过期时间和宽限期
+ *   - 功能模块：支持按功能模块授权
+ *   - 用户限制：支持限制并发用户数
+ * 
+ * 许可证文件格式：
+ *   license.lic（放在可执行文件同目录）
+ *   licensee=Company Name
+ *   fpHash=<SHA256 of full fingerprint>
+ *   fpPrimary=<SHA256 of machine guid only>
+ *   issueDate=2024-01-01
+ *   expireDate=2025-01-01 或 PERPETUAL
+ *   maxUsers=100
+ *   features=module1,module2,module3
+ *   graceDays=7
+ *   sig=<HMAC-SHA256 signature>
+ * 
+ * 许可证状态：
+ *   - VALID：完全有效
+ *   - EXPIRING_SOON：30 天内到期或在宽限期内
+ *   - EXPIRED：超过宽限期
+ *   - HARDWARE_MISMATCH：硬件指纹完全不匹配
+ *   - HARDWARE_UPGRADED：主因子匹配，次因子变化（硬件升级）
+ *   - INVALID_SIGNATURE：签名无效（文件被篡改）
+ *   - FILE_NOT_FOUND：license.lic 不存在
+ *   - PARSE_ERROR：文件格式错误
+ * 
+ * 硬件绑定策略：
+ *   - fpHash：完整硬件指纹（MachineGuid + CPU + DiskSerial）
+ *   - fpPrimary：主因子（MachineGuid）
+ *   - 允许次因子变化（硬件升级）
+ * 
+ * 使用示例：
+ *   // 初始化许可证管理器
+ *   auto info = LicenseManager::load();
+ *   
+ *   // 检查许可证状态
+ *   if (info.status == LicenseManager::Status::VALID) {
+ *       std::cout << "License is valid" << std::endl;
+ *       std::cout << "Licensee: " << info.licensee << std::endl;
+ *       std::cout << "Days left: " << info.daysLeft << std::endl;
+ *   }
+ *   
+ *   // 检查功能授权
+ *   if (LicenseManager::hasFeature(info, "advanced_analytics")) {
+ *       // 启用高级分析功能
+ *   }
+ *   
+ *   // 检查用户限制
+ *   if (info.maxUsers > 0 && currentUsers >= info.maxUsers) {
+ *       // 拒绝新用户登录
+ *   }
+ * 
+ * 特性：
+ *   - 硬件绑定：防止许可证被复制到其他设备
+ *   - 签名验证：使用 HMAC-SHA256 防止文件篡改
+ *   - 宽限期：到期后提供宽限期（默认 7 天）
+ *   - 功能模块：支持按功能模块授权
+ *   - 用户限制：支持限制并发用户数
+ *   - 文件监控：监控 license.lic 文件变化
+ * 
+ * 配置项（config.json）：
+ *   - license.enabled: 是否启用许可证验证（默认 false）
+ *   - license.grace_days: 到期宽限天数（默认 7）
+ *   - license.check_interval: 许可证检查间隔（秒，默认 3600）
+ */
+
 #pragma once
 #include <string>
 #include <vector>

@@ -1,3 +1,64 @@
+/**
+ * @file NotifyService.h
+ * @brief 通知服务 — 多渠道消息通知
+ * 
+ * 功能概述：
+ *   - 多渠道支持：支持多个通知渠道（钉钉、飞书、企业微信、Webhook）
+ *   - 消息发送：统一的消息发送接口
+ *   - 签名验证：支持各渠道的签名验证和加签
+ *   - 异步发送：使用 HttpClient 异步发送通知
+ *   - 错误处理：完善的错误处理和日志记录
+ * 
+ * 支持的渠道类型：
+ *   - dingtalk：钉钉自定义机器人
+ *     签名方式：HMAC-SHA256(secret, timestamp + "\n" + secret) → Base64 → URL Encode
+ *   - feishu：飞书自定义机器人
+ *     签名方式：HMAC-SHA256(secret, timestamp + "\n" + secret) → Base64
+ *   - wxwork：企业微信机器人
+ *     无签名，URL key 即凭证
+ *   - webhook：通用 Webhook
+ *     签名方式：X-Signature: HMAC-SHA256-hex(secret, body)
+ * 
+ * 使用示例：
+ *   // 发送通知到指定渠道
+ *   NotifyService::sendToChannel(channelId, "告警标题", "告警内容");
+ *   
+ *   // 发送到多个渠道
+ *   NotifyService::sendToChannels({channelId1, channelId2}, "标题", "内容");
+ * 
+ * 数据库表结构（sys_notify_channel）：
+ *   - id: 渠道 ID
+ *   - channel_name: 渠道名称
+ *   - channel_type: 渠道类型（dingtalk、feishu、wxwork、webhook）
+ *   - enabled: 是否启用
+ *   - config: 渠道配置（JSON）
+ *     - webhook_url: Webhook URL
+ *     - secret: 签名密钥
+ *     - custom_headers: 自定义请求头
+ * 
+ * 特性：
+ *   - 多渠道支持：支持多个通知渠道
+ *   - 灵活配置：通过数据库配置各个渠道
+ *   - 签名验证：支持各渠道的签名验证
+ *   - 异步发送：不阻塞主线程
+ *   - 错误处理：完善的错误处理和重试机制
+ *   - 日志记录：记录所有通知发送情况
+ * 
+ * 配置示例：
+ *   {
+ *     "webhook_url": "https://oapi.dingtalk.com/robot/send?access_token=xxx",
+ *     "secret": "your_secret_key",
+ *     "custom_headers": {
+ *       "Content-Type": "application/json"
+ *     }
+ *   }
+ * 
+ * 签名计算：
+ *   - DingTalk: sign = urlEncode(base64(HMAC-SHA256(secret, timestamp + "\n" + secret)))
+ *   - Feishu: sign = base64(HMAC-SHA256(secret, timestamp + "\n" + secret))
+ *   - Webhook: X-Signature = hex(HMAC-SHA256(secret, body))
+ */
+
 #pragma once
 #include <string>
 #include <vector>
@@ -13,15 +74,13 @@
 #include "../services/DatabaseService.h"
 #include "WsBus.h"
 
-// f15 消息通知中心服务
-//
-// 支持的渠道类型（channel_type 字段）：
-//   * "dingtalk"  钉钉自定义机器人（加签：HMAC-SHA256 + Base64 URL-encode）
-//   * "feishu"    飞书自定义机器人（加签：HMAC-SHA256 over "timestamp\n<secret>" → Base64）
-//   * "wxwork"    企业微信机器人（无签名，URL key 即凭证）
-//   * "webhook"   通用 webhook（X-Signature: HMAC-SHA256-hex(secret, body)）
-//
-// 统一对外接口：sendToChannel(channelId, title, content)
+/**
+ * @namespace NotifyService
+ * @brief 通知服务命名空间
+ * 
+ * 提供多渠道消息通知功能。
+ * 支持钉钉、飞书、企业微信、通用 Webhook 等多个通知渠道。
+ */
 namespace NotifyService {
 
 // ── HMAC-SHA256 helpers ─────────────────────────────────────────────────────

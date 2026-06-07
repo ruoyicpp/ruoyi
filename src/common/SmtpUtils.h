@@ -1,15 +1,42 @@
-#pragma once
 /**
- * SmtpUtils — 基于 OpenSSL 的 SMTP 发件工具（QQ/163/企业邮箱 Port-465 Implicit-TLS）
- *
- * 配置存储在 sys_config（通过 /system/emailConfig API 管理）：
- *   sys.email.host     = "smtp.qq.com"
- *   sys.email.port     = "465"
- *   sys.email.fromName = "系统通知"
- *   sys.email.senders  = JSON array: [{"email":"a@qq.com","authCode":"xxxx"}, ...]
- *
- * 轮询策略：每次发送时选下一个发件人（原子计数器 % senders.size()）
+ * @file SmtpUtils.h
+ * @brief SMTP email sending utility - secure email sending with OpenSSL
+ * 
+ * Features:
+ *   - SMTP protocol support for sending emails
+ *   - TLS encryption using OpenSSL (Port-465 Implicit-TLS)
+ *   - Multiple senders with round-robin load balancing
+ *   - Async sending in background thread
+ * 
+ * Supported email services:
+ *   - QQ Mail: smtp.qq.com:465
+ *   - 163 Mail: smtp.163.com:465
+ *   - Custom SMTP servers
+ * 
+ * Configuration (sys_config):
+ *   - sys.email.host: SMTP server address
+ *   - sys.email.port: SMTP port (usually 465 or 587)
+ *   - sys.email.fromName: sender display name
+ *   - sys.email.senders: sender list (JSON array)
+ * 
+ * Usage example:
+ *   SmtpUtils::Sender s1{"user1@qq.com", "authCode1"};
+ *   SmtpUtils::Sender s2{"user2@qq.com", "authCode2"};
+ *   SmtpUtils::instance().loadConfig("smtp.qq.com", 465, "System", {s1, s2});
+ *   SmtpUtils::instance().sendAsync("recipient@example.com", "Subject", "Body");
+ * 
+ * Load balancing:
+ *   - Round-robin sender selection
+ *   - Atomic counter for thread-safe rotation
+ *   - Even distribution across multiple senders
+ * 
+ * Security features:
+ *   - TLS encryption for all communications
+ *   - Optional SSL certificate verification
+ *   - Auth codes stored in database, not hardcoded
  */
+
+#pragma once
 #include <string>
 #include <vector>
 #include <atomic>

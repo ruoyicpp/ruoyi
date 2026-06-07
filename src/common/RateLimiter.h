@@ -1,3 +1,38 @@
+/**
+ * @file RateLimiter.h
+ * @brief IP 限流器 — 防止暴力破解和 DDoS 攻击
+ * 
+ * 功能概述：
+ *   - 滑动窗口限流：基于时间窗口的请求计数
+ *   - 自动封禁：超过限制自动封禁 IP
+ *   - Redis 支持：支持 Redis 后端实现跨进程共享
+ *   - 自动降级：Redis 不可用时自动降级到内存实现
+ *   - IP 白名单：支持白名单 IP 永不限流
+ * 
+ * 限流算法：
+ *   - 固定时间窗口：统计时间窗口内的请求数
+ *   - 超限封禁：超过 maxRequests 则封禁 banSeconds 秒
+ *   - 滑动计数：使用内存队列或 Redis INCR 实现
+ * 
+ * 使用示例：
+ *   // 检查是否允许请求
+ *   if (!RateLimiter::instance().allow(ip)) {
+ *       return error("请求过于频繁，请稍后再试");
+ *   }
+ *   
+ *   // 针对特定操作的限流
+ *   if (!RateLimiter::instance().allowKey("login:ip:" + ip, 30, 60)) {
+ *       return error("登录尝试过于频繁");
+ *   }
+ * 
+ * 配置项（config.json）：
+ *   - ratelimit.enabled: 是否启用限流（默认 true）
+ *   - ratelimit.maxRequests: 时间窗口内最大请求数（默认 200）
+ *   - ratelimit.windowSeconds: 时间窗口大小（秒，默认 60）
+ *   - ratelimit.banSeconds: 封禁时长（秒，默认 300）
+ *   - ratelimit.whitelist: IP 白名单列表
+ */
+
 #pragma once
 #include <string>
 #include <unordered_map>
@@ -9,13 +44,21 @@
 #include <vector>
 #include <trantor/utils/Logger.h>
 
-// IP 滑动窗口限流 + 自动封禁
-// 算法：固定时间窗口内超过 maxRequests 次则封禁 banSeconds 秒
-//
-// 后端策略：
-//   - 默认内存实现（单进程内一致）
-//   - 通过 setRedisBackend() 注入 Redis 后端：INCR+EXPIRE 跨进程共享
-//   - Redis 不可用时自动降级到内存（不阻断业务）
+/**
+ * @class RateLimiter
+ * @brief IP 限流器单例
+ * 
+ * 支持两种后端：
+ *   1. 内存实现（默认）：单进程内一致，适合单机部署
+ *   2. Redis 实现（可选）：跨进程共享，适合集群部署
+ * 
+ * 限流策略：
+ *   - 全局限流：allow(ip) - 限制单个 IP 的全局请求速率
+ *   - 操作限流：allowKey(key, max, window) - 限制特定操作的请求速率
+ *   - IP 白名单：whitelist 中的 IP 永不限流
+ * 
+ * 算法：固定时间窗口内超过 maxRequests 次则封禁 banSeconds 秒
+ */
 class RateLimiter {
 public:
     static RateLimiter& instance() {

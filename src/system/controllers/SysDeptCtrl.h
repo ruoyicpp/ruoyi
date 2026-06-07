@@ -1,3 +1,36 @@
+/**
+ * @file SysDeptCtrl.h
+ * @brief 系统部门管理控制器
+ * 
+ * 功能概述：
+ *   - 部门列表查询：支持树形结构、搜索、数据权限过滤
+ *   - 部门增删改查：CRUD 操作，支持树形部门
+ *   - 部门排序：调整部门显示顺序
+ *   - 部门树：获取部门树结构，用于选择器
+ *   - 祖先路径：自动维护部门的祖先路径（ancestors）
+ * 
+ * API 端点：
+ *   - GET    /system/dept/list              - 部门列表（树形）
+ *   - GET    /system/dept/list/exclude/{id} - 排除子部门的部门列表
+ *   - GET    /system/dept/{deptId}          - 获取部门详情
+ *   - POST   /system/dept                   - 新增部门
+ *   - PUT    /system/dept                   - 修改部门
+ *   - PUT    /system/dept/updateSort        - 更新部门排序
+ *   - DELETE /system/dept/{deptId}          - 删除部门
+ * 
+ * 权限要求：
+ *   - system:dept:list   - 查看部门列表
+ *   - system:dept:add    - 新增部门
+ *   - system:dept:edit   - 修改部门
+ *   - system:dept:remove - 删除部门
+ * 
+ * 核心特性：
+ *   - 树形结构：支持无限级部门树
+ *   - 祖先路径：自动维护 ancestors 字段，用于快速查询子部门
+ *   - 数据权限：支持按部门权限过滤部门列表
+ *   - 操作日志：所有修改操作自动记录到 sys_oper_log
+ */
+
 #pragma once
 #include "../../common/OperLogUtils.h"
 #include <drogon/HttpController.h>
@@ -9,6 +42,13 @@
 #include "../../services/DatabaseService.h"
 #include "../services/TokenService.h"
 
+/**
+ * @class SysDeptCtrl
+ * @brief 系统部门管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 SysDeptController，提供部门管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
+ */
 class SysDeptCtrl : public drogon::HttpController<SysDeptCtrl> {
 public:
     METHOD_LIST_BEGIN

@@ -1,15 +1,67 @@
-#pragma once
+/**
+ * @file Performance.h
+ * @brief 性能优化工具 — 并发控制和资源管理
+ * 
+ * 功能概述：
+ *   - 读写锁：支持多读单写的并发控制
+ *   - 对象池：复用对象，减少分配开销
+ *   - 连接池：管理数据库连接
+ *   - 性能指标：收集和分析性能数据
+ *   - Prepared Statement 缓存：缓存预编译语句
+ * 
+ * 核心组件：
+ *   - ReadWriteGuard：读写锁守卫
+ *   - ReadWriteLocked：读锁包装器
+ *   - ReadWriteLockedWrite：写锁包装器
+ *   - ObjectPool：通用对象池
+ *   - ConnectionPool：数据库连接池
+ * 
+ * 使用示例：
+ *   // 读写锁使用
+ *   std::shared_mutex mutex;
+ *   std::unordered_map<std::string, std::string> data;
+ *   
+ *   // 读操作
+ *   {
+ *       ReadWriteLocked<decltype(data)> guard(data, mutex);
+ *       auto& d = guard.value();
+ *       // 读取数据
+ *   }
+ *   
+ *   // 写操作
+ *   {
+ *       ReadWriteLockedWrite<decltype(data)> guard(data, mutex);
+ *       auto& d = guard.value();
+ *       // 修改数据
+ *   }
+ *   
+ *   // 对象池使用
+ *   ObjectPool<MyObject> pool(10);  // 初始大小 10
+ *   auto obj = pool.acquire();
+ *   // 使用对象
+ *   pool.release(obj);
+ * 
+ * 特性：
+ *   - 线程安全：使用 std::shared_mutex 实现线程安全
+ *   - 高效读取：多个线程可以同时读取
+ *   - 互斥写入：写入时独占锁
+ *   - 资源复用：对象池减少内存分配
+ *   - 连接管理：连接池管理数据库连接
+ * 
+ * 应用场景：
+ *   - 缓存管理：多读少写的缓存
+ *   - 数据库连接：连接池管理
+ *   - 对象复用：减少 GC 压力
+ *   - 并发读取：高并发读取场景
+ * 
+ * 性能优势：
+ *   - 减少锁竞争：读写锁比互斥锁更高效
+ *   - 减少内存分配：对象池复用对象
+ *   - 连接复用：连接池避免频繁创建连接
+ *   - 缓存优化：Prepared Statement 缓存避免重复编译
+ */
 
-// ════════════════════════════════════════════════════════════════════════════
-// Performance.h — 性能优化工具
-//
-// 功能：
-//   - Prepared Statement 缓存
-//   - 读写锁（多读单写）
-//   - 对象池
-//   - 连接池管理
-//   - 性能指标收集
-// ════════════════════════════════════════════════════════════════════════════
+#pragma once
 
 #include <shared_mutex>
 #include <mutex>

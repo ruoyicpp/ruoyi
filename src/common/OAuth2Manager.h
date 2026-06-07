@@ -1,3 +1,76 @@
+/**
+ * @file OAuth2Manager.h
+ * @brief OAuth2 管理器 — 第三方登录提供商管理
+ * 
+ * 功能概述：
+ *   - Provider 管理：管理多个 OAuth2 提供商配置
+ *   - 授权 URL 生成：生成第三方授权 URL
+ *   - Token 交换：用 authorization code 交换 access token
+ *   - 用户信息获取：通过 access token 获取用户信息
+ *   - 状态验证：验证 OAuth2 state 参数防止 CSRF
+ * 
+ * 支持的提供商：
+ *   - GitHub：GitHub OAuth2
+ *   - Google：Google OAuth2
+ *   - 钉钉：DingTalk OAuth2
+ *   - 飞书：Feishu OAuth2
+ *   - 企业微信：WeChat Work OAuth2
+ *   - QQ：QQ OAuth2
+ * 
+ * 配置格式（config.json）：
+ *   {
+ *     "oauth2": {
+ *       "github": {
+ *         "enabled": true,
+ *         "client_id": "your_client_id",
+ *         "client_secret": "your_client_secret",
+ *         "redirect_uri": "http://your.domain/oauth2/callback/github",
+ *         "scope": "user:email"
+ *       },
+ *       "google": {
+ *         "enabled": true,
+ *         "client_id": "your_client_id",
+ *         "client_secret": "your_client_secret",
+ *         "redirect_uri": "http://your.domain/oauth2/callback/google",
+ *         "scope": "openid email profile"
+ *       }
+ *     }
+ *   }
+ * 
+ * 使用示例：
+ *   // 初始化 OAuth2 管理器
+ *   Json::Value cfg;
+ *   // ... 从 config.json 读取 cfg ...
+ *   OAuth2Manager::instance().init(cfg);
+ *   
+ *   // 获取已启用的 provider 列表
+ *   auto providers = OAuth2Manager::instance().enabledProviders();
+ *   
+ *   // 生成授权 URL
+ *   auto [url, state] = OAuth2Manager::instance().buildAuthUrl("github");
+ *   
+ *   // 交换 token
+ *   auto token = OAuth2Manager::instance().exchangeToken("github", code);
+ *   
+ *   // 获取用户信息
+ *   auto user = OAuth2Manager::instance().getUserInfo("github", token);
+ * 
+ * OAuth2 流程：
+ *   1. 前端调用 /oauth2/authorize/{provider} 获取授权 URL
+ *   2. 用户跳转到第三方授权页面
+ *   3. 用户授权后，第三方重定向到 /oauth2/callback/{provider}?code=xxx&state=yyy
+ *   4. 后端验证 state，用 code 交换 access token
+ *   5. 用 access token 获取用户信息
+ *   6. 创建或更新本地用户，返回 JWT
+ * 
+ * 特性：
+ *   - 多 Provider 支持：支持多个第三方登录提供商
+ *   - 灵活配置：通过 config.json 配置各个 provider
+ *   - State 验证：防止 CSRF 攻击
+ *   - 异步请求：使用 HttpClient 异步调用第三方 API
+ *   - 错误处理：完善的错误处理和日志记录
+ */
+
 #pragma once
 #include <string>
 #include <map>
@@ -5,10 +78,12 @@
 #include <drogon/HttpClient.h>
 #include <openssl/rand.h>
 
-// OAuth2 第三方登录管理器
-// 支持：github / google / wechat_work / dingtalk / feishu / qq
-// config.json: { "oauth2": { "github": { "enabled": true, "client_id": "", "client_secret": "",
-//   "redirect_uri": "http://your.domain/oauth2/callback/github", "scope": "user:email" }, ... } }
+/**
+ * @struct OAuth2Provider
+ * @brief OAuth2 提供商配置
+ * 
+ * 存储单个 OAuth2 提供商的配置信息。
+ */
 struct OAuth2Provider {
     std::string name;
     bool        enabled       = false;

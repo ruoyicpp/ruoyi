@@ -1,3 +1,45 @@
+/**
+ * @file SysRoleCtrl.h
+ * @brief 系统角色管理控制器
+ * 
+ * 功能概述：
+ *   - 角色列表查询：支持分页、搜索、数据权限过滤
+ *   - 角色增删改查：CRUD 操作，支持批量删除
+ *   - 状态管理：启用/禁用角色
+ *   - 数据权限：配置角色的数据权限范围（全部、本部门、本部门及下级等）
+ *   - 用户授权：为角色分配用户、取消用户授权
+ *   - 菜单权限：配置角色的菜单和权限
+ * 
+ * API 端点：
+ *   - GET    /system/role/list                     - 角色列表（分页）
+ *   - GET    /system/role/{id}                     - 获取角色详情
+ *   - POST   /system/role                          - 新增角色
+ *   - PUT    /system/role                          - 修改角色
+ *   - DELETE /system/role/{ids}                    - 删除角色（支持批量）
+ *   - PUT    /system/role/changeStatus             - 修改状态
+ *   - PUT    /system/role/dataScope                - 配置数据权限
+ *   - POST   /system/role/optionselect             - 获取角色选项列表
+ *   - GET    /system/role/authUser/allocatedList   - 已分配用户列表
+ *   - GET    /system/role/authUser/unallocatedList - 未分配用户列表
+ *   - PUT    /system/role/authUser/cancel          - 取消用户授权
+ *   - PUT    /system/role/authUser/cancelAll       - 取消全部用户授权
+ *   - PUT    /system/role/authUser/selectAll       - 分配全部用户
+ *   - GET    /system/role/deptTree/{roleId}        - 获取部门树
+ *   - POST   /system/role/export                   - 导出角色数据
+ * 
+ * 权限要求：
+ *   - system:role:list   - 查看角色列表
+ *   - system:role:add    - 新增角色
+ *   - system:role:edit   - 修改角色
+ *   - system:role:remove - 删除角色
+ * 
+ * 核心特性：
+ *   - 数据权限过滤：支持按部门权限过滤角色列表
+ *   - 操作日志记录：所有修改操作自动记录到 sys_oper_log
+ *   - 缓存失效：修改角色后自动失效相关用户的菜单和权限缓存
+ *   - 批量操作：支持批量删除、批量授权/取消授权
+ */
+
 #pragma once
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"
@@ -12,6 +54,13 @@
 #include "../../common/CsvUtils.h"
 #include <set>
 
+/**
+ * @class SysRoleCtrl
+ * @brief 系统角色管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 SysRoleController，提供角色管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
+ */
 class SysRoleCtrl : public drogon::HttpController<SysRoleCtrl> {
 public:
     METHOD_LIST_BEGIN

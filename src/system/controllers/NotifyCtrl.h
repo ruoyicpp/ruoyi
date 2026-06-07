@@ -1,3 +1,69 @@
+/**
+ * @file NotifyCtrl.h
+ * @brief 通知渠道管理控制器
+ * 
+ * 功能概述：
+ *   - 通知渠道管理：CRUD 操作，支持多种通知渠道
+ *   - 通知发送：通过指定渠道发送通知
+ *   - 测试发送：测试通知渠道是否正常工作
+ *   - 渠道列表：查看所有可用的通知渠道
+ * 
+ * API 端点：
+ *   - POST   /system/notify/channel           - 创建通知渠道
+ *   - GET    /system/notify/channel/list      - 通知渠道列表
+ *   - PUT    /system/notify/channel/{id}      - 更新通知渠道
+ *   - DELETE /system/notify/channel/{id}      - 删除通知渠道
+ *   - POST   /system/notify/channel/{id}/test - 测试通知发送
+ *   - POST   /system/notify/send              - 发送通知
+ *   - GET    /system/notify/channel/page      - 管理页面（HTML）
+ * 
+ * 权限要求：
+ *   - system:notify:list   - 查看通知渠道列表
+ *   - system:notify:add    - 创建通知渠道
+ *   - system:notify:edit   - 修改通知渠道
+ *   - system:notify:remove - 删除通知渠道
+ *   - system:notify:send   - 发送通知
+ * 
+ * 支持的通知渠道：
+ *   - Email：邮件通知
+ *   - SMS：短信通知
+ *   - WeChat：微信通知
+ *   - DingTalk：钉钉通知
+ *   - Slack：Slack 通知
+ *   - Webhook：自定义 Webhook
+ * 
+ * 核心特性：
+ *   - 多渠道支持：支持多种通知渠道
+ *   - 灵活配置：每个渠道可独立配置
+ *   - 测试功能：支持测试通知是否正常
+ *   - 批量发送：支持向多个渠道发送通知
+ *   - 模板支持：支持通知模板
+ * 
+ * 使用场景：
+ *   - 系统告警：系统告警通过多个渠道通知管理员
+ *   - 用户通知：向用户发送各类通知
+ *   - 业务提醒：业务相关的提醒和通知
+ *   - 定时报告：定时发送报告和统计
+ * 
+ * 通知渠道配置示例：
+ *   {
+ *     "channelName": "管理员邮件",
+ *     "channelType": "email",
+ *     "enabled": true,
+ *     "config": {
+ *       "recipients": "admin@example.com,ops@example.com",
+ *       "subject": "系统告警"
+ *     }
+ *   }
+ * 
+ * 发送通知请求示例：
+ *   {
+ *     "channelId": 1,
+ *     "title": "系统告警",
+ *     "content": "内存使用率超过 90%"
+ *   }
+ */
+
 #pragma once
 #include <drogon/drogon.h>
 #include "../../common/AjaxResult.h"
@@ -7,13 +73,13 @@
 #include "../../filters/PermFilter.h"
 #include "../../system/services/TokenService.h"
 
-// f15 通知渠道 CRUD + 测试发送
-//   POST   /system/notify/channel           创建渠道
-//   GET    /system/notify/channel/list      列表
-//   PUT    /system/notify/channel/{id}      更新
-//   DELETE /system/notify/channel/{id}      删除
-//   POST   /system/notify/channel/{id}/test 测试发送 (body: {title, content})
-//   POST   /system/notify/send              业务调用：发送到指定渠道 (body: {channelId, title, content})
+/**
+ * @class NotifyChannelCtrl
+ * @brief 通知渠道管理控制器
+ * 
+ * 对应 RuoYi-Vue 中的 NotifyChannelController，提供通知渠道管理的所有 API 端点。
+ * 所有操作都需要 JWT 认证，并根据权限字符串进行权限检查。
+ */
 class NotifyChannelCtrl : public drogon::HttpController<NotifyChannelCtrl> {
 public:
     METHOD_LIST_BEGIN

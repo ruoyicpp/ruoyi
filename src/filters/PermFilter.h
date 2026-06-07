@@ -1,3 +1,39 @@
+/**
+ * @file PermFilter.h
+ * @brief 权限检查工具 — 基于权限字符串的访问控制
+ * 
+ * 功能概述：
+ *   - 权限检查：检查用户是否拥有指定权限
+ *   - 角色检查：检查用户是否拥有指定角色
+ *   - 用户信息提取：从请求中提取登录用户信息
+ *   - 管理员豁免：管理员（userId=1）拥有所有权限
+ *   - 通配符支持：支持 *:*:* 通配符权限
+ * 
+ * 权限字符串格式：
+ *   - system:user:list   - 查看用户列表
+ *   - system:user:add    - 新增用户
+ *   - system:user:edit   - 修改用户
+ *   - system:user:remove - 删除用户
+ *   - *:*:*              - 拥有所有权限
+ * 
+ * 使用示例：
+ *   // 在 Controller 中检查权限
+ *   void list(const drogon::HttpRequestPtr &req, ...) {
+ *       CHECK_PERM(req, cb, "system:user:list");
+ *       // 权限检查通过，继续处理
+ *   }
+ *   
+ *   // 获取登录用户信息
+ *   auto user = GET_LOGIN_USER(req);
+ *   long userId = GET_USER_ID(req);
+ *   std::string userName = GET_USER_NAME(req);
+ * 
+ * 权限检查规则：
+ *   1. 如果用户 ID 为 1（管理员），直接返回 true
+ *   2. 如果用户拥有 *:*:* 权限，直接返回 true
+ *   3. 否则检查用户权限列表中是否包含指定权限
+ */
+
 #pragma once
 #include <drogon/HttpFilter.h>
 #include "../common/AjaxResult.h"
@@ -5,11 +41,15 @@
 #include <string>
 #include <algorithm>
 
-// 权限检查辅助类：检查指定权限字符串
-// 对应 RuoYi.Net/java [AppAuthorize("system:user:list")]
-// 用法：在路由注册时指定 PermFilter<"system:user:list">
-// 因为 C++ 模板不支持字符串字面量继承方式，每种权限对应一个类
-// 实际使用宏在 Controller 内手动校验权限，见下方
+/**
+ * @class PermissionChecker
+ * @brief 权限检查工具类
+ * 
+ * 提供权限和角色检查的静态方法。
+ * 所有方法都是静态的，无需创建实例。
+ * 
+ * 对应 RuoYi.Net 中的 [AppAuthorize] 特性，提供基于权限字符串的访问控制。
+ */
 class PermissionChecker {
 public:
     // 检查当前请求的 LoginUser 是否拥有指定权限
