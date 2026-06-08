@@ -1,22 +1,11 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-  下载 SQLite3 Multiple Ciphers amalgamation 到 src/third_party/sqlite3mc/
+  Downloads SQLite3 Multiple Ciphers amalgamation to src/third_party/sqlite3mc/
 
 .DESCRIPTION
-  ruoyi-cpp 启用页级 SQLite 加密时需要 sqlite3mc 源码（12MB），不入 git 仓库。
-  本脚本从 GitHub Releases 下载官方包并校验 SHA256，解压到正确路径。
-
-  执行后会得到：
-    src/third_party/sqlite3mc/
-      ├── sqlite3.h                    (已在 git 仓库中：shim 头)
-      ├── sqlite3mc_amalgamation.c     (本脚本下载，~12 MB)
-      └── sqlite3mc_amalgamation.h     (本脚本下载，~650 KB)
-
-  之后重新 cmake configure + build 即可启用页级加密。
-
-.EXAMPLE
-  .\scripts\download_sqlite3mc.ps1
+  Downloads the official amalgamation zip package from GitHub Releases,
+  verifies its SHA256 checksum, and extracts it to the correct path.
 #>
 
 [CmdletBinding()]
@@ -28,7 +17,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 项目根 = 此脚本所在目录的父目录
 $root = Split-Path -Parent $PSScriptRoot
 $mcDir = Join-Path $root "src\third_party\sqlite3mc"
 
@@ -39,9 +27,11 @@ if (!(Test-Path $mcDir)) {
 $amaC = Join-Path $mcDir "sqlite3mc_amalgamation.c"
 $amaH = Join-Path $mcDir "sqlite3mc_amalgamation.h"
 if ((Test-Path $amaC) -and (Test-Path $amaH)) {
-    Write-Host "[OK] sqlite3mc amalgamation 已存在，跳过下载" -ForegroundColor Green
-    Write-Host "     $amaC ($([math]::Round((Get-Item $amaC).Length/1MB,1)) MB)"
-    Write-Host "     $amaH ($([math]::Round((Get-Item $amaH).Length/1MB,2)) MB)"
+    $amaCSize = [math]::Round((Get-Item $amaC).Length/1MB,1)
+    $amaHSize = [math]::Round((Get-Item $amaH).Length/1MB,2)
+    Write-Host "[OK] sqlite3mc amalgamation already exists, skipping download" -ForegroundColor Green
+    Write-Host "     $amaC ($amaCSize MB)"
+    Write-Host "     $amaH ($amaHSize MB)"
     exit 0
 }
 
@@ -49,28 +39,29 @@ $zipName = "sqlite3mc-$Version-sqlite-$SqliteVer-amalgamation.zip"
 $url = "https://github.com/utelle/SQLite3MultipleCiphers/releases/download/v$Version/$zipName"
 $zip = Join-Path $mcDir $zipName
 
-Write-Host "[1/4] 下载 $zipName (~6 MB)" -ForegroundColor Cyan
+Write-Host "[1/4] Downloading $zipName (~6 MB)" -ForegroundColor Cyan
 Write-Host "      $url"
 try {
     Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -TimeoutSec 120
 } catch {
-    Write-Host "[ERR] 下载失败：$($_.Exception.Message)" -ForegroundColor Red
+    $errMsg = $_.Exception.Message
+    Write-Host "[ERR] Download failed: $errMsg" -ForegroundColor Red
     exit 1
 }
 $sizeMB = [math]::Round((Get-Item $zip).Length / 1MB, 2)
 Write-Host "      $sizeMB MB"
 
-Write-Host "[2/4] SHA256 校验" -ForegroundColor Cyan
+Write-Host "[2/4] Verifying SHA256 checksum" -ForegroundColor Cyan
 $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-Write-Host "      期望: $ExpectedSha256"
-Write-Host "      实际: $actual"
+Write-Host "      Expected: $ExpectedSha256"
+Write-Host "      Actual:   $actual"
 if ($actual -ne $ExpectedSha256.ToLower()) {
-    Write-Host "[ERR] SHA256 不匹配，下载文件已损坏或被篡改" -ForegroundColor Red
+    Write-Host "[ERR] SHA256 mismatch! The downloaded file is corrupted." -ForegroundColor Red
     Remove-Item $zip -Force
     exit 2
 }
 
-Write-Host "[3/4] 解压 + 移动" -ForegroundColor Cyan
+Write-Host "[3/4] Extracting and moving files" -ForegroundColor Cyan
 $extracted = Join-Path $mcDir "_extracted"
 if (Test-Path $extracted) { Remove-Item $extracted -Recurse -Force }
 Expand-Archive -Path $zip -DestinationPath $extracted -Force
@@ -78,15 +69,18 @@ Expand-Archive -Path $zip -DestinationPath $extracted -Force
 Move-Item (Join-Path $extracted "sqlite3mc_amalgamation.c") $amaC -Force
 Move-Item (Join-Path $extracted "sqlite3mc_amalgamation.h") $amaH -Force
 
-Write-Host "[4/4] 清理" -ForegroundColor Cyan
+Write-Host "[4/4] Cleaning up" -ForegroundColor Cyan
 Remove-Item $extracted -Recurse -Force
 Remove-Item $zip -Force
 
 Write-Host ""
-Write-Host "[完成] sqlite3mc $Version (SQLite $SqliteVer) 已就绪" -ForegroundColor Green
-Write-Host "       $amaC ($([math]::Round((Get-Item $amaC).Length/1MB,1)) MB)"
-Write-Host "       $amaH ($([math]::Round((Get-Item $amaH).Length/1MB,2)) MB)"
+$finalCSize = [math]::Round((Get-Item $amaC).Length/1MB,1)
+$finalHSize = [math]::Round((Get-Item $amaH).Length/1MB,2)
+Write-Host "[SUCCESS] sqlite3mc $Version (SQLite $SqliteVer) is ready" -ForegroundColor Green
+Write-Host "          $amaC ($finalCSize MB)"
+Write-Host "          $amaH ($finalHSize MB)"
 Write-Host ""
-Write-Host "下一步：" -ForegroundColor Yellow
+Write-Host "Next Steps:" -ForegroundColor Yellow
 Write-Host "       cmake -B build -G Ninja"
 Write-Host "       cmake --build build --parallel"
+
