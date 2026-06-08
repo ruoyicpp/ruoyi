@@ -24,6 +24,14 @@
 #include <drogon/drogon.h>
 #include <trantor/utils/Logger.h>
 
+// ── 数据库 SQL 宏定义 ─────────────────────────────────────────────
+// MySQL 和 PostgreSQL 兼容层（编译时自动转换）
+#include "mysql/db_sql_map.h"
+
+// ── 数据库运行时适配层 ───────────────────────────────────────────
+// 支持 MySQL 和 PostgreSQL 同时使用（运行时动态选择）
+#include "mysql/DatabaseAdapter.h"
+
 // ── 公共基础 ─────────────────────────────────────────────────────
 // 【安全模块】— 认证、授权、加密
 #include "common/CrashHandler.h"       // 崩溃捕获（SEH/VEH/terminate）+ 生成dump

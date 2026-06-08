@@ -305,6 +305,19 @@ int main(int argc, char* argv[]) {
         // 加载配置
         drogon::app().loadConfigFile(configFile);
 
+        // ── 初始化数据库适配器（MySQL/PostgreSQL 运行时选择）──────────────────
+        {
+            std::ifstream dbcf(configFile);
+            if (dbcf.is_open()) {
+                Json::Value root; Json::CharReaderBuilder rb; std::string errs;
+                if (Json::parseFromStream(rb, dbcf, &root, &errs) && root.isMember("database")) {
+                    auto& adapter = ruoyi::DatabaseAdapter::instance();
+                    adapter.init(root["database"]);
+                    LOG_INFO << "[DatabaseAdapter] Initialized with type: " << adapter.getTypeName();
+                }
+            }
+        }
+
         // ── Config Schema 校验（启动时立即检测，防止静默错误）────────────────
         {
             std::ifstream vcf(configFile);

@@ -211,6 +211,9 @@ file(GLOB_RECURSE SOURCES
     src/taskqueue/*.cc
     src/monitor/*.cc
     src/cache/*.cc
+    src/log/*.cc
+    src/analytics/*.cc
+    src/mysql/*.cc
 )
 
 # 添加 IM 集成文件（排除 src/im/111 中的 protobuf 文件）
