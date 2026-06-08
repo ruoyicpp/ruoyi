@@ -43,3 +43,4 @@ Thumbs.db
 im/
 src/im/
 commit-msg.txt
+*.sql
