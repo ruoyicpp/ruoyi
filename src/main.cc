@@ -5,6 +5,12 @@
 #endif
 #include "common/NginxLikeFeatures.h"
 #include "common/NginxEmbedded.h"
+#include "cache/CacheStrategy.h"
+#include "cache/CacheWarmup.h"
+#include "cache/CacheInvalidation.h"
+#include "log/LogCollector.h"
+#include "log/LogAnalyzer.h"
+#include "log/LogSearchEngine.h"
 #include "services/WorkerOrchestrator.h"
 #include "services/AcmeManager.h"
 #include "services/CertManagerDriver.h"
@@ -333,6 +339,20 @@ int main(int argc, char* argv[]) {
             }
 
             std::cout << "[Config] Schema 校验通过" << std::endl;
+
+            try {
+                auto autoLoaded = ruoyi::plugin::PluginManager::instance().autoLoadFromConfig(root);
+                if (!autoLoaded.empty()) {
+                    std::cout << "[Plugin] 已自动加载: ";
+                    for (size_t i = 0; i < autoLoaded.size(); ++i) {
+                        if (i) std::cout << ", ";
+                        std::cout << autoLoaded[i];
+                    }
+                    std::cout << std::endl;
+                }
+            } catch (const std::exception& e) {
+                LOG_WARN << "[Plugin] 自动加载插件失败: " << e.what();
+            }
         }
 
         // 日志时间显示为本地时间（默认是 UTC）
@@ -483,6 +503,156 @@ int main(int argc, char* argv[]) {
                 r["vault"]["token"] = newTok;
             return r;
         }());
+
+        {
+            const auto& root = cfgLoader->raw();
+            Log::LogConfig logConfig;
+            if (root.isMember("log") && root["log"].isObject()) {
+                const auto& log = root["log"];
+                logConfig.enabled = log.get("enabled", true).asBool();
+                logConfig.path = log.get("path", "./logs").asString();
+                logConfig.maxFiles = log.get("max_files", 20).asInt();
+                logConfig.maxResults = log.get("max_results", 500).asInt();
+
+                if (log.isMember("alerts") && log["alerts"].isObject()) {
+                    const auto& alerts = log["alerts"];
+                    logConfig.alerts.highErrorRate = alerts.get("high_error_rate", logConfig.alerts.highErrorRate).asDouble();
+                    logConfig.alerts.criticalErrorRate = alerts.get("critical_error_rate", logConfig.alerts.criticalErrorRate).asDouble();
+                    logConfig.alerts.errorSpikeThreshold = static_cast<std::size_t>(
+                        alerts.get("error_spike_threshold", static_cast<Json::UInt64>(logConfig.alerts.errorSpikeThreshold)).asUInt64());
+                    logConfig.alerts.criticalErrorSpikeCount = static_cast<std::size_t>(
+                        alerts.get("critical_error_spike_count", static_cast<Json::UInt64>(logConfig.alerts.criticalErrorSpikeCount)).asUInt64());
+                    logConfig.alerts.unknownLevelRatio = alerts.get("unknown_level_ratio", logConfig.alerts.unknownLevelRatio).asDouble();
+                    logConfig.alerts.warningUnknownLevelRatio = alerts.get("warning_unknown_level_ratio", logConfig.alerts.warningUnknownLevelRatio).asDouble();
+                    logConfig.alerts.parseFailureRatio = alerts.get("parse_failure_ratio", logConfig.alerts.parseFailureRatio).asDouble();
+                    logConfig.alerts.warningParseFailureRatio = alerts.get("warning_parse_failure_ratio", logConfig.alerts.warningParseFailureRatio).asDouble();
+                    logConfig.alerts.repeatedMessageCount = static_cast<std::size_t>(
+                        alerts.get("repeated_message_count", static_cast<Json::UInt64>(logConfig.alerts.repeatedMessageCount)).asUInt64());
+                    logConfig.alerts.repeatedMessageRatio = alerts.get("repeated_message_ratio", logConfig.alerts.repeatedMessageRatio).asDouble();
+                    logConfig.alerts.warningRepeatedMessageRatio = alerts.get("warning_repeated_message_ratio", logConfig.alerts.warningRepeatedMessageRatio).asDouble();
+                }
+
+                if (log.isMember("elasticsearch") && log["elasticsearch"].isObject()) {
+                    const auto& elasticsearch = log["elasticsearch"];
+                    logConfig.elasticsearch.enabled = elasticsearch.get("enabled", false).asBool();
+                    logConfig.elasticsearch.host = elasticsearch.get("host", "127.0.0.1").asString();
+                    logConfig.elasticsearch.port = elasticsearch.get("port", 9200).asInt();
+                    logConfig.elasticsearch.indexPrefix = elasticsearch.get("index_prefix", "ruoyi-logs").asString();
+                }
+
+                if (log.isMember("kibana") && log["kibana"].isObject()) {
+                    const auto& kibana = log["kibana"];
+                    logConfig.kibana.enabled = kibana.get("enabled", false).asBool();
+                    logConfig.kibana.host = kibana.get("host", "127.0.0.1").asString();
+                    logConfig.kibana.port = kibana.get("port", 5601).asInt();
+                }
+            }
+
+            if (logConfig.path.empty()) {
+                logConfig.path = "./logs";
+            }
+
+            Log::LogCollector::instance().init(logConfig);
+            Log::LogCollector::instance().start();
+            Log::LogSearchEngine::instance().init(logConfig);
+            Log::LogAnalyzer::instance().init(logConfig);
+
+            LOG_INFO << "[Log] enabled=" << logConfig.enabled
+                     << " path=" << logConfig.path
+                     << " max_files=" << logConfig.maxFiles
+                     << " max_results=" << logConfig.maxResults
+                     << " collector_running=" << Log::LogCollector::instance().isRunning();
+        }
+
+        // ── Cache 配置加载 ──────────────────────────────────────────────────────
+        {
+            const auto& root = cfgLoader->raw();
+            Cache::CacheConfig cacheConfig;
+            Cache::WarmupConfig warmupConfig;
+            std::vector<Cache::InvalidationRule> invalidationRules;
+
+            if (root.isMember("cache") && root["cache"].isObject()) {
+                const auto& cache = root["cache"];
+                cacheConfig.enabled = cache.get("enabled", true).asBool();
+                cacheConfig.localTtlSeconds = cache.get("local_ttl_seconds", 60).asInt();
+                cacheConfig.redisTtlSeconds = cache.get("redis_ttl_seconds", 3600).asInt();
+                cacheConfig.maxLocalEntries = cache.get("max_local_entries", 10000).asInt();
+                cacheConfig.nullValueCaching = cache.get("null_value_caching", true).asBool();
+                cacheConfig.nullValueTtlSeconds = cache.get("null_value_ttl_seconds", 60).asInt();
+                cacheConfig.lockTimeoutMs = cache.get("lock_timeout_ms", 5000).asInt();
+                cacheConfig.enableRandomExpiryJitter = cache.get("enable_random_expiry_jitter", true).asBool();
+                cacheConfig.randomExpiryJitterSeconds = cache.get("random_expiry_jitter_seconds", 60).asInt();
+
+                if (cache.isMember("redis_cluster") && cache["redis_cluster"].isObject()) {
+                    const auto& redisCluster = cache["redis_cluster"];
+                    cacheConfig.redisCluster.enabled = redisCluster.get("enabled", cacheConfig.enabled).asBool();
+                    cacheConfig.redisCluster.connectionTimeoutMs = redisCluster.get("connection_timeout_ms", 5000).asInt();
+                    cacheConfig.redisCluster.commandTimeoutMs = redisCluster.get("command_timeout_ms", 3000).asInt();
+                    cacheConfig.redisCluster.maxConnectionsPerNode = redisCluster.get("max_connections_per_node", 8).asInt();
+                    cacheConfig.redisCluster.minIdleConnections = redisCluster.get("min_idle_connections", 2).asInt();
+                    cacheConfig.redisCluster.maxQueueSize = redisCluster.get("max_queue_size", 1024).asInt();
+                    cacheConfig.redisCluster.autoReconnect = redisCluster.get("auto_reconnect", true).asBool();
+                    cacheConfig.redisCluster.reconnectIntervalSeconds = redisCluster.get("reconnect_interval_seconds", 3).asInt();
+                    if (redisCluster.isMember("nodes") && redisCluster["nodes"].isArray()) {
+                        for (const auto& node : redisCluster["nodes"]) {
+                            Cache::RedisNode redisNode;
+                            redisNode.host = node.get("host", "127.0.0.1").asString();
+                            redisNode.port = node.get("port", 6379).asInt();
+                            redisNode.password = node.get("password", "").asString();
+                            redisNode.db = node.get("db", 0).asInt();
+                            redisNode.master = node.get("master", true).asBool();
+                            redisNode.nodeId = node.get("node_id", redisNode.host + ":" + std::to_string(redisNode.port)).asString();
+                            cacheConfig.redisCluster.nodes.push_back(std::move(redisNode));
+                        }
+                    }
+                }
+
+                if (cache.isMember("warmup") && cache["warmup"].isObject()) {
+                    const auto& warmup = cache["warmup"];
+                    warmupConfig.enabled = warmup.get("enabled", false).asBool();
+                    warmupConfig.onStartup = warmup.get("on_startup", true).asBool();
+                    warmupConfig.intervalSeconds = warmup.get("interval_seconds", 3600).asInt();
+                    warmupConfig.batchSize = warmup.get("batch_size", 100).asInt();
+                    warmupConfig.timeoutSeconds = warmup.get("timeout_seconds", 30).asInt();
+                    if (warmup.isMember("priority_keys") && warmup["priority_keys"].isArray()) {
+                        for (const auto& key : warmup["priority_keys"]) {
+                            warmupConfig.priorityKeys.push_back(key.asString());
+                        }
+                    }
+                }
+
+                if (cache.isMember("invalidation") && cache["invalidation"].isObject()) {
+                    const auto& invalidation = cache["invalidation"];
+                    Cache::InvalidationRule defaultRule;
+                    defaultRule.keyPattern = "*";
+                    defaultRule.relatedPattern.clear();
+                    const auto strategy = invalidation.get("default_strategy", "active").asString();
+                    if (strategy == "passive") {
+                        defaultRule.strategy = Cache::InvalidationStrategy::Passive;
+                    } else if (strategy == "delayed") {
+                        defaultRule.strategy = Cache::InvalidationStrategy::Delayed;
+                    } else if (strategy == "write_behind") {
+                        defaultRule.strategy = Cache::InvalidationStrategy::WriteBehind;
+                    } else {
+                        defaultRule.strategy = Cache::InvalidationStrategy::Active;
+                    }
+                    defaultRule.ttlSeconds = invalidation.get("default_ttl_seconds", 3600).asInt();
+                    defaultRule.delayMs = invalidation.get("default_delay_ms", 0).asInt();
+                    invalidationRules.push_back(defaultRule);
+                }
+            }
+
+            Cache::CacheStrategy::instance().init(cacheConfig);
+            Cache::CacheWarmup::instance().init(warmupConfig);
+            Cache::CacheInvalidation::instance().init(invalidationRules);
+
+            LOG_INFO << "[Cache] enabled=" << cacheConfig.enabled
+                     << " local_ttl=" << cacheConfig.localTtlSeconds
+                     << " redis_ttl=" << cacheConfig.redisTtlSeconds
+                     << " warmup_enabled=" << warmupConfig.enabled
+                     << " warmup_on_startup=" << warmupConfig.onStartup
+                     << " invalidation_rules=" << invalidationRules.size();
+        }
 
         // 加载 JWT 配置（secret 若为空则从 Vault 补全）
         JwtUtils::loadConfig();
@@ -2616,3 +2786,4 @@ load();
     }
     return 0;
 }
+

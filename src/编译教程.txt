@@ -1,0 +1,9 @@
+ninja -C g:\back\recovered\ruoyi-cpp\build-nginx ruoyi-cpp -j8
+
+
+
+
+
+
+
+http://127.0.0.1:18080/certmanager

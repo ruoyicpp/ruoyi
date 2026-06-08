@@ -3,9 +3,10 @@
 
 # 源文件
 set(LOG_SOURCES
-    # LogCollector.cc
-    # LogAnalyzer.cc
-    # LogSearchEngine.cc
+    LogCollector.cc
+    LogAnalyzer.cc
+    LogSearchEngine.cc
+    LogCtrl.cc
 )
 
 # 头文件
@@ -13,6 +14,7 @@ set(LOG_HEADERS
     LogCollector.h
     LogAnalyzer.h
     LogSearchEngine.h
+    LogCtrl.h
     LogQuery.h
 )
 

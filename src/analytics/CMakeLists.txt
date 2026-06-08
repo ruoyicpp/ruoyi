@@ -3,9 +3,10 @@
 
 # 源文件
 set(ANALYTICS_SOURCES
-    # DataWarehouse.cc
-    # ReportGenerator.cc
-    # BIIntegration.cc
+    DataWarehouse.cc
+    ReportGenerator.cc
+    BIIntegration.cc
+    DataExport.cc
 )
 
 # 头文件

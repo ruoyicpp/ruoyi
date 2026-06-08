@@ -292,15 +292,22 @@ public:
     bool checkAndRenewOnce() {
         std::lock_guard<std::mutex> lk(mu_);
         const std::string primaryDomain = cfg_.domains.front();
+        LOG_INFO << "[ACME][trace] checkAndRenewOnce begin domain=" << primaryDomain;
 
         // ── 查询现有证书 ────────────────────────────────────────────────
         int daysLeft = -1;
         std::string existingCertId;
         {
+            LOG_INFO << "[ACME][trace] ListCerts call begin";
             CertManagerDriver::AutoStr r; r.drv = &drv_;
             r.p = drv_.ListCerts();
+            LOG_INFO << "[ACME][trace] ListCerts call returned ptr=" << (r.p ? "non-null" : "null");
             std::string err; Json::Value data;
-            if (CertManagerDriver::parseResult(r.c_str(), data, err) && data.isArray()) {
+            const bool ok = CertManagerDriver::parseResult(r.c_str(), data, err);
+            LOG_INFO << "[ACME][trace] ListCerts parse ok=" << ok
+                     << " isArray=" << data.isArray()
+                     << " err=" << err;
+            if (ok && data.isArray()) {
                 for (auto& c : data) {
                     // 匹配主域名
                     bool match = false;
@@ -313,9 +320,13 @@ public:
                     }
                 }
             }
+            LOG_INFO << "[ACME][trace] ListCerts result existingCertId=" << existingCertId
+                     << " daysLeft=" << daysLeft;
         }
 
         bool needRenew = (daysLeft < 0) || (daysLeft <= cfg_.renewDaysBefore);
+        LOG_INFO << "[ACME][trace] needRenew=" << needRenew
+                 << " threshold=" << cfg_.renewDaysBefore;
         if (!needRenew) {
             LOG_INFO << "[ACME] cert valid, " << daysLeft << " days left (threshold="
                      << cfg_.renewDaysBefore << ")";
@@ -332,7 +343,9 @@ public:
         {
             CertManagerDriver::AutoStr r; r.drv = &drv_;
             if (!existingCertId.empty() && daysLeft >= 0) {
+                LOG_INFO << "[ACME][trace] RenewCert call begin certId=" << existingCertId;
                 r.p = drv_.RenewCert(existingCertId.c_str(), 0);
+                LOG_INFO << "[ACME][trace] RenewCert call returned ptr=" << (r.p ? "non-null" : "null");
             } else {
                 // 构建逗号分隔的域名列表
                 std::string domainList;
@@ -340,6 +353,9 @@ public:
                     if (i) domainList += ",";
                     domainList += cfg_.domains[i];
                 }
+                LOG_INFO << "[ACME][trace] ObtainCert call begin domains=" << domainList
+                         << " provider=" << cfg_.dnsProvider
+                         << " keyType=" << cfg_.keyType;
                 r.p = drv_.ObtainCert(
                     cfg_.email.c_str(),
                     domainList.c_str(),
@@ -348,9 +364,13 @@ public:
                     cfg_.keyType.c_str(),
                     0
                 );
+                LOG_INFO << "[ACME][trace] ObtainCert call returned ptr=" << (r.p ? "non-null" : "null");
             }
             std::string err; Json::Value data;
-            if (!CertManagerDriver::parseResult(r.c_str(), data, err)) {
+            const bool ok = CertManagerDriver::parseResult(r.c_str(), data, err);
+            LOG_INFO << "[ACME][trace] cert operation parse ok=" << ok
+                     << " err=" << err;
+            if (!ok) {
                 LOG_ERROR << "[ACME] cert operation failed: " << err;
                 return false;
             }
@@ -359,7 +379,11 @@ public:
         }
 
         // ── 写出证书文件 ────────────────────────────────────────────────
-        return writeCertFiles(newCertId.empty() ? primaryDomain : newCertId);
+        const auto certKey = newCertId.empty() ? primaryDomain : newCertId;
+        LOG_INFO << "[ACME][trace] writeCertFiles begin certKey=" << certKey;
+        const bool writeOk = writeCertFiles(certKey);
+        LOG_INFO << "[ACME][trace] writeCertFiles end ok=" << writeOk;
+        return writeOk;
     }
 
     bool isRunning() const { return running_.load(); }
@@ -490,18 +514,33 @@ private:
     CertManagerAcme& operator=(const CertManagerAcme&) = delete;
 
     void schedulerLoop() {
-        try { checkAndRenewOnce(); } catch (const std::exception& e) {
-            LOG_WARN << "[ACME] initial check error: " << e.what();
-        }
-        while (!stopRequested_.load()) {
-            for (int i = 0; i < 60 * cfg_.checkIntervalHours && !stopRequested_.load(); ++i)
-                std::this_thread::sleep_for(std::chrono::minutes(1));
-            if (stopRequested_.load()) break;
-            try { checkAndRenewOnce(); } catch (const std::exception& e) {
-                LOG_WARN << "[ACME] renew check error: " << e.what();
+        try {
+            try {
+                checkAndRenewOnce();
+            } catch (const std::exception& e) {
+                LOG_WARN << "[ACME] initial check error: " << e.what();
+            } catch (...) {
+                LOG_ERROR << "[ACME] initial check hit non-std exception";
             }
+
+            while (!stopRequested_.load()) {
+                for (int i = 0; i < 60 * cfg_.checkIntervalHours && !stopRequested_.load(); ++i)
+                    std::this_thread::sleep_for(std::chrono::minutes(1));
+                if (stopRequested_.load()) break;
+                try {
+                    checkAndRenewOnce();
+                } catch (const std::exception& e) {
+                    LOG_WARN << "[ACME] renew check error: " << e.what();
+                } catch (...) {
+                    LOG_ERROR << "[ACME] renew check hit non-std exception";
+                }
+            }
+            LOG_INFO << "[ACME] certmanager scheduler stopped";
+        } catch (const std::exception& e) {
+            LOG_ERROR << "[ACME] scheduler thread fatal std exception: " << e.what();
+        } catch (...) {
+            LOG_ERROR << "[ACME] scheduler thread fatal non-std exception";
         }
-        LOG_INFO << "[ACME] certmanager scheduler stopped";
     }
 
     bool writeCertFiles(const std::string& certId) {

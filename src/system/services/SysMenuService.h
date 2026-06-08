@@ -22,12 +22,14 @@
 
 #pragma once
 #include <json/json.h>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <set>
 #include "../../common/Constants.h"
 #include "../../common/SecurityUtils.h"
 #include "../../services/DatabaseService.h"
+#include "../../libs/plugin/PluginManager.h"
 
 /**
  * @class SysMenuService
@@ -103,10 +105,28 @@ public:
                 "ORDER BY m.parent_id,m.order_num",
                 {std::to_string(userId)});
         }
-        if (!res.ok()) return Json::Value(Json::arrayValue);
 
-        std::set<long> vis; auto menus = buildTree(res, 0, vis);
-        return buildRouters(menus);
+        Json::Value dbRouters(Json::arrayValue);
+        if (res.ok()) {
+            std::set<long> vis;
+            auto menus = buildTree(res, 0, vis);
+            dbRouters = buildRouters(menus);
+        }
+
+        Json::Value pluginMenus;
+        nlohmann::json pluginMenusNl;
+        ruoyi::plugin::PluginManager::instance().listAllMenusJson(pluginMenusNl);
+        Json::CharReaderBuilder rb;
+        std::string errs;
+        std::istringstream iss(pluginMenusNl.dump());
+        if (!Json::parseFromStream(rb, iss, &pluginMenus, &errs)) {
+            pluginMenus = Json::Value(Json::arrayValue);
+        }
+        Json::Value pluginRouters = buildPluginRouters(pluginMenus);
+        for (const auto& router : pluginRouters) {
+            dbRouters.append(router);
+        }
+        return dbRouters;
     }
 
     // 构建路由树（供前端 getRouters 使用）
@@ -272,6 +292,58 @@ private:
             }
         }
         return arr;
+    }
+
+    Json::Value buildPluginRouters(const Json::Value& pluginMenus) {
+        Json::Value normalizedMenus(Json::arrayValue);
+        if (!pluginMenus.isArray()) return Json::Value(Json::arrayValue);
+
+        Json::Int64 syntheticId = 900000000;
+        for (const auto& menu : pluginMenus) {
+            Json::Value normalized;
+            normalized["menuId"] = syntheticId++;
+            normalized["pluginName"] = menu.get("pluginName", "");
+            normalized["menuName"] = menu.get("name", "");
+            normalized["parentId"] = (Json::Int64)menu.get("parentId", 0).asInt64();
+            normalized["orderNum"] = menu.get("orderNum", 0);
+            normalized["path"] = menu.get("path", "");
+            normalized["component"] = menu.get("component", "");
+            normalized["query"] = menu.get("query", "");
+            normalized["isFrame"] = menu.get("isFrame", "1");
+            normalized["isCache"] = menu.get("isCache", "0");
+            normalized["menuType"] = menuTypeToRuoyi(menu.get("menuType", 0));
+            normalized["visible"] = menu.get("visible", "0");
+            normalized["status"] = "0";
+            normalized["perms"] = menu.get("perms", "");
+            normalized["icon"] = menu.get("icon", "#");
+            normalized["children"] = Json::Value(Json::arrayValue);
+            normalizedMenus.append(normalized);
+        }
+
+        auto pluginTree = buildPluginTree(normalizedMenus, 0);
+        return buildRouters(pluginTree);
+    }
+
+    Json::Value buildPluginTree(const Json::Value& menus, Json::Int64 parentId) {
+        Json::Value arr(Json::arrayValue);
+        for (const auto& menu : menus) {
+            if (menu["parentId"].asInt64() != parentId) continue;
+            Json::Value node = menu;
+            node["children"] = buildPluginTree(menus, node["menuId"].asInt64());
+            arr.append(node);
+        }
+        return arr;
+    }
+
+    std::string menuTypeToRuoyi(const Json::Value& menuType) {
+        if (menuType.isString()) {
+            auto v = menuType.asString();
+            if (v == "M" || v == "C" || v == "F") return v;
+        }
+        const int type = menuType.asInt();
+        if (type == 0) return "M";
+        if (type == 1) return "C";
+        return "F";
     }
 
     // 构建路由层级（递归）

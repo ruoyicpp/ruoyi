@@ -1,220 +1,196 @@
-# 日志聚合分析系统 (Log Aggregation & Analysis)
+# 日志聚合分析系统（第二阶段已实现，第三阶段已启动）
 
-## 📋 模块概述
+## 当前状态
 
-日志聚合分析系统提供企业级的日志收集、存储、搜索和分析能力，支持 ELK Stack 集成，可以处理海量日志数据。
+`src/log` 目录已经完成前两阶段落地，并已开始第三阶段的本地规则化预警实现。目前模块具备可编译、可接入主工程、可通过 HTTP API 对本地日志进行聚合检索、分析与预警摘要输出的能力。
 
-## 🎯 核心功能
+当前已实现：
 
-### 1. 日志收集
-- 实时日志收集
-- 多源日志汇聚
-- 日志格式标准化
-- 日志缓冲和批处理
+- `LogCollector`：支持主目录、额外目录、命名来源的采集状态汇总
+- `LogAnalyzer`：支持基础统计、趋势分析、热点分析、异常摘要、预设查询、本地规则化预警摘要
+- `LogSearchEngine`：支持本地日志文件扫描、结构化字段提取、按条件过滤
+- `LogQuery`：已实现查询、结果、热点、异常、分析、预警等领域模型
+- `LogCtrl`：已实现日志监控 API，并暴露第二阶段分析结果与第三阶段预警结果
+- `config.json` 中 `log.path`、`paths`、`sources`、`max_files`、`max_results`、`elasticsearch`、`kibana` 配置解析
+- 主工程编译接入：已启用 `src/log/*.cc`
 
-### 2. 日志存储
-- Elasticsearch 集成
-- 日志索引管理
-- 日志轮转和归档
-- 日志压缩和优化
+当前仍未实现：
 
-### 3. 日志搜索
-- 全文搜索
-- 字段搜索
-- 范围查询
-- 复杂查询支持
+- 真正的 Elasticsearch 写入与查询
+- Logstash 传输链路
+- Kibana 仪表盘自动配置
+- 持久化告警中心
+- 规则存储、静默、通知发送
 
-### 4. 日志分析
-- 日志统计分析
-- 日志趋势分析
-- 日志异常检测
-- 日志聚合分析
+## 第一、二阶段已实现能力
 
-### 5. 日志可视化
-- Kibana 集成
-- 自定义仪表盘
-- 日志图表展示
-- 实时日志流
+当前模块已经支持：
 
-### 6. 日志告警
-- 基于日志的告警规则
-- 日志异常告警
-- 日志错误告警
-- 日志性能告警
+- 从 `log.path` 读取默认日志目录
+- 未配置时回退到 `./logs`
+- 扫描 `.log` / `.txt` / `.jsonl` 文件
+- 额外目录 `paths` 扫描
+- 命名来源 `sources` 扫描
+- 关键词过滤
+- 级别过滤
+- 文件名/来源过滤
+- 时间范围过滤
+- 时间戳提取
+- 日志级别识别
+- `thread` / `logger` 等括号字段提取
+- 基础统计与趋势分析
+- 热点文件统计
+- 热点消息统计
+- 异常摘要分析
+- JSON API 返回搜索与分析结果
 
-## 📁 文件结构
+## 第三阶段当前已实现能力
 
-```
-src/log/
-├── LogCollector.h             - 日志收集器
-├── LogCollector.cc            - 实现代码
-├── LogAnalyzer.h              - 日志分析器
-├── LogAnalyzer.cc             - 实现代码
-├── LogSearchEngine.h          - 日志搜索引擎
-├── LogSearchEngine.cc         - 实现代码
-├── LogQuery.h                 - 日志查询接口
-├── LogCtrl.h                  - 日志管理 API
-├── CMakeLists.txt             - 编译配置
-└── README.md                  - 本文件
-```
+当前已落地的第三阶段能力：
 
-## 🚀 快速开始
+- 基于分析结果生成本地告警摘要
+- 支持高错误率预警
+- 支持错误突增预警
+- 支持未知级别过多预警
+- 支持解析失败过多预警
+- 支持重复热点消息预警
+- 通过独立 API 输出告警列表
 
-### 1. 配置日志系统
+## 已提供的 API
+
+当前模块已提供以下接口：
+
+- `GET /monitor/logs/search`
+- `GET /monitor/logs/stats`
+- `GET /monitor/logs/trends`
+- `GET /monitor/logs/analysis`
+- `GET /monitor/logs/collector`
+- `GET /monitor/logs/hot-files`
+- `GET /monitor/logs/hot-messages`
+- `GET /monitor/logs/anomalies`
+- `GET /monitor/logs/alerts`
+- `GET /monitor/logs/errors`
+- `GET /monitor/logs/warnings`
+- `GET /monitor/logs/performance`
+
+## 当前设计说明
+
+前三阶段当前实现优先保证：
+
+- 可编译
+- 可运行
+- 可接入主工程
+- 可在不依赖外部 ELK 的前提下独立工作
+- 为后续规则预警增强与外部系统集成留好扩展点
+
+因此当前搜索与分析体系采用的是基于 `std::filesystem` + 行扫描 + 轻量结构化解析 + 本地规则评估的实现，而不是倒排索引、外部搜索引擎或独立告警平台。
+
+## 配置示例
 
 ```json
 {
   "log": {
     "enabled": true,
+    "path": "./logs",
+    "paths": [
+      "./logs/app",
+      "./logs/jobs"
+    ],
+    "sources": [
+      {
+        "name": "gateway",
+        "path": "./logs/gateway",
+        "enabled": true
+      },
+      {
+        "name": "worker",
+        "path": "./logs/worker",
+        "enabled": true
+      }
+    ],
+    "max_files": 20,
+    "max_results": 500,
+    "alerts": {
+      "high_error_rate": 0.20,
+      "critical_error_rate": 0.40,
+      "error_spike_threshold": 5,
+      "critical_error_spike_count": 3,
+      "unknown_level_ratio": 0.10,
+      "warning_unknown_level_ratio": 0.25,
+      "parse_failure_ratio": 0.10,
+      "warning_parse_failure_ratio": 0.30,
+      "repeated_message_count": 20,
+      "repeated_message_ratio": 0.15,
+      "warning_repeated_message_ratio": 0.30
+    },
     "elasticsearch": {
-      "host": "localhost",
+      "enabled": false,
+      "host": "127.0.0.1",
       "port": 9200,
       "index_prefix": "ruoyi-logs"
     },
-    "logstash": {
-      "enabled": true,
-      "host": "localhost",
-      "port": 5000
-    },
     "kibana": {
-      "enabled": true,
-      "host": "localhost",
+      "enabled": false,
+      "host": "127.0.0.1",
       "port": 5601
     }
   }
 }
 ```
 
-### 2. 初始化日志系统
+说明：
 
-```cpp
-#include "log/LogCollector.h"
+- `path` 是默认日志目录
+- `paths` 是额外目录列表
+- `sources` 用于声明具名日志来源
+- `alerts` 用于覆盖本地预警规则阈值
+- 如果 `path` 为空，则自动回退到 `./logs`
+- `elasticsearch` / `kibana` 目前仍是配置预留，不会真正联网使用
 
-// 初始化
-LogCollector::instance().init(config["log"]);
+## 第三阶段实施说明
 
-// 启动日志收集
-LogCollector::instance().start();
-```
+第三阶段当前先实现“规则化预警”本地闭环，而不是直接跳到 ELK 接入。
 
-### 3. 搜索日志
+### 当前规则示例
 
-```cpp
-#include "log/LogSearchEngine.h"
+当前默认会评估以下规则：
 
-// 创建查询
-LogQuery query;
-query.keyword = "error";
-query.timeRange = {startTime, endTime};
-query.level = "ERROR";
+- `high_error_rate`：错误率超过阈值
+- `error_spike`：5 分钟窗口内存在错误突增
+- `unknown_level_ratio`：未知级别日志占比过高
+- `parse_failure_ratio`：时间戳解析失败占比过高
+- `repeated_hot_message`：单条热点消息重复过多
 
-// 执行搜索
-auto results = LogSearchEngine::instance().search(query);
-```
+### `GET /monitor/logs/alerts` 返回内容
 
-## 📊 API 端点
+该接口当前会返回：
 
-```
-GET  /monitor/logs/search              - 搜索日志
-GET  /monitor/logs/stats               - 日志统计
-GET  /monitor/logs/trends              - 日志趋势
-GET  /monitor/logs/analysis            - 日志分析
+- `hasAlerts`：当前是否命中告警
+- `totalAlerts`：命中告警数量
+- `alerts`：告警列表
 
-GET  /monitor/logs/errors              - 获取错误日志
-GET  /monitor/logs/warnings            - 获取警告日志
-GET  /monitor/logs/performance         - 获取性能日志
+每条告警包含：
 
-POST /monitor/logs/alert/rules         - 创建日志告警规则
-GET  /monitor/logs/alert/rules         - 获取日志告警规则
-DELETE /monitor/logs/alert/rules/{id}  - 删除日志告警规则
-```
+- `ruleId`
+- `level`
+- `title`
+- `summary`
+- `value`
+- `threshold`
 
-## 🔧 ELK Stack 集成
+## 后续阶段建议
 
-### Elasticsearch 配置
+在本地规则化预警稳定后，再继续接入：
 
-```bash
-# 创建索引模板
-PUT _index_template/ruoyi-logs
-{
-  "index_patterns": ["ruoyi-logs-*"],
-  "settings": {
-    "number_of_shards": 3,
-    "number_of_replicas": 1
-  },
-  "mappings": {
-    "properties": {
-      "timestamp": {"type": "date"},
-      "level": {"type": "keyword"},
-      "message": {"type": "text"},
-      "traceId": {"type": "keyword"},
-      "userId": {"type": "keyword"}
-    }
-  }
-}
-```
+- Elasticsearch
+- Logstash
+- Kibana
+- 通知通道与告警中心
+- 规则持久化与静默策略
 
-### Logstash 配置
+## 相关说明
 
-```logstash
-input {
-  tcp {
-    port => 5000
-    codec => json
-  }
-}
-
-filter {
-  mutate {
-    add_field => { "[@metadata][index_name]" => "ruoyi-logs-%{+YYYY.MM.dd}" }
-  }
-}
-
-output {
-  elasticsearch {
-    hosts => ["localhost:9200"]
-    index => "%{[@metadata][index_name]}"
-  }
-}
-```
-
-### Kibana 配置
-
-1. 创建 Index Pattern：`ruoyi-logs-*`
-2. 创建自定义仪表盘
-3. 配置日志告警规则
-
-## 💡 最佳实践
-
-1. **日志收集**
-   - 统一日志格式
-   - 添加必要的上下文信息
-   - 避免收集敏感信息
-
-2. **日志存储**
-   - 合理设置索引保留期
-   - 定期归档和清理
-   - 优化存储空间
-
-3. **日志搜索**
-   - 使用合适的查询条件
-   - 避免过于宽泛的搜索
-   - 利用缓存提高性能
-
-4. **日志分析**
-   - 定期分析日志趋势
-   - 及时发现异常
-   - 持续优化系统
-
-## 🔗 相关模块
-
-- [Alert](../alert/) - 性能告警系统（基于日志的告警）
-- [TaskQueue](../taskqueue/) - 异步任务队列（日志处理任务）
-- [Cache](../cache/) - 分布式缓存（日志缓存）
-
-## 📚 参考资源
-
-- [ELK Stack 官方文档](https://www.elastic.co/guide/index.html)
-- [日志搜索语法](docs/log-search-syntax.md)
-- [日志分析指南](docs/log-analysis-guide.md)
-
+- 当前 README 反映的是模块最新真实状态
+- 第一阶段、第二阶段都已经是实际代码，不再只是规划
+- 第三阶段已经开始实现本地规则预警
+- 后续若继续推进，应同步更新 README 与配置说明

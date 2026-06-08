@@ -4,6 +4,9 @@
 #include <memory>
 #include <functional>
 #include <nlohmann/json.hpp>
+#include <drogon/HttpRequest.h>
+#include <drogon/HttpResponse.h>
+#include <drogon/HttpTypes.h>
 
 namespace ruoyi {
 namespace plugin {
@@ -25,6 +28,15 @@ struct MenuItem {
     int menuType = 0;
     int parentId = 0;
     std::string meta;
+};
+
+using PluginResponseCallback = std::function<void(const drogon::HttpResponsePtr&)>;
+using PluginRouteHandler = std::function<void(const drogon::HttpRequestPtr&, PluginResponseCallback&&)>;
+
+struct RouteDescriptor {
+    std::string path;
+    std::vector<drogon::HttpMethod> methods;
+    PluginRouteHandler handler;
 };
 
 // AI 请求/响应结构
@@ -67,8 +79,11 @@ public:
     virtual void onLoad(const nlohmann::json& /*config*/) {}
     virtual void onUnload() {}
 
-    // 注册 drogon 路由
+    // 旧式注册接口：仅适用于无需卸载的静态注册场景
     virtual void registerRoutes() {}
+
+    // 新式受管路由接口：由 PluginManager 注册并在卸载后禁用
+    virtual std::vector<RouteDescriptor> routes() { return {}; }
 
     // 通知渠道
     virtual bool buildRequest(
