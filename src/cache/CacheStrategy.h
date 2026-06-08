@@ -17,6 +17,7 @@
 #include <variant>
 #include <vector>
 #include <json/json.h>
+#include "RedisCluster.h"
 
 namespace Cache {
 
@@ -72,6 +73,7 @@ struct CacheConfig {
     int lockTimeoutMs = 5000;
     bool enableRandomExpiryJitter = true;
     int randomExpiryJitterSeconds = 60;
+    ClusterConfig redisCluster;
 };
 
 // ── 分布式锁 ───────────────────────────────────────────────────────────────
@@ -99,7 +101,9 @@ public:
     static CacheStrategy& instance();
 
     void initialize(const CacheConfig& config);
+    void init(const CacheConfig& config) { initialize(config); }
     void shutdown();
+    void warmup();
 
     // 基础操作
     std::optional<CacheEntry> get(const std::string& key);
@@ -111,6 +115,9 @@ public:
     CacheEntry getOrSet(const std::string& key,
                         const std::function<CacheValue()>& loader,
                         int ttlSeconds = 0);
+    CacheEntry getWithLock(const std::string& key,
+                           const std::function<CacheValue()>& loader,
+                           int ttlSeconds = 0);
 
     // 分布式锁 (Redis)
     std::unique_ptr<DistributedLock> acquireLock(const std::string& key, int timeoutMs = 5000);
@@ -119,6 +126,7 @@ public:
     std::map<std::string, std::optional<CacheEntry>> mget(const std::vector<std::string>& keys);
     void mset(const std::map<std::string, CacheValue>& items, int ttlSeconds = 0);
     void mremove(const std::vector<std::string>& keys);
+    void warmupHotKeys(const std::vector<std::string>& keys, int ttlSeconds = 0);
 
     // 模式删除
     size_t removeByPattern(const std::string& pattern);
@@ -141,6 +149,7 @@ private:
     bool removeFromRedis(const std::string& key);
 
     int randomizeTtl(int baseTtl) const;
+    int resolveTtl(int ttlSeconds, bool isNullValue) const;
 
     mutable std::shared_mutex localMutex_;
     std::map<std::string, CacheEntry> localCache_;

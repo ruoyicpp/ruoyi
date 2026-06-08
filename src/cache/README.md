@@ -13,10 +13,9 @@
 - 集群扩容和缩容
 
 ### 2. 多层缓存架构
-- L1：Redis（分布式缓存）
-- L2：VRAM（GPU 显存缓存）
-- L3：Memory（内存缓存）
-- 自动降级和升级
+- L1：本地内存缓存
+- L2：Redis Cluster 抽象层
+- 自动回填和降级
 
 ### 3. 缓存穿透防护
 - 空值缓存
@@ -96,27 +95,31 @@ src/cache/
 ```cpp
 #include "cache/CacheStrategy.h"
 
+Cache::CacheConfig cacheConfig;
+cacheConfig.enabled = true;
+cacheConfig.redisTtlSeconds = 3600;
+
 // 初始化
-CacheStrategy::instance().init(config["cache"]);
+Cache::CacheStrategy::instance().init(cacheConfig);
 
 // 启动缓存预热
-CacheStrategy::instance().warmup();
+Cache::CacheStrategy::instance().warmup();
 ```
 
 ### 3. 使用缓存
 
 ```cpp
 // 获取缓存
-auto value = CacheStrategy::instance().get("key");
+auto value = Cache::CacheStrategy::instance().get("key");
 
 // 设置缓存
-CacheStrategy::instance().set("key", "value", 3600);
+Cache::CacheStrategy::instance().set("key", std::string("value"), 3600);
 
 // 删除缓存
-CacheStrategy::instance().remove("key");
+Cache::CacheStrategy::instance().remove("key");
 
 // 批量删除
-CacheStrategy::instance().removeByPattern("prefix:*");
+Cache::CacheStrategy::instance().removeByPattern("prefix:*");
 ```
 
 ## 📊 API 端点
@@ -140,21 +143,22 @@ GET  /monitor/cache/cluster/slots      - 获取集群槽位
 
 ```cpp
 // 缓存空值，防止频繁查询不存在的数据
-auto value = CacheStrategy::instance().getOrSet("user:999", [&]() {
+auto entry = Cache::CacheStrategy::instance().getOrSet("user:999", [&]() -> Cache::CacheValue {
     auto user = db.queryUser(999);
     if (!user) {
-        return CacheValue::null();  // 缓存空值
+        return std::monostate{};
     }
-    return CacheValue::of(user);
+    Json::Value jsonUser;
+    jsonUser["id"] = user->id;
+    return jsonUser;
 }, 3600);
 ```
 
 ### 布隆过滤器
 
 ```cpp
-// 使用布隆过滤器快速判断数据是否存在
-if (!CacheStrategy::instance().bloomFilter().contains("user:999")) {
-    // 数据肯定不存在，直接返回
+// 当前版本未内建 Bloom Filter，建议先按业务键前缀或主存储存在性做前置判断
+if (!db.mayExist("user:999")) {
     return nullptr;
 }
 ```
@@ -165,9 +169,8 @@ if (!CacheStrategy::instance().bloomFilter().contains("user:999")) {
 
 ```cpp
 // 使用互斥锁防止热点数据缓存失效时的并发查询
-auto value = CacheStrategy::instance().getWithLock("hot_key", [&]() {
-    // 只有一个线程会执行此代码
-    return queryHotData();
+auto entry = Cache::CacheStrategy::instance().getWithLock("hot_key", [&]() -> Cache::CacheValue {
+    return std::string("hot-data");
 }, 3600);
 ```
 
@@ -175,7 +178,7 @@ auto value = CacheStrategy::instance().getWithLock("hot_key", [&]() {
 
 ```cpp
 // 预热热点数据
-CacheStrategy::instance().warmupHotKeys({
+Cache::CacheStrategy::instance().warmupHotKeys({
     "user:1", "user:2", "user:3",
     "product:100", "product:101"
 });
@@ -188,17 +191,16 @@ CacheStrategy::instance().warmupHotKeys({
 ```cpp
 // 设置随机过期时间，避免大量缓存同时失效
 int ttl = 3600 + rand() % 600;  // 3600-4200 秒
-CacheStrategy::instance().set("key", "value", ttl);
+Cache::CacheStrategy::instance().set("key", std::string("value"), ttl);
 ```
 
 ### 多层缓存
 
 ```cpp
-// 自动使用多层缓存
-// L1: Redis
-// L2: VRAM (如果可用)
-// L3: Memory
-auto value = CacheStrategy::instance().get("key");
+// 当前实现使用两层缓存
+// L1: 本地内存
+// L2: Redis Cluster 抽象层
+auto value = Cache::CacheStrategy::instance().get("key");
 ```
 
 ## 💡 最佳实践

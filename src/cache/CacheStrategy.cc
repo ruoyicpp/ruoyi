@@ -5,12 +5,99 @@
 
 #include "CacheStrategy.h"
 
-#include <random>
-#include <thread>
+#include "CacheWarmup.h"
+#include "RedisCluster.h"
+
 #include <chrono>
 #include <cstdlib>
+#include <json/json.h>
+#include <random>
+#include <thread>
 
 namespace Cache {
+namespace {
+
+std::string serializeCacheValue(const CacheEntry& entry) {
+    Json::Value root;
+    root["isNull"] = entry.isNull;
+    root["expiresInMs"] = Json::Int64(std::chrono::duration_cast<std::chrono::milliseconds>(
+        entry.expiresAt - std::chrono::steady_clock::now()).count());
+
+    if (std::holds_alternative<std::string>(entry.value)) {
+        root["type"] = "string";
+        root["value"] = std::get<std::string>(entry.value);
+    } else if (std::holds_alternative<Json::Value>(entry.value)) {
+        root["type"] = "json";
+        root["value"] = std::get<Json::Value>(entry.value);
+    } else {
+        root["type"] = "null";
+        root["value"] = Json::Value();
+    }
+
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    return Json::writeString(builder, root);
+}
+
+std::optional<CacheEntry> deserializeCacheValue(const std::string& rawValue) {
+    if (rawValue.empty()) {
+        return std::nullopt;
+    }
+
+    Json::Value root;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    std::istringstream input(rawValue);
+    if (!Json::parseFromStream(builder, input, &root, &errors)) {
+        return std::nullopt;
+    }
+
+    CacheEntry entry;
+    entry.isNull = root.get("isNull", false).asBool();
+
+    const auto expiresInMs = root.get("expiresInMs", Json::Int64(0)).asInt64();
+    entry.expiresAt = std::chrono::steady_clock::now() + std::chrono::milliseconds(expiresInMs);
+
+    const auto type = root.get("type", "null").asString();
+    if (type == "string") {
+        entry.value = root["value"].asString();
+    } else if (type == "json") {
+        entry.value = root["value"];
+    } else {
+        entry.value = std::monostate{};
+    }
+
+    return entry;
+}
+
+bool matchesPattern(const std::string& value, const std::string& pattern) {
+    if (pattern.empty() || pattern == "*") {
+        return true;
+    }
+
+    const auto wildcardPos = pattern.find('*');
+    if (wildcardPos == std::string::npos) {
+        return value == pattern;
+    }
+
+    const auto prefix = pattern.substr(0, wildcardPos);
+    if (value.find(prefix) != 0) {
+        return false;
+    }
+
+    const auto suffix = pattern.substr(wildcardPos + 1);
+    if (suffix.empty()) {
+        return true;
+    }
+
+    if (value.size() < prefix.size() + suffix.size()) {
+        return false;
+    }
+
+    return value.rfind(suffix) == value.size() - suffix.size();
+}
+
+} // namespace
 
 // ── DistributedLock ────────────────────────────────────────────────────────
 
@@ -46,11 +133,22 @@ CacheStrategy& CacheStrategy::instance() {
 
 void CacheStrategy::initialize(const CacheConfig& config) {
     config_ = config;
-    // TODO: 连接 Redis
+
+    ClusterConfig clusterConfig = config_.redisCluster;
+    clusterConfig.enabled = config_.enabled && clusterConfig.enabled;
+    if (clusterConfig.enabled && clusterConfig.nodes.empty()) {
+        clusterConfig.nodes.push_back(RedisNode{"127.0.0.1", 6379, "", 0, true, "local"});
+    }
+    RedisCluster::instance().init(clusterConfig);
 }
 
 void CacheStrategy::shutdown() {
     clear();
+    RedisCluster::instance().shutdown();
+}
+
+void CacheStrategy::warmup() {
+    CacheWarmup::instance().runAsync();
 }
 
 std::optional<CacheEntry> CacheStrategy::get(const std::string& key) {
@@ -83,15 +181,13 @@ bool CacheStrategy::set(const std::string& key, const CacheValue& value, int ttl
         return false;
     }
 
-    int effectiveTtl = ttlSeconds > 0 ? ttlSeconds : config_.redisTtlSeconds;
-    if (config_.enableRandomExpiryJitter) {
-        effectiveTtl = randomizeTtl(effectiveTtl);
-    }
+    const bool isNullValue = std::holds_alternative<std::monostate>(value);
+    const int effectiveTtl = resolveTtl(ttlSeconds, isNullValue);
 
     CacheEntry entry;
     entry.value = value;
     entry.expiresAt = std::chrono::steady_clock::now() + std::chrono::seconds(effectiveTtl);
-    entry.isNull = std::holds_alternative<std::monostate>(value);
+    entry.isNull = isNullValue;
 
     bool redisOk = setToRedis(key, entry);
     bool localOk = setToLocal(key, entry);
@@ -119,20 +215,16 @@ bool CacheStrategy::exists(const std::string& key) {
 CacheEntry CacheStrategy::getOrSet(const std::string& key,
                                    const std::function<CacheValue()>& loader,
                                    int ttlSeconds) {
-    // 先查缓存
     if (auto entry = get(key)) {
         return *entry;
     }
 
-    // 尝试获取分布式锁防止击穿
     auto lock = acquireLock(key, config_.lockTimeoutMs);
 
-    // Double-check
     if (auto entry = get(key)) {
         return *entry;
     }
 
-    // 加载数据
     CacheValue value;
     try {
         value = loader();
@@ -140,21 +232,28 @@ CacheEntry CacheStrategy::getOrSet(const std::string& key,
         value = std::monostate{};
     }
 
-    // 空值缓存防穿透
-    if (std::holds_alternative<std::monostate>(value) && !config_.nullValueCaching) {
-        CacheEntry nullEntry;
-        nullEntry.isNull = true;
-        nullEntry.expiresAt = std::chrono::steady_clock::now() +
-                              std::chrono::seconds(config_.nullValueTtlSeconds);
-        return nullEntry;
-    }
-
-    set(key, value, ttlSeconds);
+    const bool isNullValue = std::holds_alternative<std::monostate>(value);
+    const int effectiveTtl = resolveTtl(ttlSeconds, isNullValue);
 
     CacheEntry entry;
     entry.value = value;
-    entry.expiresAt = std::chrono::steady_clock::now() + std::chrono::seconds(ttlSeconds);
+    entry.isNull = isNullValue;
+    entry.expiresAt = std::chrono::steady_clock::now() + std::chrono::seconds(effectiveTtl);
+
+    if (isNullValue && !config_.nullValueCaching) {
+        return entry;
+    }
+
+    setToRedis(key, entry);
+    setToLocal(key, entry);
+    stats_.sets.fetch_add(1, std::memory_order_relaxed);
     return entry;
+}
+
+CacheEntry CacheStrategy::getWithLock(const std::string& key,
+                                      const std::function<CacheValue()>& loader,
+                                      int ttlSeconds) {
+    return getOrSet(key, loader, ttlSeconds);
 }
 
 std::unique_ptr<DistributedLock> CacheStrategy::acquireLock(const std::string& key, int timeoutMs) {
@@ -187,25 +286,42 @@ void CacheStrategy::mremove(const std::vector<std::string>& keys) {
     }
 }
 
-size_t CacheStrategy::removeByPattern(const std::string& pattern) {
-    size_t count = 0;
+void CacheStrategy::warmupHotKeys(const std::vector<std::string>& keys, int ttlSeconds) {
+    std::vector<WarmupTask> tasks;
+    tasks.reserve(keys.size());
 
-    // 清理本地缓存
+    for (const auto& key : keys) {
+        tasks.push_back(WarmupTask{
+            key,
+            [key]() {
+                const auto entry = CacheStrategy::instance().get(key);
+                return entry ? entry->value : CacheValue{std::monostate{}};
+            },
+            ttlSeconds,
+        });
+    }
+
+    CacheWarmup::instance().addTasks(tasks);
+    CacheWarmup::instance().runAsync();
+}
+
+size_t CacheStrategy::removeByPattern(const std::string& pattern) {
+    size_t localCount = 0;
+
     {
         std::unique_lock lock(localMutex_);
         for (auto it = localCache_.begin(); it != localCache_.end(); ) {
-            // 简单前缀匹配
-            if (it->first.find(pattern) == 0) {
-                it = localCache_.erase(it), ++count;
+            if (matchesPattern(it->first, pattern)) {
+                it = localCache_.erase(it);
+                ++localCount;
             } else {
                 ++it;
             }
         }
     }
 
-    // TODO: Redis SCAN + DEL
-
-    return count;
+    const auto redisCount = static_cast<size_t>(std::max<long long>(0, RedisCluster::instance().delByPattern(pattern)));
+    return std::max(localCount, redisCount);
 }
 
 void CacheStrategy::clear() {
@@ -213,7 +329,11 @@ void CacheStrategy::clear() {
         std::unique_lock lock(localMutex_);
         localCache_.clear();
     }
-    // TODO: Redis FLUSHDB
+
+    const auto keys = RedisCluster::instance().scan("*", 1000000);
+    if (!keys.empty()) {
+        RedisCluster::instance().mdel(keys);
+    }
 }
 
 std::optional<CacheEntry> CacheStrategy::getFromLocal(const std::string& key) {
@@ -226,9 +346,8 @@ std::optional<CacheEntry> CacheStrategy::getFromLocal(const std::string& key) {
 }
 
 std::optional<CacheEntry> CacheStrategy::getFromRedis(const std::string& key) {
-    // TODO: 实际实现 Redis GET
-    (void)key;
-    return std::nullopt;
+    const auto rawValue = RedisCluster::instance().get(key);
+    return deserializeCacheValue(rawValue);
 }
 
 bool CacheStrategy::setToLocal(const std::string& key, const CacheEntry& entry) {
@@ -248,10 +367,10 @@ bool CacheStrategy::setToLocal(const std::string& key, const CacheEntry& entry) 
 }
 
 bool CacheStrategy::setToRedis(const std::string& key, const CacheEntry& entry) {
-    // TODO: 实际实现 Redis SETEX
-    (void)key;
-    (void)entry;
-    return true;
+    const auto serialized = serializeCacheValue(entry);
+    const auto ttlSeconds = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(
+        entry.expiresAt - std::chrono::steady_clock::now()).count());
+    return RedisCluster::instance().set(key, serialized, std::max(ttlSeconds, 1));
 }
 
 bool CacheStrategy::removeFromLocal(const std::string& key) {
@@ -261,15 +380,25 @@ bool CacheStrategy::removeFromLocal(const std::string& key) {
 }
 
 bool CacheStrategy::removeFromRedis(const std::string& key) {
-    // TODO: 实际实现 Redis DEL
-    (void)key;
-    return true;
+    return RedisCluster::instance().del(key);
 }
 
 int CacheStrategy::randomizeTtl(int baseTtl) const {
     static thread_local std::mt19937 gen{std::random_device{}()};
     std::uniform_int_distribution<int> dis(0, config_.randomExpiryJitterSeconds);
     return baseTtl + dis(gen);
+}
+
+int CacheStrategy::resolveTtl(int ttlSeconds, bool isNullValue) const {
+    int effectiveTtl = ttlSeconds > 0
+        ? ttlSeconds
+        : (isNullValue ? config_.nullValueTtlSeconds : config_.redisTtlSeconds);
+
+    if (config_.enableRandomExpiryJitter && effectiveTtl > 0) {
+        effectiveTtl = randomizeTtl(effectiveTtl);
+    }
+
+    return effectiveTtl > 0 ? effectiveTtl : 1;
 }
 
 } // namespace Cache
