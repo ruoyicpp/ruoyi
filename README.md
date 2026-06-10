@@ -214,7 +214,7 @@ RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管
 
 | 项目 | 要求 | 说明 |
 |------|------|-----|
-| **操作系统** | Windows 10+ / Linux / macOS | 已在 Windows 11 + MSYS2 MinGW64 验证 |
+| **操作系统** | Windows 10+ / Linux / macOS | 已在 Windows 11 + MSYS2 MinGW64 验证。<br/>⚠️ **Linux 系统严格仅支持 Ubuntu 24.04 LTS** (见 [Linux 运行环境说明](docs/LINUX_OS_REQUIREMENT.md)) |
 | **处理器** | x86-64 或 ARM64 | 推荐 4 核以上 |
 | **内存** | 最小 512MB，推荐 2GB+ | 包含数据库和应用 |
 | **磁盘** | 最小 500MB | 包含应用、日志、上传文件 |
