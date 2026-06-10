@@ -1,5 +1,5 @@
 {
-    "_listeners_comment": "Access mode description: (1) Local/LAN: port=18080, https=false -> http://localhost:18080  (2) Public domain without HTTPS: port=80, https=false -> http://yourdomain.com  (3) Public domain with HTTPS: keep port 80 (for ACME verification) + 443 or custom port, https=true, and enable acme block -> https://yourdomain.com",
+    "_listeners_comment": "访问模式说明：① 本地/局域网: port=18080, https=false → http://localhost:18080  ② 公网域名不带HTTPS: port=80, https=false → http://yourdomain.com  ③ 公网域名HTTPS: 保留80(ACME验证)+443或自定义端口, https=true, 同时启用 acme 块 → https://yourdomain.com",
     "listeners":  [
                       {
                           "address":  "0.0.0.0",
@@ -7,13 +7,13 @@
                           "https":  false
                       }
                   ],
-    "_listeners_https_comment":  "HTTPS mode description: (1) Port 80 must be https=false (plain text). Let's Encrypt HTTP-01 verification will access http://domain/.well-known/acme-challenge/xxx; if port 80 has HTTPS enabled, verification will fail and the certificate cannot be issued. (2) Business port (18080/443) should have https=true to load the certificate. (3) After successful certificate application, port 80 can be kept (for HTTP to HTTPS redirection) or closed.",
+    "_listeners_https_comment":  "HTTPS模式说明：① 80端口必须 https=false（明文），Let's Encrypt HTTP-01验证时会访问 http://域名/.well-known/acme-challenge/xxx，若80端口开HTTPS则验证失败无法颁发证书。② 业务端口(18080/443)开 https=true 加载证书。③ 证书申请成功后80端口可保留(用于HTTP跳转HTTPS)也可关闭。",
     "_listeners_https_example":  [
                                      {
                                          "address":  "0.0.0.0",
                                          "port":  80,
                                          "https":  false,
-                                         "_comment":  "Dedicated for ACME HTTP-01 verification: Must be plain HTTP, cannot enable HTTPS, otherwise Let's Encrypt cannot verify the domain"
+                                         "_comment":  "ACME HTTP-01验证专用：必须明文HTTP，不能开HTTPS，否则Let's Encrypt无法验证域名"
                                      },
                                      {
                                          "address":  "0.0.0.0",
@@ -21,7 +21,7 @@
                                          "https":  true,
                                          "cert":  "nginx/ssl/server.crt",
                                          "key":  "nginx/ssl/server.key",
-                                         "_comment":  "Business port: Load certificate with HTTPS enabled, access URL https://yourdomain.com:18080"
+                                         "_comment":  "业务端口：加载证书开HTTPS，访问地址 https://yourdomain.com:18080"
                                      }
                                  ],
     "ui":  {
@@ -35,14 +35,14 @@
                 "upload_path":  "./upload",
                 "enable_server_header":  false,
                 "enable_date_header":  true,
-                "_reuse_port_comment":  "false = Single process multi-threaded (default and recommended). true = SO_REUSEPORT multi-process mode: multiple instances of ruoyi-cpp.exe can be started simultaneously, with connection distribution managed by the OS kernel. Requires Windows 10 1809+ / Linux 3.9+, and the listen directive in nginx.conf must include reuseport.",
+                "_reuse_port_comment":  "false=单进程多线程（默认推荐）。true=SO_REUSEPORT 多进程模式：可同时启动多份 ruoyi-cpp.exe，OS 内核分发连接。需 Windows 10 1809+/Linux 3.9+，且 nginx.conf 的 listen 行需带 reuseport。",
                 "reuse_port":  false,
                 "client_max_body_size":  "20M",
                 "client_max_memory_body_size":  "1M",
                 "keepalive_requests_number":  0,
                 "pipelining_requests_number":  0,
                 "log":  {
-                            "comment":  "Set log_path to an empty string to disable the built-in drogon AsyncFileLogger, allowing JsonLogger to take over",
+                            "comment":  "log_path 设为空字符串以禁用 drogon 内置 AsyncFileLogger，由 JsonLogger 接管",
                             "log_path":  "",
                             "logfile_base_name":  "ruoyi",
                             "log_size_limit":  104857600,
@@ -51,10 +51,10 @@
                         }
             },
     "storage": {
-        "_comment": "File storage configuration: type=local (default local disk) | minio (minio-cpp SDK) | s3 (handwritten SigV4)",
+        "_comment": "文件存储配置：type=local（默认本地磁盘）| minio（minio-cpp SDK）| s3（手写 SigV4）",
         "type": "local",
         "local_path": "./upload",
-        "_local_only_fields_comment": "The following fields only take effect when type=minio or type=s3",
+        "_local_only_fields_comment": "以下字段仅 type=minio 或 type=s3 时生效",
         "endpoint": "http://127.0.0.1:9000",
         "bucket": "ruoyi",
         "access_key": "",
@@ -243,7 +243,7 @@
     "menu":  {
                  "_comment":  "Optional explicit override for the \u0027log viewer\u0027 menu URL. Empty = auto-derived from frontend/embedded_frontend at startup; dev-separate falls back to http://localhost:3000/dev-api/monitor/logfile/page.",
                  "logfile_external_url":  "",
-                 "_api_base_url_comment":  "Fill in during production/public deployment, startup will automatically replace the localhost address of all InnerLink menus. E.g.: https://yourdomain.com:20443",
+                 "_api_base_url_comment":  "生产/公网部署时填入，启动自动替换所有 InnerLink 菜单的 localhost 地址。例: https://yourdomain.com:20443",
                  "api_base_url":  ""
              },
     "nginx_embedded":  {
@@ -261,7 +261,7 @@
                            "reload_debounce_ms":  1500
                        },
     "acme":  {
-                 "_comment":  "ACME certificate management: Supports two methods: (1) certmanager.dll (recommended, DNS verification), (2) win-acme/acme.sh (subprocess, HTTP-01 verification). certmanager takes priority when enabled=true and dns_provider is not empty.",
+                 "_comment":  "ACME 证书管理：支持两种方式 ① certmanager.dll（推荐，DNS 验证）② win-acme/acme.sh（子进程，HTTP-01 验证）。优先使用 certmanager（enabled=true 且 dns_provider 非空时）。",
                  "enabled":  true,
                  "certmanager_lib":  "certmanager.dll",
                  "lego_path":  ".lego",
@@ -435,13 +435,13 @@
                   "auto_init":  false
               },
     "ai_fallback":  {
-                        "_comment":  "External AI fallback chain: Try sequentially in order, the first successful one will be used",
+                        "_comment":  "外部 AI fallback 链：按顺序依次尝试，第一个成功就用",
                         "enabled":  true,
                         "timeout_ms":  15000,
                         "providers":  [
                                           {
                                               "name":  "turing",
-                                              "_comment":  "Turing Robot (210ms, QPS 50/s)",
+                                              "_comment":  "图灵机器人 (210ms, QPS 50/s)",
                                               "url":  "https://v2.xxapi.cn",
                                               "path":  "/api/turing",
                                               "param":  "msg",
@@ -450,7 +450,7 @@
                                           },
                                           {
                                               "name":  "spark-lite-1.5",
-                                              "_comment":  "iFlytek Spark Lite (~4s, good quality)",
+                                              "_comment":  "讯飞星火 Lite (~4s, 质量好)",
                                               "url":  "https://api.pearapi.ai",
                                               "path":  "/api/xfai/",
                                               "param":  "message",
@@ -460,7 +460,7 @@
                                       ]
                     },
     "alert":  {
-                  "_comment":  "Performance alert system configuration",
+                  "_comment":  "性能告警系统配置",
                   "enabled":  true,
                   "checkInterval":  5000,
                   "maxAlerts":  10000,
@@ -468,7 +468,7 @@
                   "rules":  [
                                {
                                    "id":  "cpu_high",
-                                   "name":  "CPU usage too high",
+                                   "name":  "CPU 使用率过高",
                                    "type":  0,
                                    "severity":  2,
                                    "metric":  "cpu_usage",
@@ -483,7 +483,7 @@
                                },
                                {
                                    "id":  "memory_high",
-                                   "name":  "Memory usage too high",
+                                   "name":  "内存使用率过高",
                                    "type":  0,
                                    "severity":  2,
                                    "metric":  "memory_usage",
@@ -498,7 +498,7 @@
                                },
                                {
                                    "id":  "disk_high",
-                                   "name":  "Disk usage too high",
+                                   "name":  "磁盘使用率过高",
                                    "type":  0,
                                    "severity":  1,
                                    "metric":  "disk_usage",
@@ -524,7 +524,7 @@
                                }
               },
     "taskQueue":  {
-                      "_comment":  "Asynchronous task queue configuration",
+                      "_comment":  "异步任务队列配置",
                       "enabled":  true,
                       "workers":  4,
                       "pollInterval":  1000,
@@ -532,5 +532,22 @@
                       "retryBackoff":  60,
                       "taskTimeout":  300000,
                       "queueTypes":  ["email", "export", "process", "notification"]
-                  }
+                  },
+    "im":  {
+                "_comment":  "即时通讯系统配置（参考 dujiao 设计模式）",
+                "enabled":  true,
+                "dll_path":  "./tangsengdaodao.dll",
+                "config_dir":  "./im_config",
+                "prefix":  "/api/im",
+                "public_prefix":  "/im",
+                "internal_port":  8082,
+                "ffi":  true,
+                "autostart":  true,
+                "log_level":  "info",
+                "max_connections":  10000,
+                "connection_timeout":  30000,
+                "request_timeout":  5000,
+                "enable_websocket":  true,
+                "websocket_path":  "/ws/im"
+            }
 }
