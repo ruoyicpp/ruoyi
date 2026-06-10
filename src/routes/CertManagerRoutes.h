@@ -1,10 +1,65 @@
+/**
+ * @file CertManagerRoutes.h
+ * @brief SSL/TLS 证书管理路由
+ * 
+ * 功能概述：
+ *   - 证书管理 Web UI：/certmanager 路由，提供证书管理界面
+ *   - 证书管理 API：/certmanager/api/* 路由，提供证书管理 REST API
+ *   - 旧版兼容 API：/api/ssl/* 路由，支持旧版前端调用
+ *   - ACME 集成：支持 Let's Encrypt 自动化证书申请和续期
+ *   - DNS 验证：支持多种 DNS 提供商进行域名验证
+ * 
+ * 路由列表：
+ *   - GET /certmanager - 证书管理 Web UI
+ *   - GET /certmanager/api/info - 获取证书管理器版本信息
+ *   - GET /certmanager/api/certificates - 列出所有证书
+ *   - GET /certmanager/api/accounts - 列出所有 ACME 账户
+ *   - POST /certmanager/api/accounts - 注册新 ACME 账户
+ *   - GET /certmanager/api/dns-providers - 列出支持的 DNS 提供商
+ *   - POST /certmanager/api/certificates/obtain - 申请新证书
+ *   - POST /certmanager/api/certificates/renew - 续期证书
+ *   - POST /certmanager/api/certificates/revoke - 撤销证书
+ *   - GET /certmanager/api/certificates/{id}/download/{type} - 下载证书文件
+ * 
+ * 认证方式：
+ *   - 令牌认证：支持 JWT 令牌（Header、Cookie、Query 参数）
+ *   - localhost 白名单：开发环境可直接访问
+ *   - 管理员认证：/api/ssl/* 接口要求管理员权限
+ * 
+ * @see CertManagerAcme - ACME 证书管理器
+ * @see CertManagerDriver - 证书管理驱动
+ */
+
 #pragma once
 #include "AppIncludes.h"
 #include "services/CertManagerDriver.h"
 
+/**
+ * @brief 注册 SSL/TLS 证书管理路由
+ * 
+ * 在应用启动时调用此函数，注册证书管理相关的所有路由。
+ * 包括 Web UI、REST API 和旧版兼容接口。
+ * 
+ * @note 此函数应在 main() 中调用
+ */
 inline void registerCertManagerRoutes() {
     // ── 公共鉴权 lambda ──────────────────────────────────────────────
-    // Cookie Admin-Token / Authorization header / query param token / localhost
+    /**
+     * @brief 证书管理器公共认证函数
+     * 
+     * 支持多种令牌来源和 localhost 白名单。
+     * 用于 /certmanager 和 /certmanager/api/* 接口。
+     * 
+     * 认证流程：
+     *   1. 从 Authorization Header 提取令牌
+     *   2. 如果不存在，从 Cookie 中的 Admin-Token 提取
+     *   3. 如果不存在，从 Query 参数中的 token 提取
+     *   4. 验证 JWT 令牌有效性
+     *   5. 如果令牌无效，检查 localhost 白名单
+     * 
+     * @param req HTTP 请求对象
+     * @return true 如果认证通过，false 否则
+     */
     auto cmAuth = [](const drogon::HttpRequestPtr& req) -> bool {
         auto token = SecurityUtils::getToken(req);
         if (token.empty()) {
@@ -24,26 +79,55 @@ inline void registerCertManagerRoutes() {
                 if (TokenCache::instance().get(userKey)) return true;
             } catch (...) {}
         }
+        // localhost 白名单
         const auto& peer = req->getPeerAddr().toIp();
         return (peer == "127.0.0.1" || peer == "::1" || peer == "0.0.0.0");
     };
+    
+    /**
+     * @brief 生成 401 未授权响应（JSON 格式）
+     */
     auto cm401 = []() {
         Json::Value e; e["error"] = "Unauthorized";
         return drogon::HttpResponse::newHttpJsonResponse(e);
     };
 
-    // 管理员级鉴权（/api/ssl/* 接口要求）
+    // ── 管理员级鉴权（/api/ssl/* 接口要求）────────────────────────────
+    /**
+     * @brief SSL 管理员认证函数
+     * 
+     * 用于 /api/ssl/* 接口，要求用户是管理员。
+     * 比 cmAuth 更严格，不允许 localhost 白名单。
+     * 
+     * @param req HTTP 请求对象
+     * @return true 如果用户是管理员，false 否则
+     */
     auto sslAuth = [](const drogon::HttpRequestPtr& req) -> bool {
         auto user = TokenService::instance().getLoginUser(req);
         return user.has_value() && SecurityUtils::isAdmin(user->userId);
     };
+    
+    /**
+     * @brief 生成 401 未授权响应（RuoYi 格式）
+     */
     auto ssl401 = []() {
         Json::Value e; e["code"] = 401; e["msg"] = "未授权";
         return drogon::HttpResponse::newHttpJsonResponse(e);
     };
 
-    // ── certmanager Web UI ──────────────────────────────────────────
-    // GET /certmanager → 读取 certmanager-web/index.html
+    // ── certmanager Web UI ──────────────────────────────────────────────
+    /**
+     * @brief 证书管理器 Web UI 路由
+     * 
+     * GET /certmanager - 返回证书管理器 Web 界面
+     * 
+     * 流程：
+     *   1. 验证用户认证（令牌或 localhost）
+     *   2. 如果认证失败，返回 401 错误页面
+     *   3. 加载 certmanager-web/index.html 文件
+     *   4. 如果文件不存在，返回 404 错误
+     *   5. 返回 HTML 页面
+     */
     drogon::app().registerHandler("/certmanager",
         [cmAuth](const drogon::HttpRequestPtr& req,
                  std::function<void(const drogon::HttpResponsePtr&)>&& cb) {

@@ -48,7 +48,7 @@
  * 提供权限和角色检查的静态方法。
  * 所有方法都是静态的，无需创建实例。
  * 
- * 对应 RuoYi.Net 中的 [AppAuthorize] 特性，提供基于权限字符串的访问控制。
+ * 对应 RuoYi 中的 [AppAuthorize] 特性，提供基于权限字符串的访问控制。
  */
 class PermissionChecker {
 public:

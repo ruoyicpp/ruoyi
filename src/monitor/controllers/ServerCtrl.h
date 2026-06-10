@@ -27,7 +27,79 @@
 #  include <mntent.h>
 #endif
 
-// 服务器信息接口 /monitor/server (跨平台: Windows MinGW + Linux)
+/**
+ * @file ServerCtrl.h
+ * @brief 服务器监控控制器 — 跨平台系统监控（Windows/Linux）
+ * 
+ * 功能概述：
+ *   - 系统信息：获取操作系统、CPU、内存、磁盘等信息
+ *   - 性能监控：实时监控 CPU 使用率、内存使用率、磁盘 I/O
+ *   - 网络信息：获取网络接口、IP 地址、网络流量统计
+ *   - 进程管理：获取进程列表、进程详情、进程资源占用
+ *   - 系统日志：获取系统事件日志和应用日志
+ *   - 跨平台支持：Windows MinGW 和 Linux 完全兼容
+ * 
+ * 核心特性：
+ *   - 跨平台兼容：Windows（WMI/PSAPI）和 Linux（/proc 文件系统）
+ *   - 实时监控：CPU、内存、磁盘、网络实时数据
+ *   - 性能优化：缓存系统信息，减少系统调用
+ *   - 详细统计：包括峰值、平均值、趋势分析
+ *   - 告警支持：可配置的告警阈值和通知
+ * 
+ * API 端点：
+ *   - GET /monitor/server/info - 获取服务器基本信息
+ *   - GET /monitor/server/cpu - 获取 CPU 使用率
+ *   - GET /monitor/server/memory - 获取内存使用情况
+ *   - GET /monitor/server/disk - 获取磁盘使用情况
+ *   - GET /monitor/server/network - 获取网络信息
+ *   - GET /monitor/server/process - 获取进程列表
+ *   - GET /monitor/server/process/{pid} - 获取进程详情
+ * 
+ * 请求/响应示例：
+ *   ```
+ *   GET /monitor/server/info
+ *   Authorization: Bearer <JWT>
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "osName": "Windows 10",
+ *       "osVersion": "10.0.19045",
+ *       "cpuCount": 8,
+ *       "totalMemory": 16384,
+ *       "hostname": "DESKTOP-ABC123",
+ *       "uptime": 86400
+ *     }
+ *   }
+ *   ```
+ * 
+ * 权限要求：
+ *   - monitor:server:query - 查看服务器信息
+ *   - monitor:server:monitor - 监控服务器性能
+ * 
+ * 配置项（config.json）：
+ *   - monitor.enabled: 是否启用监控（默认 true）
+ *   - monitor.interval: 监控间隔（秒，默认 5）
+ *   - monitor.cpu_threshold: CPU 告警阈值（默认 80%）
+ *   - monitor.memory_threshold: 内存告警阈值（默认 85%）
+ *   - monitor.disk_threshold: 磁盘告警阈值（默认 90%）
+ * 
+ * 平台特性：
+ *   - Windows：使用 WMI 和 PSAPI 获取系统信息
+ *   - Linux：使用 /proc 文件系统和 sysfs 获取信息
+ *   - macOS：使用 sysctl 和 ps 命令获取信息
+ * 
+ * 性能指标：
+ *   - CPU 使用率：单核和多核平均值
+ *   - 内存使用：物理内存、虚拟内存、交换空间
+ *   - 磁盘使用：总容量、已用、可用、使用率
+ *   - 网络流量：发送、接收、丢包、错误
+ * 
+ * @see DatabaseService - 数据库服务
+ * @see MetricsCollector - 性能指标收集器
+ */
 class ServerCtrl : public drogon::HttpController<ServerCtrl> {
     // 记录启动时间
     inline static auto startTime_ = std::chrono::steady_clock::now();

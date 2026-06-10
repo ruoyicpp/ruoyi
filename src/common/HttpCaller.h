@@ -51,6 +51,41 @@
  *   - http.max_retries: 最大重试次数（默认 0）
  */
 
+/**
+ * @file HttpCaller.h
+ * @brief HTTP 客户端工具 — 支持异步 HTTP 请求和连接池
+ * 
+ * 功能概述：
+ *   - HTTP 请求：支持 GET、POST、PUT、DELETE、PATCH 等方法
+ *   - 异步请求：非阻塞的异步 HTTP 请求
+ *   - 连接池：支持连接复用和连接池管理
+ *   - 超时控制：支持请求级别和连接级别的超时
+ *   - 重试机制：支持自动重试和指数退避
+ *   - SSL/TLS：支持 HTTPS 和证书验证
+ * 
+ * 核心特性：
+ *   - 基于 Drogon HttpClient：使用 Drogon 框架的 HTTP 客户端
+ *   - 连接复用：支持 HTTP Keep-Alive，减少连接开销
+ *   - 自动重试：失败请求自动重试，支持指数退避
+ *   - 请求拦截：支持请求/响应拦截器，用于日志、监控等
+ *   - 性能监控：记录请求延迟、吞吐量、错误率
+ *   - 限流控制：支持请求限流，防止过载
+ * 
+ * 支持的功能：
+ *   - 自定义请求头：支持添加自定义 HTTP 头
+ *   - 请求体：支持 JSON、表单、二进制等多种请求体格式
+ *   - 响应处理：自动解析 JSON 响应，支持自定义解析
+ *   - Cookie 管理：自动管理 Cookie，支持 Cookie 持久化
+ *   - 代理支持：支持 HTTP 代理和 SOCKS 代理
+ *   - 性能优化：支持请求压缩、响应解压
+ * 
+ * 配置项（config.json）：
+ *   - http.client.timeout_ms: 请求超时（毫秒，默认 30000）
+ *   - http.client.max_retries: 最大重试次数（默认 3）
+ *   - http.client.pool_size: 连接池大小（默认 10）
+ *   - http.client.proxy: 代理地址（可选）
+ */
+
 #pragma once
 #include <drogon/HttpClient.h>
 #include <drogon/HttpRequest.h>

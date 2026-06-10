@@ -6,16 +6,103 @@
 #include "../../filters/PermFilter.h"
 #include "../../services/CertManagerDriver.h"
 
-// ACME 证书管理（通过 certmanager 动态库）
-//
-// GET  /system/cert/list              列出所有证书
-// GET  /system/cert/info?certId=xxx   获取证书详情
-// GET  /system/cert/dns-providers     列出支持的 DNS 提供商
-// GET  /system/cert/status            运行状态（是否已加载 DLL）
-// POST /system/cert/obtain            申请新证书（DNS-01，异步）
-// POST /system/cert/renew             续期证书（异步）
-// POST /system/cert/revoke            吊销证书
-// POST /system/cert/renew-check       立即触发一次续期检查（调度线程任务）
+/**
+ * @file SysCertManagerCtrl.h
+ * @brief ACME 证书管理控制器 — 自动化 SSL/TLS 证书申请和管理
+ * 
+ * 功能概述：
+ *   - 证书列表：显示所有已申请的 SSL/TLS 证书
+ *   - 证书详情：查看证书的详细信息和有效期
+ *   - 证书申请：通过 ACME 自动申请 Let's Encrypt 证书
+ *   - 证书续期：自动续期即将过期的证书
+ *   - 证书吊销：吊销不需要的证书
+ *   - DNS 提供商：支持多个 DNS 提供商进行 DNS-01 验证
+ * 
+ * 核心特性：
+ *   - ACME 自动化：通过 ACME 协议自动申请和续期证书
+ *   - DNS-01 验证：支持 DNS-01 验证方式，适合通配符证书
+ *   - 异步处理：证书申请和续期异步进行，不阻塞主线程
+ *   - 多 DNS 提供商：支持 Cloudflare、Aliyun、Tencent 等
+ *   - 自动续期：定时检查证书有效期，自动续期
+ *   - 证书管理：完整的证书生命周期管理
+ * 
+ * API 端点：
+ *   - GET /system/cert/list - 列出所有证书
+ *   - GET /system/cert/info - 获取证书详情
+ *   - GET /system/cert/dns-providers - 列出支持的 DNS 提供商
+ *   - GET /system/cert/status - 获取运行状态
+ *   - POST /system/cert/obtain - 申请新证书（异步）
+ *   - POST /system/cert/renew - 续期证书（异步）
+ *   - POST /system/cert/revoke - 吊销证书
+ *   - POST /system/cert/renew-check - 触发续期检查
+ * 
+ * 请求/响应示例：
+ *   ```
+ *   POST /system/cert/obtain
+ *   Authorization: Bearer <JWT>
+ *   Content-Type: application/json
+ *   
+ *   {
+ *     "domain": "example.com",
+ *     "dnsProvider": "cloudflare",
+ *     "dnsConfig": {
+ *       "apiToken": "xxx"
+ *     }
+ *   }
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "certId": "cert_123",
+ *       "domain": "example.com",
+ *       "status": "pending",
+ *       "message": "证书申请已提交，请稍候..."
+ *     }
+ *   }
+ *   ```
+ * 
+ * 权限要求：
+ *   - system:cert:list - 查看证书列表
+ *   - system:cert:obtain - 申请新证书
+ *   - system:cert:renew - 续期证书
+ *   - system:cert:revoke - 吊销证书
+ * 
+ * 配置项（config.json）：
+ *   - cert.enabled: 是否启用证书管理（默认 true）
+ *   - cert.acme_server: ACME 服务器地址（默认 Let's Encrypt）
+ *   - cert.renew_days: 提前多少天续期（默认 30）
+ *   - cert.check_interval: 检查间隔（小时，默认 24）
+ * 
+ * 支持的 DNS 提供商：
+ *   - Cloudflare - 全球 CDN 和 DNS 服务
+ *   - Aliyun - 阿里云 DNS
+ *   - Tencent - 腾讯云 DNS
+ *   - Route53 - AWS Route 53
+ *   - Azure - Azure DNS
+ *   - Google Cloud - Google Cloud DNS
+ * 
+ * 证书申请流程：
+ *   1. 管理员提交证书申请请求
+ *   2. 系统生成 ACME 订单
+ *   3. ACME 服务器返回验证挑战
+ *   4. 系统通过 DNS 提供商 API 添加 DNS 记录
+ *   5. ACME 服务器验证 DNS 记录
+ *   6. 验证成功后颁发证书
+ *   7. 系统保存证书和私钥
+ *   8. 配置 HTTPS 使用新证书
+ * 
+ * 证书续期流程：
+ *   1. 定时任务检查证书有效期
+ *   2. 如果证书即将过期，自动续期
+ *   3. 续期过程与申请相同
+ *   4. 续期成功后更新证书
+ *   5. 重新加载 HTTPS 配置
+ * 
+ * @see CertManagerDriver - 证书管理驱动
+ * @see SysSslConfigCtrl - SSL 配置控制器
+ */
 
 class SysCertManagerCtrl : public drogon::HttpController<SysCertManagerCtrl> {
 public:

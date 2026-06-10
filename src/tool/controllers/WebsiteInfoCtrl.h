@@ -1,3 +1,46 @@
+/**
+ * @file WebsiteInfoCtrl.h
+ * @brief 网站信息查询控制器 — 获取网站元数据和信息
+ * 
+ * 功能概述：
+ *   - 网站信息查询：获取指定 URL 的网站元数据
+ *   - 代理转发：将请求转发到外部 API
+ *   - 配置管理：支持自定义 API 地址
+ *   - 元数据提取：获取网站标题、描述、图标等信息
+ * 
+ * API 端点：
+ *   - GET /tool/websiteInfo?url=<url> - 查询网站信息
+ * 
+ * 查询参数：
+ *   - url: 目标网站 URL（必需）
+ * 
+ * 配置项（sys_config）：
+ *   - sys.websiteinfo.api - 网站信息 API 地址（默认 https://api.pearktrue.cn）
+ * 
+ * 工作流程：
+ *   1. 获取 url 查询参数
+ *   2. 从 sys_config 读取 API 地址
+ *   3. 解析 API 地址的 scheme 和 host
+ *   4. 发起 HTTP 请求到外部 API
+ *   5. 将响应转发给客户端
+ * 
+ * 使用示例：
+ *   GET /tool/websiteInfo?url=https://www.bilibili.com/
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "title": "哔哩哔哩",
+ *       "description": "哔哩哔哩 (゜-゜)つロ 干杯~",
+ *       "icon": "https://www.bilibili.com/favicon.ico"
+ *     }
+ *   }
+ * 
+ * @see SysConfigService - 系统配置服务
+ */
+
 #pragma once
 #include <drogon/HttpController.h>
 #include <drogon/HttpClient.h>
@@ -6,13 +49,30 @@
 #include "../../common/AjaxResult.h"
 #include "../../system/services/SysConfigService.h"
 
+/**
+ * @class WebsiteInfoCtrl
+ * @brief 网站信息查询控制器
+ * 
+ * 提供网站信息查询功能，支持获取指定 URL 的网站元数据。
+ * 通过代理转发到外部 API 实现功能。
+ */
 class WebsiteInfoCtrl : public drogon::HttpController<WebsiteInfoCtrl> {
 public:
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(WebsiteInfoCtrl::query, "/tool/websiteInfo", drogon::Get, "JwtAuthFilter");
     METHOD_LIST_END
 
-    // GET /tool/websiteInfo?url=https://www.bilibili.com/
+    /**
+     * @brief 查询网站信息
+     * 
+     * GET /tool/websiteInfo?url=<url>
+     * 
+     * 获取指定 URL 的网站元数据，如标题、描述、图标等。
+     * 
+     * @param req HTTP 请求
+     * @param cb 回调函数
+     * @return 网站信息
+     */
     void query(const drogon::HttpRequestPtr& req,
                std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         std::string targetUrl = req->getParameter("url");

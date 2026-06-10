@@ -1,19 +1,88 @@
 /**
  * @file TaskQueueCtrl.h
- * @brief Task queue management and monitoring controller
+ * @brief 任务队列管理控制器 — 异步任务队列的监控和管理
  * 
- * API Endpoints:
- *   GET  /monitor/taskqueue/stats - Get queue statistics
- *   GET  /monitor/taskqueue/task/{id} - Get task details
- *   GET  /monitor/taskqueue/task/{id}/log - Get task execution log
- *   POST /monitor/taskqueue/requeue/{id} - Requeue dead letter task
- *   DELETE /monitor/taskqueue/deadletter/{type} - Clear dead letter queue
+ * 功能概述：
+ *   - 队列统计：获取队列深度、成功率、失败率等统计信息
+ *   - 任务查询：查询任务详情、执行日志、执行状态
+ *   - 任务管理：重新入队失败任务、清空死信队列
+ *   - 性能监控：监控队列处理速度、延迟、吞吐量
+ *   - 告警管理：配置队列告警规则
  * 
- * Permissions:
- *   - monitor:taskqueue:list - View task queue statistics
- *   - monitor:taskqueue:detail - View task details
- *   - monitor:taskqueue:requeue - Requeue tasks
- *   - monitor:taskqueue:clear - Clear dead letter queue
+ * 核心特性：
+ *   - 实时统计：实时获取队列统计信息
+ *   - 详细日志：完整的任务执行日志
+ *   - 故障恢复：支持重新入队失败任务
+ *   - 死信管理：管理无法处理的任务
+ *   - 权限控制：基于权限的访问控制
+ * 
+ * API 端点：
+ *   - GET /monitor/taskqueue/stats - 获取队列统计
+ *   - GET /monitor/taskqueue/task/{id} - 获取任务详情
+ *   - GET /monitor/taskqueue/task/{id}/log - 获取任务执行日志
+ *   - POST /monitor/taskqueue/requeue/{id} - 重新入队任务
+ *   - DELETE /monitor/taskqueue/deadletter/{type} - 清空死信队列
+ * 
+ * 请求/响应示例：
+ *   ```
+ *   GET /monitor/taskqueue/stats
+ *   Authorization: Bearer <JWT>
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "total_tasks": 10000,
+ *       "pending_tasks": 50,
+ *       "processing_tasks": 10,
+ *       "success_tasks": 9800,
+ *       "failed_tasks": 140,
+ *       "success_rate": 98.5,
+ *       "avg_processing_time": 125,
+ *       "throughput": 100
+ *     }
+ *   }
+ *   ```
+ * 
+ * 权限要求：
+ *   - monitor:taskqueue:list - 查看队列统计
+ *   - monitor:taskqueue:detail - 查看任务详情
+ *   - monitor:taskqueue:requeue - 重新入队任务
+ *   - monitor:taskqueue:clear - 清空死信队列
+ * 
+ * 配置项（config.json）：
+ *   - taskQueue.enabled: 是否启用任务队列（默认 true）
+ *   - taskQueue.workers: Worker 线程数（默认 4）
+ *   - taskQueue.maxRetries: 最大重试次数（默认 3）
+ *   - taskQueue.retryBackoff: 重试退避时间（秒，默认 60）
+ * 
+ * 队列统计字段：
+ *   - total_tasks: 总任务数
+ *   - pending_tasks: 待处理任务数
+ *   - processing_tasks: 处理中任务数
+ *   - success_tasks: 成功任务数
+ *   - failed_tasks: 失败任务数
+ *   - success_rate: 成功率（百分比）
+ *   - avg_processing_time: 平均处理时间（毫秒）
+ *   - throughput: 吞吐量（任务/秒）
+ * 
+ * 任务状态：
+ *   - PENDING: 待处理
+ *   - PROCESSING: 处理中
+ *   - SUCCESS: 成功
+ *   - FAILED: 失败
+ *   - DEAD: 死信（无法处理）
+ * 
+ * 最佳实践：
+ *   - 定期检查队列统计
+ *   - 监控失败任务数量
+ *   - 及时处理死信队列
+ *   - 根据吞吐量调整 Worker 数量
+ *   - 配置告警规则监控队列健康
+ * 
+ * @see TaskQueue - 任务队列核心
+ * @see TaskQueueExample - 任务处理器示例
  */
 
 #pragma once

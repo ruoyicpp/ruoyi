@@ -7,7 +7,108 @@
 #include "../../services/DatabaseService.h"
 #include "../../common/CsvUtils.h"
 
-// 操作日志 /monitor/operlog
+/**
+ * @file SysLogCtrl.h
+ * @brief 操作日志管理控制器 — 记录和查询系统操作审计日志
+ * 
+ * 功能概述：
+ *   - 日志记录：自动记录所有用户操作
+ *   - 日志查询：支持多条件查询操作日志
+ *   - 日志导出：支持导出为 CSV 格式
+ *   - 日志删除：支持删除指定日志
+ *   - 日志清空：支持清空所有日志
+ *   - 审计追踪：完整的操作审计追踪
+ * 
+ * 核心特性：
+ *   - 自动记录：所有操作自动记录到数据库
+ *   - 详细信息：记录操作者、操作时间、IP 地址、操作内容
+ *   - 多条件查询：支持按操作类型、操作人、时间范围查询
+ *   - 数据导出：支持 CSV 导出，便于分析
+ *   - 性能监控：记录操作耗时，便于性能分析
+ *   - 错误追踪：记录操作失败原因，便于问题诊断
+ * 
+ * API 端点：
+ *   - GET /monitor/operlog/list - 获取操作日志列表
+ *   - POST /monitor/operlog/export - 导出操作日志
+ *   - DELETE /monitor/operlog/{ids} - 删除指定日志
+ *   - DELETE /monitor/operlog/clean - 清空所有日志
+ * 
+ * 请求/响应示例：
+ *   ```
+ *   GET /monitor/operlog/list?title=用户管理&operName=admin&status=0
+ *   Authorization: Bearer <JWT>
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": [
+ *       {
+ *         "operId": 1,
+ *         "title": "用户管理",
+ *         "businessType": "INSERT",
+ *         "method": "POST",
+ *         "operName": "admin",
+ *         "operUrl": "/system/user",
+ *         "operIp": "192.168.1.100",
+ *         "operTime": "2026-06-10 10:30:00",
+ *         "costTime": 125,
+ *         "status": 0,
+ *         "errorMsg": ""
+ *       }
+ *     ],
+ *     "total": 100
+ *   }
+ *   ```
+ * 
+ * 权限要求：
+ *   - monitor:operlog:list - 查看操作日志
+ *   - monitor:operlog:export - 导出操作日志
+ *   - monitor:operlog:remove - 删除操作日志
+ *   - monitor:operlog:clean - 清空操作日志
+ * 
+ * 配置项（config.json）：
+ *   - operlog.enabled: 是否启用操作日志（默认 true）
+ *   - operlog.retention_days: 日志保留天数（默认 30）
+ *   - operlog.max_size: 单条日志最大大小（默认 4000 字符）
+ *   - operlog.exclude_urls: 排除的 URL 列表
+ * 
+ * 日志字段说明：
+ *   - operId：日志 ID
+ *   - title：操作标题
+ *   - businessType：业务类型（INSERT、UPDATE、DELETE、QUERY）
+ *   - method：操作方法（GET、POST、PUT、DELETE）
+ *   - operName：操作人
+ *   - operUrl：操作 URL
+ *   - operIp：操作 IP
+ *   - operParam：操作参数
+ *   - jsonResult：操作结果
+ *   - status：操作状态（0 成功，1 失败）
+ *   - errorMsg：错误信息
+ *   - costTime：耗时（毫秒）
+ * 
+ * 业务类型：
+ *   - INSERT：新增操作
+ *   - UPDATE：修改操作
+ *   - DELETE：删除操作
+ *   - QUERY：查询操作
+ *   - EXPORT：导出操作
+ *   - IMPORT：导入操作
+ *   - GRANT：授权操作
+ *   - OTHER：其他操作
+ * 
+ * 查询条件：
+ *   - title：操作标题
+ *   - operName：操作人
+ *   - status：操作状态
+ *   - beginTime：开始时间
+ *   - endTime：结束时间
+ *   - businessType：业务类型
+ * 
+ * @see OperLogUtils - 操作日志工具
+ * @see DatabaseService - 数据库服务
+ * @see CsvUtils - CSV 导出工具
+ */
 class SysOperLogCtrl : public drogon::HttpController<SysOperLogCtrl> {
 public:
     METHOD_LIST_BEGIN

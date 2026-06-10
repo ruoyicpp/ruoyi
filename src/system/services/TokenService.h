@@ -73,7 +73,7 @@ struct MultiSessionPolicy {
  * @class TokenService
  * @brief JWT 令牌管理服务单例
  * 
- * 对应 RuoYi.Net 中的 TokenService，提供令牌的生成、验证、刷新等功能。
+ * 对应 RuoYi中的 TokenService，提供令牌的生成、验证、刷新等功能。
  * 采用单例模式，全局唯一实例。
  * 
  * 主要职责：

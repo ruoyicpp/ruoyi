@@ -1,14 +1,61 @@
+/**
+ * @file CorsMiddleware.h
+ * @brief CORS 跨域资源共享中间件 — 处理跨域请求
+ * 
+ * 功能概述：
+ *   - 跨域资源共享：支持 CORS 协议
+ *   - 配置驱动：从 config.json 读取配置，无需重新编译
+ *   - 自动白名单：自动将 menu.api_base_url 加入 CORS 白名单
+ *   - 灵活控制：支持自定义 origin、method、header、expose 等
+ * 
+ * 配置示例（config.json）：
+ *   {
+ *     "cors": {
+ *       "allow_origins": [
+ *         "http://localhost:3000",
+ *         "http://localhost:8080",
+ *         "https://example.com"
+ *       ],
+ *       "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+ *       "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+ *       "expose_headers": ["X-Total-Count", "X-Page-Number"],
+ *       "allow_credentials": true
+ *     },
+ *     "menu": {
+ *       "api_base_url": "http://localhost:18080"
+ *     }
+ *   }
+ * 
+ * 工作流程：
+ *   1. 从 config.json 读取 CORS 配置
+ *   2. 自动将 menu.api_base_url 的 origin 加入白名单
+ *   3. 对每个请求检查 Origin 是否在白名单中
+ *   4. 如果在白名单中，添加相应的 CORS 响应头
+ *   5. 处理 OPTIONS 预检请求
+ * 
+ * @see SecurityMiddleware - 安全中间件
+ */
+
 #pragma once
 #include "AppIncludes.h"
 
+/**
+ * @brief 注册 CORS 中间件
+ * 
+ * 在应用启动时调用此函数，注册 CORS 中间件。
+ * 从 config.json 读取 CORS 配置，支持热重载。
+ */
 inline void registerCorsMiddleware() {
-    // ── CORS（从 config.json cors 段读取，无需重新编译）─────────────────────
+    /**
+     * @struct CorsCfg
+     * @brief CORS 配置结构体
+     */
     struct CorsCfg {
-        std::vector<std::string> origins;
-        std::string methods;
-        std::string headers;
-        std::string expose;
-        bool credentials = false;
+        std::vector<std::string> origins;       ///< 允许的 origin 列表
+        std::string methods;                    ///< 允许的 HTTP 方法
+        std::string headers;                    ///< 允许的请求头
+        std::string expose;                     ///< 暴露的响应头
+        bool credentials = false;               ///< 是否允许凭证
     };
     auto corsCfg = std::make_shared<CorsCfg>();
     std::ifstream ccf("config.json");

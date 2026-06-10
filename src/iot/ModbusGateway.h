@@ -1,19 +1,85 @@
+/**
+ * @file ModbusGateway.h
+ * @brief Modbus TCP 协议网关 — 原生实现，无需 libmodbus
+ * 
+ * 功能概述：
+ *   - 原生 Modbus TCP 实现：不依赖 libmodbus，纯 C++ 实现
+ *   - 多设备支持：管理多个 Modbus 设备的连接和通信
+ *   - 连接复用：自动连接缓存和复用，减少连接开销
+ *   - 跨平台支持：Windows（Winsock2）和 Linux（POSIX Socket）
+ *   - 完整功能码：支持 8 种常用 Modbus 功能码
+ * 
+ * 支持的功能码：
+ *   - FC01 读线圈（Read Coils）
+ *   - FC02 读离散输入（Read Discrete Inputs）
+ *   - FC03 读保持寄存器（Read Holding Registers）
+ *   - FC04 读输入寄存器（Read Input Registers）
+ *   - FC05 写单线圈（Write Single Coil）
+ *   - FC06 写单寄存器（Write Single Register）
+ *   - FC15 写多线圈（Write Multiple Coils）
+ *   - FC16 写多寄存器（Write Multiple Registers）
+ * 
+ * Modbus TCP 协议：
+ *   - MBAP 帧格式：TransactionId[2] ProtocolId[2] Length[2] UnitId[1] PDU[...]
+ *   - 默认端口：502
+ *   - 超时控制：可配置的连接和读写超时
+ * 
+ * 使用示例：
+ *   // 添加设备
+ *   ModbusGateway::Device dev;
+ *   dev.id = "device_001";
+ *   dev.host = "192.168.1.100";
+ *   dev.port = 502;
+ *   ModbusGateway::instance().addDevice(dev);
+ *   
+ *   // 读寄存器
+ *   auto values = ModbusGateway::instance().readHoldingRegisters(
+ *       "device_001", 0, 10
+ *   );
+ * 
+ * @see IotCtrl - IoT 设备管理控制器
+ */
+
+/**
+ * @file ModbusGateway.h
+ * @brief Modbus 协议网关 — 支持 Modbus TCP/RTU 设备通信
+ * 
+ * 功能概述：
+ *   - Modbus TCP：支持标准 Modbus TCP 协议
+ *   - Modbus RTU：支持 Modbus RTU 协议（串口通信）
+ *   - 设备管理：支持多设备连接和管理
+ *   - 数据读写：支持读取和写入寄存器、线圈等
+ *   - 数据缓存：缓存设备数据，减少网络通信
+ *   - 异常处理：自动重连、超时处理、错误恢复
+ * 
+ * 核心特性：
+ *   - 多协议支持：同时支持 TCP 和 RTU 两种协议
+ *   - 连接池：支持连接复用和连接池管理
+ *   - 异步通信：非阻塞的异步读写操作
+ *   - 数据转换：自动处理大小端、数据类型转换
+ *   - 性能监控：记录通信统计、延迟、错误率
+ *   - 安全认证：支持 Modbus 安全扩展（可选）
+ * 
+ * 支持的 Modbus 功能码：
+ *   - 01: 读线圈状态
+ *   - 02: 读离散输入状态
+ *   - 03: 读保持寄存器
+ *   - 04: 读输入寄存器
+ *   - 05: 写单个线圈
+ *   - 06: 写单个寄存器
+ *   - 15: 写多个线圈
+ *   - 16: 写多个寄存器
+ * 
+ * 配置项（config.json）：
+ *   - modbus.enabled: 是否启用 Modbus 网关（默认 false）
+ *   - modbus.protocol: "tcp" | "rtu"（默认 "tcp"）
+ *   - modbus.host: Modbus TCP 服务器地址
+ *   - modbus.port: Modbus TCP 端口（默认 502）
+ *   - modbus.timeout_ms: 通信超时（毫秒，默认 5000）
+ *   - modbus.max_retries: 最大重试次数（默认 3）
+ */
+
 #pragma once
-// ════════════════════════════════════════════════════════════════════════════
-// ModbusGateway.h — Modbus TCP 协议网关（原生实现，无需 libmodbus）
-//
-// 支持功能码：
-//   FC01 读线圈（Read Coils）
-//   FC02 读离散输入（Read Discrete Inputs）
-//   FC03 读保持寄存器（Read Holding Registers）
-//   FC04 读输入寄存器（Read Input Registers）
-//   FC05 写单线圈（Write Single Coil）
-//   FC06 写单寄存器（Write Single Register）
-//   FC15 写多线圈（Write Multiple Coils）
-//   FC16 写多寄存器（Write Multiple Registers）
-//
-// Modbus TCP MBAP 帧：TransactionId[2] ProtocolId[2] Length[2] UnitId[1] PDU[...]
-// ════════════════════════════════════════════════════════════════════════════
 #include <string>
 #include <vector>
 #include <map>
@@ -40,18 +106,33 @@
 #  define sock_close close
 #endif
 
+/**
+ * @class ModbusGateway
+ * @brief Modbus TCP 协议网关单例
+ * 
+ * 提供原生 Modbus TCP 实现，支持多个设备的并发访问。
+ * 采用单例模式，全局唯一实例。
+ */
 class ModbusGateway {
 public:
+    /**
+     * @brief 获取单例实例
+     * @return ModbusGateway 单例引用
+     */
     static ModbusGateway &instance() { static ModbusGateway gw; return gw; }
 
+    /**
+     * @struct Device
+     * @brief Modbus 设备配置
+     */
     struct Device {
-        std::string id;
-        std::string name;
-        std::string host;
-        int         port    = 502;
-        uint8_t     unitId  = 1;
-        int         timeoutMs = 2000;
-        std::string description;
+        std::string id;                         ///< 设备唯一标识
+        std::string name;                       ///< 设备名称
+        std::string host;                       ///< 设备 IP 地址
+        int         port    = 502;              ///< Modbus TCP 端口（默认 502）
+        uint8_t     unitId  = 1;                ///< Modbus 单元 ID（默认 1）
+        int         timeoutMs = 2000;           ///< 连接超时（毫秒，默认 2000）
+        std::string description;                ///< 设备描述
     };
 
     // ── 设备注册 ──────────────────────────────────────────────────────────

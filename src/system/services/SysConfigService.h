@@ -33,7 +33,7 @@
  * @class SysConfigService
  * @brief 系统配置服务单例
  * 
- * 对应 RuoYi.Net 中的 SysConfigService，管理系统级配置参数。
+ * 对应 RuoYi 中的 SysConfigService，管理系统级配置参数。
  * 采用单例模式，全局唯一实例。
  * 
  * 使用 libpq 直接查询 PostgreSQL 数据库，支持配置缓存和功能开关。

@@ -1,14 +1,103 @@
 #pragma once
 
-// ════════════════════════════════════════════════════════════════════════════
-// ConfigValidator.h — 配置管理与环境验证
-//
-// 功能：
-//   - 多环境配置加载（dev/staging/prod）
-//   - 环境变量覆盖配置
-//   - 启动时配置验证
-//   - 配置热重载
-// ════════════════════════════════════════════════════════════════════════════
+/**
+ * @file ConfigValidator.h
+ * @brief 配置验证器 — 多环境配置加载、验证和热重载
+ * 
+ * 功能概述：
+ *   - 多环境支持：开发、测试、生产环境配置
+ *   - 环境变量覆盖：环境变量可覆盖配置文件
+ *   - 配置验证：启动时验证配置的有效性
+ *   - 配置热重载：支持不重启应用更新配置
+ *   - 配置合并：支持多个配置文件合并
+ *   - 类型检查：自动检查配置值的类型
+ * 
+ * 核心特性：
+ *   - 环境感知：自动检测运行环境
+ *   - 优先级管理：环境变量 > 配置文件 > 默认值
+ *   - 验证规则：支持自定义验证规则
+ *   - 错误报告：详细的配置错误信息
+ *   - 线程安全：支持并发读取配置
+ *   - 监听机制：配置变更时触发回调
+ * 
+ * 支持的环境：
+ *   - development：开发环境
+ *   - staging：测试环境
+ *   - production：生产环境
+ * 
+ * 配置文件加载顺序：
+ *   1. config.json - 基础配置
+ *   2. config.{env}.json - 环境特定配置
+ *   3. 环境变量 - 覆盖上述配置
+ * 
+ * 使用示例：
+ *   ```cpp
+ *   // 初始化配置验证器
+ *   ConfigValidator validator;
+ *   validator.setEnvironment("production");
+ *   validator.loadConfig("./config");
+ *   
+ *   // 验证配置
+ *   if (!validator.validate()) {
+ *       std::cerr << "Config validation failed: " << validator.getErrors() << std::endl;
+ *       return 1;
+ *   }
+ *   
+ *   // 获取配置值
+ *   std::string dbHost = validator.getString("database.host");
+ *   int dbPort = validator.getInt("database.port");
+ *   
+ *   // 监听配置变更
+ *   validator.onChange([](const std::string& key) {
+ *       LOG(INFO) << "Config changed: " << key;
+ *   });
+ *   ```
+ * 
+ * 配置文件示例（config.json）：
+ *   ```json
+ *   {
+ *     "server": {
+ *       "port": 18080,
+ *       "host": "0.0.0.0"
+ *     },
+ *     "database": {
+ *       "host": "localhost",
+ *       "port": 5432,
+ *       "dbname": "ruoyi"
+ *     }
+ *   }
+ *   ```
+ * 
+ * 环境变量覆盖：
+ *   - RUOYI_SERVER_PORT=8080 → server.port = 8080
+ *   - RUOYI_DATABASE_HOST=db.example.com → database.host = db.example.com
+ *   - 环境变量前缀：RUOYI_
+ * 
+ * 验证规则：
+ *   - 必填项验证：required
+ *   - 类型验证：string、int、bool、array
+ *   - 范围验证：min、max、pattern
+ *   - 自定义验证：自定义验证函数
+ * 
+ * 配置热重载：
+ *   ```cpp
+ *   // 监听配置文件变更，自动重载
+ *   validator.enableFileWatch("./config");
+ *   
+ *   // 手动重载配置
+ *   validator.reload();
+ *   ```
+ * 
+ * 最佳实践：
+ *   - 在应用启动时验证配置
+ *   - 使用环境变量管理敏感信息（密码、API Key）
+ *   - 为每个环境维护独立的配置文件
+ *   - 定期检查配置日志
+ *   - 使用配置热重载进行灰度发布
+ * 
+ * @see ConfigLoader - 配置加载器
+ * @see HotConfig - 热配置管理
+ */
 
 #include <string>
 #include <vector>

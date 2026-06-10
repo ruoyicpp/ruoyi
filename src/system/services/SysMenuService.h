@@ -35,7 +35,7 @@
  * @class SysMenuService
  * @brief 系统菜单服务单例
  * 
- * 对应 RuoYi.Net 中的 SysMenuService，处理菜单和权限相关的业务逻辑。
+ * 对应 RuoYi 中的 SysMenuService，处理菜单和权限相关的业务逻辑。
  * 采用单例模式，全局唯一实例。
  * 
  * 使用 libpq 直接查询 PostgreSQL 数据库，支持菜单树构建和权限过滤。
@@ -452,6 +452,12 @@ private:
 
     std::string getComponent(const Json::Value &menu) {
         std::string comp = menu["component"].asString();
+        if (comp.find("oa/") == 0) {
+            // OA 页面尚未开发，fallback 到 ParentView 避免前端 import 404 崩溃
+            if (menu["parentId"].asInt64() != 0 && menu["menuType"].asString() == "M")
+                return Constants::PARENT_VIEW;
+            return Constants::LAYOUT;
+        }
         if (!comp.empty() && !isMenuFrame(menu) && !isInnerLinkMenu(menu)) return comp;
         if (menu["parentId"].asInt64() != 0 && menu["menuType"].asString() == "M")
             return Constants::PARENT_VIEW;

@@ -1,3 +1,58 @@
+/**
+ * @file SysLoginCtrl.h
+ * @brief 系统登录控制器 — 用户认证、注册、验证码、密码重置等功能
+ * 
+ * 功能概述：
+ *   - 用户登录：支持用户名/密码认证，返回 JWT 令牌
+ *   - 用户注册：支持邮箱验证、密码复杂度检查、IP 限流
+ *   - 验证码：支持数学运算、字母、数字、混合四种模式，生成 GIF 格式
+ *   - 忘记密码：邮箱验证码重置密码
+ *   - 用户信息：获取登录用户详情（含部门、角色、权限）
+ *   - 菜单路由：获取用户可访问的菜单和路由
+ *   - 健康检查：检查数据库、缓存、会话状态
+ *   - 版本信息：返回应用版本和构建时间
+ * 
+ * API 路由列表：
+ *   - POST /login - 用户登录
+ *   - POST /logout - 用户登出
+ *   - GET /getInfo - 获取登录用户信息（需认证）
+ *   - GET /getRouters - 获取用户菜单路由（需认证）
+ *   - POST /register - 用户注册
+ *   - GET /captchaImage - 获取验证码
+ *   - GET /challenge - 获取一次性挑战令牌
+ *   - POST /forgotPassword - 忘记密码（发送验证码）
+ *   - POST /resetPassword - 重置密码
+ *   - POST /sendRegCode - 发送注册邮箱验证码
+ *   - GET /health - 健康检查
+ *   - GET /version - 获取版本信息
+ * 
+ * 安全特性：
+ *   - IP 限流：防止暴力破解和批量注册
+ *   - IP 失败锁：连续失败 10 次后锁定 30 分钟
+ *   - 密码复杂度：至少 8 位，含大小写字母、数字、特殊字符
+ *   - 邮箱验证：支持邮箱验证码验证
+ *   - 验证码防护：支持多种验证码模式，防止验证码洪水
+ *   - 日志记录：记录登录、登出、注册等操作
+ * 
+ * 验证码模式：
+ *   - "math" - 数字四则运算（默认）
+ *   - "char"/"letter" - 4 位大写字母
+ *   - "digit"/"number" - 4 位纯数字
+ *   - "mixed" - 随机选择上述模式
+ * 
+ * 缓存策略：
+ *   - userinfo:{userId} - 用户详情缓存（5 分钟）
+ *   - routers:{userId} - 菜单路由缓存（30 分钟）
+ *   - captcha:{uuid} - 验证码答案缓存（2 分钟）
+ *   - regcode:{email} - 注册验证码缓存（5 分钟）
+ *   - reset_code:{email} - 密码重置验证码缓存（15 分钟）
+ * 
+ * @see SysLoginService - 登录业务逻辑
+ * @see TokenService - JWT 令牌服务
+ * @see SysMenuService - 菜单服务
+ * @see SysConfigService - 系统配置服务
+ */
+
 #pragma once
 #include <drogon/HttpController.h>
 #include <drogon/utils/Utilities.h>
@@ -21,10 +76,26 @@
 #include "../../common/SmtpUtils.h"
 #include "SysEmailConfigCtrl.h"
 
-// POST /login  POST /logout  GET /getInfo  GET /getRouters
-// POST /register  GET /captchaImage  GET /challenge
-// POST /forgotPassword  POST /resetPassword
-// POST /sendRegCode  GET /health  GET /version
+/**
+ * @class SysLoginCtrl
+ * @brief 系统登录控制器
+ * 
+ * 处理用户认证、注册、验证码、密码重置等相关的 HTTP 请求。
+ * 
+ * API 端点：
+ *   - POST /login - 用户登录
+ *   - POST /logout - 用户登出
+ *   - GET /getInfo - 获取登录用户信息
+ *   - GET /getRouters - 获取用户菜单路由
+ *   - POST /register - 用户注册
+ *   - GET /captchaImage - 获取验证码
+ *   - GET /challenge - 获取一次性挑战令牌
+ *   - POST /forgotPassword - 忘记密码
+ *   - POST /resetPassword - 重置密码
+ *   - POST /sendRegCode - 发送注册验证码
+ *   - GET /health - 健康检查
+ *   - GET /version - 获取版本信息
+ */
 class SysLoginCtrl : public drogon::HttpController<SysLoginCtrl> {
 public:
     METHOD_LIST_BEGIN
@@ -42,24 +113,76 @@ public:
         ADD_METHOD_TO(SysLoginCtrl::version,         "/version",        drogon::Get);
     METHOD_LIST_END
 
-    // 密码复杂度校验：至少 8 位，含大小写字母、数字、特殊字符
+    /**
+     * @brief 检查密码复杂度
+     * 
+     * 验证密码是否满足复杂度要求：
+     *   - 长度：8-20 位
+     *   - 必须包含大小写字母
+     *   - 必须包含数字
+     *   - 必须包含特殊字符
+     * 
+     * @param pwd 待检查的密码
+     * @return 空字符串表示通过，否则返回错误提示信息
+     */
     static std::string checkPasswordComplexity(const std::string& pwd) {
+        // 检查长度
         if (pwd.size() < 8)  return "密码长度不能少于8位";
         if (pwd.size() > 20) return "密码长度不能超过20位";
+        
+        // 初始化字符类型标志
         bool hasUpper = false, hasLower = false, hasDigit = false, hasSpecial = false;
+        
+        // 遍历密码，检查字符类型
         for (unsigned char c : pwd) {
-            if (std::isupper(c))      hasUpper   = true;
-            else if (std::islower(c)) hasLower   = true;
-            else if (std::isdigit(c)) hasDigit   = true;
-            else                       hasSpecial = true;
+            if (std::isupper(c))      hasUpper   = true;    ///< 大写字母
+            else if (std::islower(c)) hasLower   = true;    ///< 小写字母
+            else if (std::isdigit(c)) hasDigit   = true;    ///< 数字
+            else                       hasSpecial = true;    ///< 特殊字符
         }
+        
+        // 检查是否包含大小写字母
         if (!hasUpper || !hasLower) return "密码必须包含大小写字母";
+        
+        // 检查是否包含数字
         if (!hasDigit)               return "密码必须包含数字";
+        
+        // 检查是否包含特殊字符
         if (!hasSpecial)             return "密码必须包含特殊字符";
+        
+        // 所有检查通过
         return "";
     }
 
-    // POST /login
+    /**
+     * @brief 用户登录
+     * 
+     * POST /login - 用户名/密码认证，返回 JWT 令牌
+     * 
+     * 请求体格式：
+     *   {
+     *     "username": "admin",
+     *     "password": "123456",
+     *     "code": "1234",           // 验证码答案
+     *     "uuid": "uuid-xxx"        // 验证码 UUID
+     *   }
+     * 
+     * 响应格式：
+     *   {
+     *     "code": 200,
+     *     "msg": "操作成功",
+     *     "token": "eyJhbG..."
+     *   }
+     * 
+     * 安全防护：
+     *   - IP 限流：每分钟最多 30 次登录尝试
+     *   - IP 失败锁：10 次失败后锁定 30 分钟（内网 IP 除外）
+     *   - 登录日志：记录所有登录尝试
+     *   - 性能指标：记录登录成功/失败
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     */
     void login(const drogon::HttpRequestPtr &req,
                std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         // 限流：同 IP 每分钟最多 30 次登录尝试，防止分布式用户名轮换的暴力破解
@@ -118,22 +241,52 @@ public:
         }
     }
 
-    // POST /logout
+    /**
+     * @brief 用户登出
+     * 
+     * POST /logout - 清除用户会话，记录登出日志
+     * 
+     * 请求：需要 JWT 认证
+     * 
+     * 响应格式：
+     *   {
+     *     "code": 200,
+     *     "msg": "操作成功"
+     *   }
+     * 
+     * 登出流程：
+     *   1. 获取登录用户信息
+     *   2. 清除令牌缓存
+     *   3. 记录登出日志
+     *   4. 异步获取 IP 地址信息（非内网）
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     */
     void logout(const drogon::HttpRequestPtr &req,
                 std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         try {
+            // 获取登录用户信息
             auto userOpt = TokenService::instance().getLoginUser(req);
             if (userOpt) {
+                // 清除令牌缓存
                 TokenService::instance().delLoginUser(userOpt->token);
+                
+                // 获取请求信息
                 std::string ip       = IpUtils::getIpAddr(req);
                 std::string user     = userOpt->userName;
                 std::string location = IpUtils::getIpLocation(ip);
+                
+                // 记录登出日志
                 auto insRes = DatabaseService::instance().queryParams(
                     "INSERT INTO sys_logininfor(user_name,ipaddr,login_location,status,msg,login_time) "
                     "VALUES($1,$2,$3,'0','退出成功',NOW()) RETURNING info_id",
                     {user, ip, location});
+                
+                // 异步获取精确的 IP 地址信息（非内网）
                 if (!IpUtils::isIntranetIp(ip) && insRes.ok() && insRes.rows() > 0) {
                     std::string infoId = insRes.str(0, 0);
+                    // 异步更新地理位置信息
                     IpUtils::getIpLocationAsync(ip, [infoId](std::string loc) {
                         DatabaseService::instance().execParams(
                             "UPDATE sys_logininfor SET login_location=$1 WHERE info_id=$2",
@@ -142,10 +295,55 @@ public:
                 }
             }
         } catch (...) {}
+        
+        // 返回成功响应
         RESP_MSG(cb, "操作成功");
     }
 
-    // GET /getInfo
+    /**
+     * @brief 获取登录用户信息
+     * 
+     * GET /getInfo - 获取当前登录用户的详细信息
+     * 
+     * 请求：需要 JWT 认证（JwtAuthFilter）
+     * 
+     * 响应格式：
+     *   {
+     *     "code": 200,
+     *     "msg": "操作成功",
+     *     "user": {
+     *       "userId": 1,
+     *       "userName": "admin",
+     *       "nickName": "管理员",
+     *       "email": "admin@example.com",
+     *       "phonenumber": "15888888888",
+     *       "sex": "0",
+     *       "avatar": "",
+     *       "status": "0",
+     *       "loginIp": "127.0.0.1",
+     *       "loginDate": "2026-06-10 12:00:00",
+     *       "createTime": "2026-01-01 00:00:00",
+     *       "remark": "管理员",
+     *       "admin": true,
+     *       "dept": {
+     *         "deptId": 100,
+     *         "deptName": "深圳总公司",
+     *         "leader": "若依"
+     *       },
+     *       "roles": [...]
+     *     },
+     *     "roles": ["admin"],
+     *     "permissions": ["*:*:*"]
+     *   }
+     * 
+     * 缓存策略：
+     *   - 缓存键：userinfo:{userId}
+     *   - 有效期：5 分钟
+     *   - 失效触发：用户信息修改、角色变更
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     */
     void getInfo(const drogon::HttpRequestPtr &req,
                  std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         auto user = GET_LOGIN_USER(req);
@@ -232,31 +430,133 @@ public:
         MemCache::instance().removeByPrefix("userinfo:");
     }
 
-    // GET /getRouters
+    /**
+     * @brief 获取用户菜单路由
+     * 
+     * GET /getRouters - 获取当前用户可访问的菜单和路由
+     * 
+     * 请求：需要 JWT 认证（JwtAuthFilter）
+     * 
+     * 响应格式：
+     *   {
+     *     "code": 200,
+     *     "msg": "操作成功",
+     *     "data": [
+     *       {
+     *         "name": "System",
+     *         "path": "system",
+     *         "hidden": false,
+     *         "redirect": "noRedirect",
+     *         "component": "Layout",
+     *         "alwaysShow": true,
+     *         "meta": {
+     *           "title": "系统管理",
+     *           "icon": "system",
+     *           "noCache": false,
+     *           "link": null
+     *         },
+     *         "children": [...]
+     *       }
+     *     ]
+     *   }
+     * 
+     * 缓存策略：
+     *   - 缓存键：routers:{userId}
+     *   - 有效期：30 分钟
+     *   - 失效触发：角色权限变更、菜单变更
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     */
     void getRouters(const drogon::HttpRequestPtr &req,
                     std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        // 获取用户 ID
         long userId = GET_USER_ID(req);
+        
+        // 构建缓存键
         auto cacheKey = "routers:" + std::to_string(userId);
+        
+        // 优先读缓存
         auto cached = MemCache::instance().getJson(cacheKey);
-        if (cached) { RESP_OK(cb, *cached); return; }
+        if (cached) { 
+            RESP_OK(cb, *cached); 
+            return; 
+        }
+        
+        // 从数据库构建菜单树
         auto menus = SysMenuService::instance().buildMenusForUser(userId);
-        MemCache::instance().setJson(cacheKey, menus, 1800); // 30min TTL
+        
+        // 缓存菜单树（30 分钟）
+        MemCache::instance().setJson(cacheKey, menus, 1800);
+        
+        // 返回菜单树
         RESP_OK(cb, menus);
     }
 
-    // 使角色/菜单变更后失效该用户的菜单缓存
+    /**
+     * @brief 失效指定用户的菜单缓存
+     * 
+     * 在角色权限或菜单配置变更后调用，清除该用户的菜单缓存。
+     * 
+     * @param userId 用户 ID
+     */
     static void invalidateRouterCache(long userId) {
         MemCache::instance().remove("routers:" + std::to_string(userId));
     }
 
-    // 失效所有用户的菜单缓存（角色权限全局变更时调用）
+    /**
+     * @brief 失效所有用户的菜单缓存
+     * 
+     * 在全局角色权限或菜单配置变更后调用，清除所有用户的菜单缓存。
+     */
     static void invalidateAllRouterCache() {
         MemCache::instance().removeByPrefix("routers:");
     }
 
-    // POST /register
+    /**
+     * @brief 用户注册
+     * 
+     * POST /register - 新用户注册
+     * 
+     * 请求体格式：
+     *   {
+     *     "username": "newuser",
+     *     "password": "Abc123!@#",
+     *     "code": "1234",           // 验证码答案
+     *     "uuid": "uuid-xxx",       // 验证码 UUID
+     *     "email": "user@example.com",
+     *     "emailCode": "123456"     // 邮箱验证码（可选）
+     *   }
+     * 
+     * 响应格式：
+     *   {
+     *     "code": 200,
+     *     "msg": "操作成功"
+     *   }
+     * 
+     * 注册流程：
+     *   1. 检查系统是否开启注册功能
+     *   2. IP 限流检查（防止批量注册）
+     *   3. 验证码校验
+     *   4. 内容校验（用户名、密码、邮箱）
+     *   5. 邮箱验证码校验（如果启用）
+     *   6. 用户名唯一性检查
+     *   7. 创建用户账户
+     *   8. 绑定默认角色
+     *   9. 记录注册日志
+     * 
+     * 安全防护：
+     *   - IP 限流：每分钟 5 次，每小时 5 次（内网除外）
+     *   - 密码复杂度：至少 8 位，含大小写字母、数字、特殊字符
+     *   - 邮箱验证：可选的邮箱验证码验证
+     *   - 用户名唯一性：防止重复注册
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     */
     void doRegister(const drogon::HttpRequestPtr &req,
                     std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        // 检查系统是否开启注册功能
         if (!SysConfigService::instance().isRegisterEnabled()) {
             RESP_ERR(cb, "当前系统没有开启注册功能！");
             return;
@@ -363,7 +663,51 @@ public:
         RESP_MSG(cb, "操作成功");
     }
 
-    // GET /health — 健康探测，返回 db / cache / 时间，适配 K8s liveness/readiness
+    /**
+     * @brief 健康检查
+     * 
+     * GET /health - 检查系统健康状态（数据库、缓存、会话）
+     * 
+     * 响应格式：
+     *   {
+     *     "code": 200,
+     *     "msg": "操作成功",
+     *     "status": "ok",
+     *     "db": {
+     *       "ok": true,
+     *       "latency": 5,
+     *       "backend": "PostgreSQL",
+     *       "sqliteFallback": false
+     *     },
+     *     "cache": {
+     *       "ok": true,
+     *       "latency": 2,
+     *       "backend": "Redis"
+     *     },
+     *     "sessions": {
+     *       "online": 42
+     *     },
+     *     "time": "2026-06-10 12:00:00"
+     *   }
+     * 
+     * 健康检查项：
+     *   - 数据库连接：执行 SELECT 1 查询
+     *   - 缓存连接：写入随机 key，立即读取，再删除
+     *   - 会话统计：在线用户数
+     *   - 系统时间：当前服务器时间
+     * 
+     * HTTP 状态码：
+     *   - 200 OK：系统正常或降级（SQLite 模式）
+     *   - 503 Service Unavailable：数据库不可用且未降级 SQLite
+     * 
+     * 用途：
+     *   - Kubernetes liveness/readiness 探针
+     *   - 监控系统健康状态
+     *   - 检测数据库和缓存连接
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     */
     void health(const drogon::HttpRequestPtr&,
                 std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         auto& db = DatabaseService::instance();
@@ -417,19 +761,50 @@ public:
         cb(resp);
     }
 
-    // GET /version — 返回构建版本信息
+    /**
+     * @brief 获取版本信息
+     * 
+     * GET /version - 返回应用版本和构建时间
+     * 
+     * 响应格式：
+     *   {
+     *     "code": 200,
+     *     "msg": "操作成功",
+     *     "name": "RuoYi-Cpp",
+     *     "version": "1.0.0",
+     *     "buildTime": "Jun 10 2026 12:00:00"
+     *   }
+     * 
+     * 版本信息来源：
+     *   - name：从 config.json 的 ruoyi.name 读取，默认 "RuoYi-Cpp"
+     *   - version：从 config.json 的 ruoyi.version 读取，默认 "unknown"
+     *   - buildTime：编译时间（__DATE__ 和 __TIME__ 宏）
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     */
     void version(const drogon::HttpRequestPtr&,
                  std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+        // 获取应用配置
         auto& cfg = drogon::app().getCustomConfig();
+        
+        // 构建响应
         auto result = AjaxResult::successMap();
+        
+        // 从配置中读取应用名称和版本
         if (cfg.isMember("ruoyi")) {
             result["name"]    = cfg["ruoyi"].get("name",    "RuoYi-Cpp").asString();
             result["version"] = cfg["ruoyi"].get("version", "unknown").asString();
         } else {
+            // 配置不存在时使用默认值
             result["name"]    = "RuoYi-Cpp";
             result["version"] = "unknown";
         }
+        
+        // 添加编译时间
         result["buildTime"] = __DATE__ " " __TIME__;
+        
+        // 返回版本信息
         RESP_JSON(cb, result);
     }
 
@@ -558,14 +933,47 @@ public:
         RESP_MSG(cb, "密码重置成功");
     }
 
-    // GET /captchaImage — 验证码类型由 sys_config.sys.account.captchaType 控制：
-    //   "math"            — 数字四则运算（默认；与官方 RuoYi 行为一致）
-    //   "char" / "letter" — 4 位大写字母（排除 I/L/O/Q/V 等易混淆）
-    //   "digit" / "number"— 4 位纯数字
-    //   "mixed"           — math / letter / digit 三选一（每次随机）
-    //   其他值或缺省 → math
-    // 注：原先有的 "中文数字" 模式因 12x12 笔画栅格渲染过于粗糙（八/六 渲染成 ∧
-    //     等无法识别），已下线。
+    /**
+     * @brief 获取验证码
+     * 
+     * GET /captchaImage - 生成验证码图片（GIF 格式）
+     * 
+     * 验证码模式（由 sys_config.sys.account.captchaType 控制）：
+     *   - "math" - 数字四则运算（默认）
+     *     例：3+5=?
+     *   - "char"/"letter" - 4 位大写字母（排除易混淆字符 I/L/O/Q/V）
+     *     例：ABCD
+     *   - "digit"/"number" - 4 位纯数字（首位不为 0）
+     *     例：1234
+     *   - "mixed" - 随机选择上述模式（每次随机）
+     *   - 其他值或缺省 - 使用默认的数学运算模式
+     * 
+     * 响应格式：
+     *   {
+     *     "code": 200,
+     *     "msg": "操作成功",
+     *     "uuid": "uuid-xxx",
+     *     "img": "base64-encoded-gif",
+     *     "captchaEnabled": true,
+     *     "registerEnabled": true,
+     *     "forgotPwdEnabled": true
+     *   }
+     * 
+     * 验证码特性：
+     *   - 格式：GIF 图片，160x60 像素
+     *   - 有效期：2 分钟
+     *   - 干扰线：3 条随机干扰线
+     *   - 噪点：30 个随机噪点
+     *   - 字符抖动：±3 像素随机抖动
+     *   - 彩色：随机颜色字符和干扰线
+     * 
+     * 安全防护：
+     *   - IP 限流：每分钟最多 30 次获取验证码
+     *   - 防止验证码洪水：限制同 IP 的验证码获取频率
+     * 
+     * @param req HTTP 请求对象
+     * @param cb 响应回调函数
+     */
     void captcha(const drogon::HttpRequestPtr &req,
                  std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         // 限流：同 IP 验证码获取不超过 30/分钟，防止验证码洪水

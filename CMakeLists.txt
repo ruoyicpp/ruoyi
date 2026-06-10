@@ -171,8 +171,14 @@ option(RUOYI_USE_MINIO_CPP "集成 minio-cpp SDK（需要 vcpkg install minio-cp
 #   - HTTPS/HTTP2/gzip/缓存/反代 全套 nginx 能力
 # 注意：启用后会用 nginx 自带的 OpenSSL 静态库替代 msys2 的 OpenSSL DLL，
 #       drogon 也走相同的 OpenSSL（避免双份冲突）
-option(RUOYI_USE_NGINX "嵌入 nginx 静态库做反向代理 / HTTPS 终止" ON)
-set(NGINX_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/nginx-1.29.8"
+# 默认关闭；仅在显式 -DRUOYI_USE_NGINX=ON 时启用嵌入式 nginx。
+option(RUOYI_USE_NGINX "嵌入 nginx 静态库做反向代理 / HTTPS 终止" OFF)
+if(WIN32)
+    set(_ruoyi_default_nginx_root "${CMAKE_CURRENT_SOURCE_DIR}/nginx-1.29.8")
+else()
+    set(_ruoyi_default_nginx_root "${CMAKE_CURRENT_SOURCE_DIR}/nginx-1.29.8-linux")
+endif()
+set(NGINX_ROOT "${_ruoyi_default_nginx_root}"
     CACHE PATH "nginx 源码根目录（已编译产生 objs/libnginx.a）")
 if(RUOYI_USE_NGINX)
     set(NGINX_LIB    "${NGINX_ROOT}/objs/libnginx.a")
@@ -186,6 +192,30 @@ if(RUOYI_USE_NGINX)
             message(FATAL_ERROR "RUOYI_USE_NGINX=ON 但缺少 ${${_lib}} (请先编译 nginx)")
         endif()
     endforeach()
+    if(NOT WIN32)
+        execute_process(
+            COMMAND nm -A "${NGINX_LIB}"
+            OUTPUT_VARIABLE _nginx_archive_symbols
+            ERROR_VARIABLE _nginx_archive_err
+            RESULT_VARIABLE _nginx_nm_exit
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(_nginx_nm_exit EQUAL 0)
+            set(_nginx_has_main FALSE)
+            set(_nginx_has_core_module FALSE)
+            if(_nginx_archive_symbols MATCHES "(^|[\r\n]).* [Tt] ngx_main([\r\n]|$)")
+                set(_nginx_has_main TRUE)
+            endif()
+            if(_nginx_archive_symbols MATCHES "(^|[\r\n]).* [DdRrTt] ngx_core_module([\r\n]|$)")
+                set(_nginx_has_core_module TRUE)
+            endif()
+            if(NOT _nginx_has_main OR NOT _nginx_has_core_module)
+                message(FATAL_ERROR
+                    "RUOYI_USE_NGINX=ON 但 ${NGINX_LIB} 未提供嵌入式 nginx 所需核心符号。"
+                    "当前静态库必须至少定义 ngx_main 与 ngx_core_module；请重新编译 libnginx.a，并确保 src/core/nginx.c 已成功打包进归档")
+            endif()
+        endif()
+    endif()
     # 用 nginx 自带 OpenSSL/zlib 替换 msys2 版本，避免双份冲突
     set(SSL_LIB    "${NGINX_SSL}"    CACHE FILEPATH "" FORCE)
     set(CRYPTO_LIB "${NGINX_CRYPTO}" CACHE FILEPATH "" FORCE)
@@ -196,6 +226,8 @@ if(RUOYI_USE_NGINX)
     message(STATUS "  CRYPTO: ${NGINX_CRYPTO}")
     message(STATUS "  PCRE2:  ${NGINX_PCRE2}")
     message(STATUS "  ZLIB:   ${NGINX_ZLIB}")
+else()
+    message(STATUS "nginx:    DISABLED (set -DRUOYI_USE_NGINX=ON to enable)")
 endif()
 
 # ── 源文件 ────────────────────────────────────────────────────
@@ -214,6 +246,7 @@ file(GLOB_RECURSE SOURCES
     src/log/*.cc
     src/analytics/*.cc
     src/mysql/*.cc
+    src/error_pages/*.cc
 )
 
 # 添加 IM 集成文件（排除 src/im/111 中的 protobuf 文件）
@@ -523,7 +556,6 @@ else()
         ${HIREDIS_LIB}
         $<IF:$<BOOL:${RUOYI_SQLITE3MC_ENABLED}>,sqlite3mc,${SQLITE3_LIB}>
         ${JSONCPP_LIBRARIES}
-        ssl crypto
         ${CURL_LIB}
         ${ZLIB_LIB}
         ${UUID_LIB}
@@ -534,6 +566,17 @@ else()
             target_link_libraries(${PROJECT_NAME} PRIVATE ${${_brotli}})
         endif()
     endforeach()
+    if(RUOYI_USE_NGINX)
+        target_link_libraries(${PROJECT_NAME} PRIVATE
+            ${NGINX_LIB}
+            ${NGINX_SSL}
+            ${NGINX_CRYPTO}
+            ${NGINX_PCRE2}
+            pthread dl crypt
+        )
+        target_include_directories(${PROJECT_NAME} PRIVATE ${NGINX_INC})
+        target_link_options(${PROJECT_NAME} PRIVATE -Wl,--allow-multiple-definition)
+    endif()
 endif()
 
 # ── 守护进程（watchdog）──────────────────────────────────────────

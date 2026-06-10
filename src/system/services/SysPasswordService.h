@@ -33,7 +33,7 @@
  * @class SysPasswordService
  * @brief 系统密码服务单例
  * 
- * 对应 RuoYi.Net 中的 SysPasswordService，处理密码验证和安全防护。
+ * 对应 RuoYi 中的 SysPasswordService，处理密码验证和安全防护。
  * 采用单例模式，全局唯一实例。
  * 
  * 支持密码错误次数限制、账号锁定、日志记录等功能。

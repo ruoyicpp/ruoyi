@@ -11,7 +11,87 @@
 #include "../../common/LicenseManager.h"
 #include "../../common/CsvUtils.h"
 
-// 定时任务 /monitor/job  (C++ Cron 引擎 + JobScheduler 实际调度)
+/**
+ * @file SysJobCtrl.h
+ * @brief Scheduled Job Management Controller - Cron expression and task scheduling support
+ * 
+ * Features:
+ *   - Job Management: Create, edit, delete scheduled jobs
+ *   - Task Scheduling: Define job execution time using Cron expressions
+ *   - Job Execution: Support immediate and scheduled execution
+ *   - Job Monitoring: Record job execution logs and results
+ *   - Job Pause: Support pause and resume operations
+ *   - Log Management: Query, export, and clean job execution logs
+ * 
+ * Core Capabilities:
+ *   - Cron Expression: Full support for Linux Cron format (second, minute, hour, day, month, week)
+ *   - Job Isolation: Each job runs independently without affecting others
+ *   - Error Handling: Automatic retry and logging on job failure
+ *   - Performance Monitoring: Record execution time, success rate metrics
+ *   - Dynamic Loading: Support hot loading new jobs without restart
+ *   - Distributed Support: Support multi-instance deployment
+ * 
+ * Cron Expression Format:
+ *   second minute hour day month week [year]
+ *   Example: 0 0 2 * * ? - Execute at 2 AM daily
+ *   Example: 0 (slash)5 * * * ? - Execute every 5 minutes
+ *   Example: 0 0 0 1 * ? - Execute on 1st of each month
+ * 
+ * API Endpoints:
+ *   - GET /monitor/job/list - Get job list
+ *   - GET /monitor/job/{jobId} - Get job details
+ *   - POST /monitor/job - Create job
+ *   - PUT /monitor/job - Edit job
+ *   - DELETE /monitor/job/{ids} - Delete jobs
+ *   - PUT /monitor/job/changeStatus - Enable/disable job
+ *   - PUT /monitor/job/run - Execute job immediately
+ *   - GET /monitor/jobLog/list - Get job execution logs
+ *   - DELETE /monitor/jobLog/clean - Clear job logs
+ *   - DELETE /monitor/jobLog/{ids} - Delete specific logs
+ *   - POST /monitor/jobLog/export - Export job logs
+ * 
+ * Request/Response Example:
+ *   POST /monitor/job
+ *   Authorization: Bearer <JWT>
+ *   Content-Type: application/json
+ *   
+ *   {
+ *     "jobName": "Clean expired logs",
+ *     "jobGroup": "system",
+ *     "cronExpression": "0 0 2 * * ?",
+ *     "invokeTarget": "cleanExpiredLogs",
+ *     "status": "0"
+ *   }
+ * 
+ * Permissions Required:
+ *   - monitor:job:list - View job list
+ *   - monitor:job:query - Query job details
+ *   - monitor:job:add - Create job
+ *   - monitor:job:edit - Edit job
+ *   - monitor:job:remove - Delete job
+ *   - monitor:job:changeStatus - Enable/disable job
+ *   - monitor:job:run - Execute job
+ *   - monitor:jobLog:list - View job logs
+ *   - monitor:jobLog:remove - Delete job logs
+ *   - monitor:jobLog:export - Export job logs
+ * 
+ * Configuration (config.json):
+ *   - job.enabled: Enable scheduled jobs (default true)
+ *   - job.thread_pool_size: Job execution thread pool size (default 4)
+ *   - job.max_log_retention_days: Log retention days (default 30)
+ *   - job.max_concurrent_jobs: Max concurrent jobs (default 10)
+ * 
+ * Common Job Examples:
+ *   - Clean expired data: 0 0 2 * * ? - Execute at 2 AM daily
+ *   - Generate reports: 0 0 8 * * ? - Execute at 8 AM daily
+ *   - Backup database: 0 0 3 * * ? - Execute at 3 AM daily
+ *   - Sync data: 0 (slash)30 * * * ? - Execute every 30 minutes
+ *   - Check health: 0 (slash)5 * * * ? - Execute every 5 minutes
+ * 
+ * @see JobScheduler - Task scheduling engine
+ * @see CronUtils - Cron expression utilities
+ * @see DatabaseService - Database service
+ */
 class SysJobCtrl : public drogon::HttpController<SysJobCtrl> {
 public:
     METHOD_LIST_BEGIN

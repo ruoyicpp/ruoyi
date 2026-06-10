@@ -7,17 +7,86 @@
 #include "../../common/SecurityUtils.h"
 #include "../../system/services/TokenService.h"
 
-// 系统重启管理
-// GET  /monitor/restart/online   — 当前在线用户数（JSON）
-// GET  /monitor/restart/page     — 内嵌 HTML 管理页面（iframe 菜单嵌入）
-// POST /monitor/restart/confirm  — 二次确认后触发优雅停机
-//
-// 实际"重启"依赖外部 wrapper：
-//   * Windows Service: SERVICE_FAILURE_RESTART
-//   * systemd:         Restart=on-failure
-//   * Docker:          restart: unless-stopped
-//   * pm2 / supervisor:自动拉起
-// 进程仅负责 drogon::app().quit() 优雅退出；如无 wrapper 则只是关停。
+/**
+ * @file SysRestartCtrl.h
+ * @brief 系统重启管理控制器 — 优雅关闭和重启管理
+ * 
+ * 功能概述：
+ *   - 在线用户查询：显示当前在线用户数
+ *   - 重启管理页面：提供重启管理的 HTML 界面
+ *   - 优雅关闭：确保所有请求完成后再关闭
+ *   - 二次确认：防止误操作，需要二次确认
+ *   - 用户通知：关闭前通知所有在线用户
+ *   - 外部重启：依赖外部进程管理工具自动重启
+ * 
+ * 核心特性：
+ *   - 优雅关闭：等待所有请求完成，不中断用户操作
+ *   - 二次确认：需要管理员二次确认才能执行
+ *   - 用户通知：通过 WebSocket 通知所有在线用户
+ *   - 安全防护：只有管理员可以执行重启操作
+ *   - 外部管理：与进程管理工具集成，自动重启
+ *   - 跨平台支持：支持 Windows Service、systemd、Docker、pm2
+ * 
+ * API 端点：
+ *   - GET /monitor/restart/online - 获取在线用户数
+ *   - GET /monitor/restart/page - 获取重启管理页面
+ *   - POST /monitor/restart/confirm - 确认重启
+ * 
+ * 请求/响应示例：
+ *   ```
+ *   GET /monitor/restart/online
+ *   Authorization: Bearer <JWT>
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "onlineCount": 5,
+ *       "users": [
+ *         { "userName": "admin", "ipAddr": "192.168.1.100" },
+ *         { "userName": "user1", "ipAddr": "192.168.1.101" }
+ *       ]
+ *     }
+ *   }
+ *   ```
+ * 
+ * 权限要求：
+ *   - monitor:restart:query - 查看在线用户
+ *   - monitor:restart:confirm - 确认重启
+ * 
+ * 配置项（config.json）：
+ *   - restart.enabled: 是否启用重启功能（默认 true）
+ *   - restart.graceful_timeout: 优雅关闭超时（秒，默认 30）
+ *   - restart.notify_users: 是否通知用户（默认 true）
+ * 
+ * 重启流程：
+ *   1. 管理员访问重启管理页面
+ *   2. 查看当前在线用户数
+ *   3. 点击重启按钮，进行二次确认
+ *   4. 系统通知所有在线用户即将重启
+ *   5. 等待所有请求完成（最多 30 秒）
+ *   6. 调用 drogon::app().quit() 优雅退出
+ *   7. 外部进程管理工具自动重启应用
+ * 
+ * 外部进程管理工具集成：
+ *   - Windows Service：设置 SERVICE_FAILURE_RESTART
+ *   - systemd：设置 Restart=on-failure
+ *   - Docker：设置 restart: unless-stopped
+ *   - pm2：自动拉起已停止的进程
+ *   - supervisor：自动拉起已停止的进程
+ * 
+ * 优雅关闭机制：
+ *   1. 停止接收新请求
+ *   2. 等待现有请求完成
+ *   3. 关闭数据库连接
+ *   4. 关闭 Redis 连接
+ *   5. 保存应用状态
+ *   6. 退出进程
+ * 
+ * @see TokenCache - Token 缓存管理
+ * @see WsNotifyCtrl - WebSocket 通知控制器
+ */
 class SysRestartCtrl : public drogon::HttpController<SysRestartCtrl> {
 public:
     METHOD_LIST_BEGIN

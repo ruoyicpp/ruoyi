@@ -7,11 +7,79 @@
 #include "../../services/DatabaseService.h"
 #include "../services/TokenService.h"
 
-// TOTP 两步验证接口
-// POST /system/totp/generate  — 生成密钥+二维码URI（未激活）
-// POST /system/totp/enable    — 输入6位OTP激活
-// POST /system/totp/disable   — 关闭两步验证
-// POST /system/totp/verify    — 登录时校验OTP
+/**
+ * @file SysTotpCtrl.h
+ * @brief TOTP 两步验证控制器 — 基于时间的一次性密码（RFC 6238）
+ * 
+ * 功能概述：
+ *   - 密钥生成：生成 TOTP 密钥和二维码
+ *   - 激活验证：用户扫描二维码后输入 OTP 激活
+ *   - 禁用验证：用户可随时关闭两步验证
+ *   - 登录验证：登录时验证 OTP 码
+ *   - 备用码：生成备用码用于紧急情况
+ * 
+ * 核心特性：
+ *   - RFC 6238 标准：完全遵循 RFC 6238 TOTP 标准
+ *   - 时间同步：支持 30 秒时间窗口和时间偏差容限
+ *   - 二维码生成：使用 QR 码标准格式，兼容所有认证器应用
+ *   - 备用码管理：生成 10 个备用码，用于设备丢失时恢复
+ *   - 防暴力破解：OTP 验证失败次数限制
+ * 
+ * 工作流程：
+ *   1. 用户请求生成 TOTP 密钥
+ *   2. 系统生成 32 字节随机密钥
+ *   3. 系统生成 QR 码 URI（otpauth://totp/...）
+ *   4. 用户使用认证器应用（Google Authenticator、Microsoft Authenticator 等）扫描二维码
+ *   5. 用户输入认证器显示的 6 位 OTP 码激活
+ *   6. 系统验证 OTP 码，激活两步验证
+ *   7. 登录时，用户需输入密码和 OTP 码
+ *   8. 系统验证两者，通过后颁发 JWT Token
+ * 
+ * API 端点：
+ *   - POST /system/totp/generate - 生成密钥和二维码
+ *   - POST /system/totp/enable - 激活两步验证
+ *   - POST /system/totp/disable - 关闭两步验证
+ *   - POST /system/totp/verify - 验证 OTP 码
+ * 
+ * 请求/响应示例：
+ *   ```
+ *   POST /system/totp/generate
+ *   Authorization: Bearer <JWT>
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "secret": "JBSWY3DPEBLW64TMMQ======",
+ *       "qrUri": "otpauth://totp/RuoYi:user@example.com?secret=JBSWY3DPEBLW64TMMQ======&issuer=RuoYi"
+ *     }
+ *   }
+ *   ```
+ * 
+ * 支持的认证器应用：
+ *   - Google Authenticator（iOS/Android）
+ *   - Microsoft Authenticator（iOS/Android）
+ *   - Authy（iOS/Android）
+ *   - FreeOTP（iOS/Android）
+ *   - 1Password（iOS/Android）
+ * 
+ * 配置项（config.json）：
+ *   - totp.enabled: 是否启用 TOTP（默认 true）
+ *   - totp.issuer: 发行者名称（默认 "RuoYi"）
+ *   - totp.window_size: 时间窗口大小（默认 1，表示 ±30 秒）
+ *   - totp.backup_codes_count: 备用码数量（默认 10）
+ * 
+ * 安全建议：
+ *   - 启用 TOTP 后，用户应保存备用码
+ *   - 备用码应存放在安全的地方
+ *   - 如果设备丢失，应立即禁用 TOTP 并重新启用
+ *   - 建议与密码策略结合使用
+ * 
+ * @see TotpUtils - TOTP 工具类
+ * @see TokenService - Token 管理服务
+ * @see SysLoginCtrl - 登录控制器
+ */
 class SysTotpCtrl : public drogon::HttpController<SysTotpCtrl> {
 public:
     METHOD_LIST_BEGIN

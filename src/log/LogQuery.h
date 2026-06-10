@@ -1,3 +1,65 @@
+/**
+ * @file LogQuery.h
+ * @brief 日志查询和配置 — 日志查询参数、配置和数据结构
+ * 
+ * 功能概述：
+ *   - 日志查询参数：定义日志查询的各种条件
+ *   - 日志配置：日志系统的全局配置
+ *   - 数据结构：日志相关的数据结构定义
+ *   - Elasticsearch 集成：支持 Elasticsearch 日志存储
+ *   - Kibana 集成：支持 Kibana 日志可视化
+ *   - 告警规则：定义日志告警规则
+ * 
+ * 核心特性：
+ *   - 灵活查询：支持多条件日志查询
+ *   - 高级过滤：支持正则表达式和复杂过滤
+ *   - 分页支持：支持大数据量分页查询
+ *   - 排序功能：支持多字段排序
+ *   - 聚合统计：支持日志聚合统计
+ *   - 告警规则：支持自定义告警规则
+ * 
+ * 查询参数：
+ *   - keyword：关键词搜索
+ *   - level：日志级别
+ *   - file：日志文件
+ *   - function：函数名
+ *   - start_time：开始时间
+ *   - end_time：结束时间
+ *   - limit：返回条数
+ *   - offset：分页偏移
+ *   - sort_by：排序字段
+ *   - order：排序顺序
+ * 
+ * 配置项（config.json）：
+ *   - log.enabled: 是否启用日志系统（默认 true）
+ *   - log.primary_path: 主日志路径
+ *   - log.sources: 日志源列表
+ *   - log.elasticsearch: Elasticsearch 配置
+ *   - log.kibana: Kibana 配置
+ *   - log.alert_rules: 告警规则配置
+ * 
+ * Elasticsearch 配置：
+ *   - enabled：是否启用 Elasticsearch
+ *   - host：Elasticsearch 服务器地址
+ *   - port：Elasticsearch 服务器端口
+ *   - indexPrefix：索引前缀
+ * 
+ * Kibana 配置：
+ *   - enabled：是否启用 Kibana
+ *   - host：Kibana 服务器地址
+ *   - port：Kibana 服务器端口
+ * 
+ * 告警规则：
+ *   - highErrorRate：高错误率阈值（默认 20%）
+ *   - criticalErrorRate：严重错误率阈值（默认 40%）
+ *   - errorSpikeThreshold：错误数量激增阈值
+ *   - repeatedMessageCount：重复消息计数阈值
+ * 
+ * @see LogAnalyzer - 日志分析器
+ * @see LogCollector - 日志收集器
+ * @see LogSearchEngine - 日志搜索引擎
+ */
+
 #pragma once
 
 #include <cstdint>
