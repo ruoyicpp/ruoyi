@@ -211,7 +211,7 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 
 | Item | Requirement | Description |
 |------|-------------|-------------|
-| **Operating System** | Windows 10+ / Linux / macOS | Verified on Windows 11 + MSYS2 MinGW64 |
+| **Operating System** | Windows 10+ / Linux / macOS | Verified on Windows 11 + MSYS2 MinGW64.<br/>⚠️ **Linux strictly requires Ubuntu 24.04 LTS** (see [Linux OS Requirement](docs/LINUX_OS_REQUIREMENT_EN.md)) |
 | **Processor** | x86-64 or ARM64 | Recommended 4+ cores |
 | **Memory** | Min 512MB, recommended 2GB+ | Includes database and application |
 | **Disk** | Min 500MB | Includes app, logs, uploaded files |
