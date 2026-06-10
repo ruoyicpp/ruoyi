@@ -1,18 +1,61 @@
 #pragma once
 /**
- * WsTicketCtrl —— 一次性 WebSocket 票据签发
- *
- * 端点：GET /ws/ticket
- *
- * 流程：
- *   1) JwtAuthFilter 已校验 Bearer token，能取到当前 userId / username
- *   2) 生成 32 字节随机 ticket（hex 字符串）
- *   3) 写入 MemCache，60 秒过期，value = userId:userName
- *   4) 前端用 ?ticket=xxx 升级 ws，WsAuthFilter（如有）取 ticket → 反查 cache → 通过
- *
- * 设计要点：
- *   - 不复用 JWT：浏览器 ws 升级请求无法附 Authorization 头
- *   - 一次性：getString 命中后 cache 立刻 remove（防止重放）
+ * @file WsTicketCtrl.h
+ * @brief WebSocket 票据签发控制器 — 为 WebSocket 连接生成一次性认证票据
+ * 
+ * 功能概述：
+ *   - 票据生成：生成一次性的 WebSocket 认证票据
+ *   - 票据验证：WebSocket 连接时使用票据进行身份验证
+ *   - 防重放：票据一次性使用，防止重放攻击
+ *   - 自动过期：票据 60 秒后自动过期
+ * 
+ * 核心特性：
+ *   - 一次性使用：票据使用后立即删除，防止重放
+ *   - 随机生成：使用 OpenSSL RAND_bytes 生成 32 字节随机数
+ *   - 短期有效：票据有效期仅 60 秒，降低被盗用风险
+ *   - 用户绑定：票据与用户 ID 和用户名绑定
+ * 
+ * 工作流程：
+ *   1. 前端使用 JWT Token 调用 GET /ws/ticket 获取票据
+ *   2. 后端验证 JWT Token（JwtAuthFilter）
+ *   3. 后端生成 32 字节随机数，转换为 64 字符十六进制字符串
+ *   4. 将票据存入 MemCache，60 秒过期，值为 "userId:userName"
+ *   5. 返回票据给前端
+ *   6. 前端使用 ?ticket=xxx 升级 WebSocket 连接
+ *   7. WebSocket 连接时，验证票据有效性
+ *   8. 验证成功后，从 MemCache 删除票据（一次性）
+ * 
+ * 为什么需要票据？
+ *   - 浏览器 WebSocket 升级请求无法附加 Authorization 头
+ *   - 无法直接在 WebSocket 握手时传递 JWT Token
+ *   - 需要一个临时的、一次性的认证凭证
+ * 
+ * API 端点：
+ *   - GET /ws/ticket - 获取 WebSocket 票据
+ * 
+ * 请求示例：
+ *   ```
+ *   GET /ws/ticket HTTP/1.1
+ *   Authorization: Bearer <JWT_TOKEN>
+ *   ```
+ * 
+ * 响应示例：
+ *   ```json
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "ticket": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+ *     }
+ *   }
+ *   ```
+ * 
+ * 权限要求：
+ *   - 需要有效的 JWT Token（任何已登录用户）
+ * 
+ * @see WsNotifyCtrl - WebSocket 通知控制器
+ * @see WsBus - WebSocket 消息总线
+ * @see JwtAuthFilter - JWT 认证过滤器
  */
 #include <drogon/HttpController.h>
 #include "../../common/AjaxResult.h"

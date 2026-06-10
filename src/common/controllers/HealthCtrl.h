@@ -34,7 +34,7 @@ public:
         ADD_METHOD_TO(HealthCtrl::druid, "/api/druid", drogon::Get);
     METHOD_LIST_END
 
-    // 首页欢迎页（匹配 RuoYi.Net HomeController.Index）
+    // 首页欢迎页（匹配 RuoYi HomeController.Index）
     void index(const drogon::HttpRequestPtr&,
                std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
         static const std::string html = R"html(

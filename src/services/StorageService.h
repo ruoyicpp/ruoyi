@@ -1,3 +1,51 @@
+/**
+ * @file StorageService.h
+ * @brief 文件存储服务 — 支持本地、MinIO、AWS S3 三种存储后端
+ * 
+ * 功能概述：
+ *   - 多存储后端支持：本地磁盘、MinIO、AWS S3
+ *   - 统一的存储接口：上传、删除、列表、下载
+ *   - 自动路由：根据配置自动选择存储后端
+ *   - 签名支持：S3 SigV4 签名、MinIO HMAC 签名
+ *   - 文件管理：支持目录结构、文件元数据
+ * 
+ * 存储后端对比：
+ *   - local：本地磁盘存储，适合开发和小规模部署
+ *   - minio：MinIO 对象存储，兼容 S3 API，适合中等规模
+ *   - s3：AWS S3 或兼容 S3 的云存储，适合大规模和云部署
+ * 
+ * 配置示例（config.json）：
+ *   {
+ *     "storage": {
+ *       "type": "local",
+ *       "local_path": "./upload",
+ *       "endpoint": "http://127.0.0.1:9000",
+ *       "bucket": "ruoyi",
+ *       "access_key": "minioadmin",
+ *       "secret_key": "minioadmin",
+ *       "region": "us-east-1",
+ *       "public_url": "http://minio.example.com"
+ *     }
+ *   }
+ * 
+ * 使用示例：
+ *   // 初始化
+ *   StorageService::instance().init(config["storage"]);
+ *   
+ *   // 上传文件
+ *   std::string url = StorageService::instance().upload(
+ *       "2024/01/photo.jpg", fileData, "image/jpeg");
+ *   
+ *   // 删除文件
+ *   StorageService::instance().remove("2024/01/photo.jpg");
+ *   
+ *   // 列出文件
+ *   auto files = StorageService::instance().list("2024/01/");
+ * 
+ * @see MinIO C++ SDK - MinIO 客户端库
+ * @see AWS SDK for C++ - AWS S3 客户端库
+ */
+
 #pragma once
 #include <string>
 #include <fstream>
@@ -16,15 +64,31 @@
 #include <miniocpp/error.h>
 #endif
 
-// 文件存储分层：本地磁盘 / MinIO / AWS S3（SigV4 签名）
-// config.json: { "storage": { "type": "local", "local_path": "./upload",
-//   "endpoint": "http://127.0.0.1:9000", "bucket": "ruoyi",
-//   "access_key": "", "secret_key": "", "region": "us-east-1", "public_url": "" } }
+/**
+ * @class StorageService
+ * @brief 文件存储服务
+ * 
+ * 单例模式，提供统一的文件存储接口。
+ * 支持本地磁盘、MinIO、AWS S3 三种存储后端。
+ */
 class StorageService {
 public:
+    /**
+     * @brief 获取单例实例
+     * @return StorageService 单例引用
+     */
     static StorageService &instance() { static StorageService s; return s; }
 
+    /**
+     * @brief 初始化存储服务
+     * 
+     * 从配置中读取存储后端类型和相关参数。
+     * 如果是本地存储，自动创建目录。
+     * 
+     * @param cfg 存储配置（JSON 对象）
+     */
     void init(const Json::Value &cfg) {
+        // 读取存储类型和参数
         type_      = cfg.get("type", "local").asString();
         localPath_ = cfg.get("local_path", "./upload").asString();
         endpoint_  = cfg.get("endpoint", "").asString();
@@ -33,22 +97,42 @@ public:
         secretKey_ = cfg.get("secret_key", "").asString();
         region_    = cfg.get("region", "us-east-1").asString();
         publicUrl_ = cfg.get("public_url", "").asString();
+        
+        // 如果是本地存储，创建目录
         if (type_ == "local")
             std::filesystem::create_directories(localPath_);
     }
 
-    // 上传文件，返回访问 URL
-    // data: 文件二进制内容，filename: 存储路径（如 2024/01/photo.jpg）
+    /**
+     * @brief 上传文件
+     * 
+     * 根据配置的存储后端，将文件上传到相应的存储服务。
+     * 返回文件的访问 URL。
+     * 
+     * @param filename 文件存储路径（如 "2024/01/photo.jpg"）
+     * @param data 文件二进制内容
+     * @param contentType 文件 MIME 类型（默认 "application/octet-stream"）
+     * @return 文件访问 URL
+     */
     std::string upload(const std::string &filename, const std::string &data,
                        const std::string &contentType = "application/octet-stream") {
+        // 根据存储类型分发到相应的上传方法
         if (type_ == "local")   return uploadLocal(filename, data);
         if (type_ == "minio")  return uploadMinio(filename, data, contentType);
         if (type_ == "s3")     return uploadS3(filename, data, contentType);
         return uploadLocal(filename, data);
     }
 
-    // 删除文件
+    /**
+     * @brief 删除文件
+     * 
+     * 从存储服务中删除指定的文件。
+     * 
+     * @param filename 文件存储路径
+     * @return 是否删除成功
+     */
     bool remove(const std::string &filename) {
+        // 根据存储类型分发到相应的删除方法
         if (type_ == "local") {
             std::error_code ec;
             return std::filesystem::remove(localPath_ + "/" + filename, ec);
@@ -64,8 +148,16 @@ public:
         return false;
     }
 
-    // 列出文件（S3/MinIO 返回 key 列表，local 返回 filename 列表）
+    /**
+     * @brief 列出文件
+     * 
+     * 列出存储服务中指定前缀下的所有文件。
+     * 
+     * @param prefix 文件前缀（如 "2024/01/"）
+     * @return 文件列表（文件名或 key）
+     */
     std::vector<std::string> list(const std::string &prefix = "") {
+        // 根据存储类型分发到相应的列表方法
         if (type_ == "local") {
             std::vector<std::string> v;
             std::error_code ec;

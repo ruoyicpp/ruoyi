@@ -66,7 +66,7 @@ using jwt_traits = jwt::traits::open_source_parsers_jsoncpp;
  * @class JwtUtils
  * @brief JWT 令牌工具类
  * 
- * 对应 RuoYi.Net 中的 JWTEncryption，提供 JWT 令牌的生成、验证、解析功能。
+ * 对应 RuoYi 中的 JWTEncryption，提供 JWT 令牌的生成、验证、解析功能。
  * 采用单例模式，全局唯一配置实例。
  * 
  * 支持 HS256（对称密钥）和 RS256（公私钥）两种签名算法。

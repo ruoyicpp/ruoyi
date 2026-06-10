@@ -1,3 +1,72 @@
+/**
+ * @file main.cc
+ * @brief RuoYi-C++ 应用程序主入口
+ * 
+ * 功能概述：
+ *   - 应用初始化：OpenSSL、日志、配置加载、数据库连接
+ *   - 多进程编排：支持多 Worker 进程，由 WorkerOrchestrator 管理
+ *   - Watchdog 集成：自动启动 watchdog 进程，防止单实例冲突
+ *   - 许可证校验：企业版许可证验证和监控
+ *   - HTTP 服务器：基于 Drogon 框架的高性能 Web 服务
+ *   - 缓存预热：启动时预加载配置、字典、菜单等数据
+ *   - 优雅关闭：支持 SIGTERM/SIGINT 信号，确保资源正确释放
+ * 
+ * 启动流程：
+ *   1. 初始化日志系统（ColorLogger）和崩溃处理（CrashHandler）
+ *   2. OpenSSL 全局初始化（主线程单线程完成）
+ *   3. Watchdog 检测和移交（直接双击 exe 时转交给 watchdog）
+ *   4. 单实例锁检查（防止多个主进程同时运行）
+ *   5. 多进程编排（如果 worker_processes > 1，由 WorkerOrchestrator 管理）
+ *   6. 许可证校验（企业版功能）
+ *   7. 配置加载（config.json）
+ *   8. 数据库连接（PostgreSQL 或 SQLite）
+ *   9. 缓存预热（配置、字典、菜单等）
+ *   10. HTTP 服务器启动（监听指定端口）
+ *   11. 信号处理和优雅关闭
+ * 
+ * 关键特性：
+ *   - 多进程支持：通过 WorkerOrchestrator 管理多个 Worker 进程
+ *   - 热重载：支持 config.json 热重载（不需要重启应用）
+ *   - 缓存策略：多层缓存（内存、Redis）加速数据访问
+ *   - 日志系统：彩色控制台输出、结构化日志、日志搜索
+ *   - 监控告警：性能指标收集、实时监控、告警规则
+ *   - 安全防护：XSS 防御、SQL 注入防御、限流、签名验证
+ *   - 企业功能：许可证管理、硬件指纹、LDAP 认证、OAuth2
+ * 
+ * 配置文件（config.json）：
+ *   - app.port: HTTP 服务器监听端口（默认 18080）
+ *   - app.worker_processes: Worker 进程数（默认 1）
+ *   - database.type: 数据库类型（postgresql/sqlite）
+ *   - database.host: 数据库主机
+ *   - database.port: 数据库端口
+ *   - database.dbname: 数据库名称
+ *   - database.user: 数据库用户
+ *   - database.passwd: 数据库密码
+ *   - cache.type: 缓存类型（memory/redis）
+ *   - cache.redis.host: Redis 主机
+ *   - cache.redis.port: Redis 端口
+ * 
+ * 环境变量：
+ *   - RUOYI_WORKER_INDEX: Worker 进程索引（由 WorkerOrchestrator 设置）
+ *   - RUOYI_NO_PAUSE: 禁用错误时的暂停（用于自动化脚本）
+ * 
+ * 编译选项：
+ *   - RUOYI_USE_EMBEDDED_FRONTEND: 嵌入前端资源（减少外部依赖）
+ *   - _WIN32: Windows 平台特定代码
+ * 
+ * 依赖模块：
+ *   - Drogon: HTTP 框架
+ *   - PostgreSQL libpq: 数据库驱动
+ *   - OpenSSL: 加密和 TLS 支持
+ *   - JSON: 配置和数据处理
+ * 
+ * @see WorkerOrchestrator - 多进程编排器
+ * @see DatabaseService - 数据库服务
+ * @see ConfigLoader - 配置加载器
+ * @see CacheStrategy - 缓存策略
+ * @see LicenseManager - 许可证管理器
+ */
+
 #include "AppIncludes.h"
 #include "common/ColorLogger.h"
 #ifdef RUOYI_USE_EMBEDDED_FRONTEND
@@ -18,7 +87,25 @@
 #  include <io.h>      // _isatty / _fileno
 #endif
 
-// 从 config.json 的 database 节构造 libpq 连接串（兼容旧调用）
+/**
+ * @brief 从 config.json 的 database 节构造 libpq 连接串
+ * 
+ * 根据配置文件中的数据库参数生成 PostgreSQL 连接字符串。
+ * 兼容旧版本的调用方式。
+ * 
+ * @param cfgFile 配置文件路径（通常为 "config.json"）
+ * @param timeout 连接超时时间（秒，默认 5）
+ * 
+ * @return 格式为 "host=... port=... dbname=... user=... password=... connect_timeout=..."
+ *         的 libpq 连接字符串，如果配置文件不存在或格式错误返回空字符串
+ * 
+ * @note 
+ *   - 如果 database 节不存在，返回空字符串
+ *   - 密码为空时也会包含在连接字符串中
+ *   - 此函数为兼容性函数，新代码应使用 ConfigLoader 版本
+ * 
+ * @see buildDbConnStr(const ConfigLoader&, int) - ConfigLoader 版本
+ */
 static std::string buildDbConnStr(const std::string& cfgFile, int timeout = 5) {
     std::ifstream f(cfgFile);
     if (!f.is_open()) return {};
@@ -34,7 +121,26 @@ static std::string buildDbConnStr(const std::string& cfgFile, int timeout = 5) {
          + " connect_timeout=" + std::to_string(timeout);
 }
 
-// ConfigLoader 版本：passwd 若为空则从 Vault 补全
+/**
+ * @brief 从 ConfigLoader 构造 libpq 连接串（推荐版本）
+ * 
+ * 使用 ConfigLoader 从配置文件和 Vault 中读取数据库参数，
+ * 生成 PostgreSQL 连接字符串。
+ * 
+ * @param loader ConfigLoader 实例，包含配置和 Vault 集成
+ * @param timeout 连接超时时间（秒，默认 5）
+ * 
+ * @return 格式为 "host=... port=... dbname=... user=... password=... connect_timeout=..."
+ *         的 libpq 连接字符串
+ * 
+ * @note 
+ *   - 如果 database.passwd 为空，会从 Vault 中补全（如果配置了 Vault）
+ *   - 使用 ConfigLoader 的 get() 方法，支持环境变量覆盖
+ *   - 推荐在新代码中使用此版本而不是文件路径版本
+ * 
+ * @see buildDbConnStr(const std::string&, int) - 文件路径版本（已弃用）
+ * @see ConfigLoader - 配置加载器
+ */
 static std::string buildDbConnStr(const ConfigLoader& loader, int timeout = 5) {
     auto& d = loader.raw()["database"];
     return "host="     + loader.get("database", "host",   "127.0.0.1")
@@ -45,9 +151,42 @@ static std::string buildDbConnStr(const ConfigLoader& loader, int timeout = 5) {
          + " connect_timeout=" + std::to_string(timeout);
 }
 
-// ── 公共认证辅助函数：验证 Admin-Token（JWT + localhost 白名单）────────
+/**
+ * @namespace AuthHelper
+ * @brief 公共认证辅助函数命名空间
+ * 
+ * 提供管理员令牌验证和认证响应生成功能。
+ * 支持多种令牌来源：HTTP Header、Cookie、Query 参数。
+ * 包含 localhost 白名单，便于开发环境调试。
+ */
 namespace AuthHelper {
-    // 从请求中提取并验证管理员 token
+    /**
+     * @brief 验证管理员令牌
+     * 
+     * 从 HTTP 请求中提取令牌，支持多种来源：
+     *   1. Authorization Header（标准 Bearer 令牌）
+     *   2. Cookie 中的 Admin-Token
+     *   3. Query 参数中的 token
+     * 
+     * 验证流程：
+     *   1. 尝试从请求中提取令牌（多个来源）
+     *   2. 解析 JWT 令牌，提取用户 UUID
+     *   3. 从 TokenCache 中验证令牌有效性
+     *   4. 如果令牌无效，检查请求来源 IP 是否在 localhost 白名单中
+     * 
+     * @param req HTTP 请求对象
+     * 
+     * @return true 如果令牌有效或请求来自 localhost，false 否则
+     * 
+     * @note 
+     *   - localhost 白名单包括：127.0.0.1、::1（IPv6）、0.0.0.0
+     *   - 用于开发环境调试，生产环境应禁用
+     *   - 令牌验证失败时不会抛出异常，而是返回 false
+     * 
+     * @see SecurityUtils::getToken() - 从 Header 提取令牌
+     * @see JwtUtils::parseUuid() - 解析 JWT 令牌
+     * @see TokenCache - 令牌缓存
+     */
     inline bool verifyAdminToken(const drogon::HttpRequestPtr& req) {
         auto token = SecurityUtils::getToken(req);
 
@@ -84,7 +223,19 @@ namespace AuthHelper {
         return (peer == "127.0.0.1" || peer == "::1" || peer == "0.0.0.0");
     }
 
-    // 生成 401 未授权响应（JSON 格式）
+    /**
+     * @brief 生成 401 未授权 JSON 响应
+     * 
+     * 创建标准的 HTTP 401 Unauthorized 响应，包含 JSON 错误信息。
+     * 用于认证失败时返回给客户端。
+     * 
+     * @return HTTP 401 响应对象，包含 { "error": "Unauthorized" }
+     * 
+     * @note 
+     *   - 响应状态码为 401 Unauthorized
+     *   - Content-Type 为 application/json
+     *   - 客户端应根据此响应重新进行身份验证
+     */
     inline drogon::HttpResponsePtr make401JsonResponse() {
         Json::Value err;
         err["error"] = "Unauthorized";
@@ -94,9 +245,91 @@ namespace AuthHelper {
     }
 }
 
-// SecurityUtils.cc 暴露的 OpenSSL 3.x default provider 早期初始化函数
+/**
+ * @brief SecurityUtils.cc 暴露的 OpenSSL 3.x default provider 早期初始化函数
+ * 
+ * 在主线程中单线程完成 OpenSSL 全局初始化，防止多线程并发时的堆损坏。
+ * 必须在任何 libpq 调用之前调用。
+ */
 extern "C" void ruoyi_init_openssl_provider();
 
+/**
+ * @brief RuoYi-C++ 应用程序主函数
+ * 
+ * 应用程序的入口点，负责初始化所有系统组件并启动 HTTP 服务器。
+ * 
+ * 启动流程：
+ *   1. **日志和崩溃处理初始化**
+ *      - ColorLogger::install() - 启用彩色控制台输出
+ *      - CrashHandler::install() - 安装崩溃处理器
+ *   
+ *   2. **OpenSSL 初始化**
+ *      - ruoyi_init_openssl_provider() - 主线程单线程初始化
+ *   
+ *   3. **工作目录设置**
+ *      - 将工作目录切换到 exe 所在目录
+ *      - 确保能找到 config.json 和其他配置文件
+ *   
+ *   4. **Watchdog 检测和移交**
+ *      - 如果检测到 watchdog，自动移交给 watchdog 进程
+ *      - 防止直接双击 exe 时的多实例问题
+ *   
+ *   5. **单实例锁检查**
+ *      - 仅在由 watchdog 启动时检查
+ *      - 防止多个主进程同时运行
+ *   
+ *   6. **多进程编排**
+ *      - 如果 worker_processes > 1，由 WorkerOrchestrator 管理
+ *      - 否则进入单进程模式
+ *   
+ *   7. **许可证校验**
+ *      - 检查企业版许可证有效性
+ *      - 启动许可证监控线程
+ *   
+ *   8. **配置加载**
+ *      - 从 config.json 加载配置
+ *      - 支持环境变量覆盖
+ *      - 支持 Vault 密钥管理
+ *   
+ *   9. **数据库连接**
+ *      - 连接 PostgreSQL 或 SQLite
+ *      - 初始化连接池
+ *   
+ *   10. **缓存预热**
+ *       - 加载配置、字典、菜单等数据到缓存
+ *       - 加速首次请求
+ *   
+ *   11. **HTTP 服务器启动**
+ *       - 启动 Drogon HTTP 服务器
+ *       - 监听指定端口
+ *   
+ *   12. **信号处理和优雅关闭**
+ *       - 捕获 SIGTERM/SIGINT 信号
+ *       - 优雅关闭所有资源
+ * 
+ * @param argc 命令行参数个数
+ * @param argv 命令行参数数组
+ *            - --config <file>: 指定配置文件路径（默认 config.json）
+ *            - --launched-by-watchdog: 由 watchdog 启动的标记（内部使用）
+ * 
+ * @return 退出码
+ *         - 0: 正常退出
+ *         - 1: 初始化失败
+ *         - 2: 单实例锁冲突（已有其他实例在运行）
+ *         - 其他: 运行时错误
+ * 
+ * @note 
+ *   - 此函数不会返回，除非发生错误或收到关闭信号
+ *   - 所有异常都会被捕获并记录到日志
+ *   - Windows 下会自动设置控制台 UTF-8 编码
+ *   - 支持 RUOYI_WORKER_INDEX 环境变量（由 WorkerOrchestrator 设置）
+ * 
+ * @see WorkerOrchestrator - 多进程编排器
+ * @see ConfigLoader - 配置加载器
+ * @see DatabaseService - 数据库服务
+ * @see CacheStrategy - 缓存策略
+ * @see LicenseManager - 许可证管理器
+ */
 int main(int argc, char* argv[]) {
     ColorLogger::install(); // 开启彩色控制台输出（Windows VT + trantor 拦截）
     // 最先安装崩溃日志捕获，确保任何时刻崩溃都有记录
@@ -221,7 +454,11 @@ int main(int argc, char* argv[]) {
                     WorkerOrchestrator::Config oc;
                     oc.enabled     = true;
                     oc.workerCount = workerCount;
+#ifdef _WIN32
                     oc.exePath     = (exePath / "ruoyi-cpp.exe").string();
+#else
+                    oc.exePath     = (exePath / "ruoyi-cpp").string();
+#endif
                     // 透传原始命令行（去掉 argv[0]）
                     for (int i = 1; i < argc; ++i) oc.extraArgs.emplace_back(argv[i]);
                     return WorkerOrchestrator::instance().run(oc);
@@ -959,6 +1196,9 @@ int main(int argc, char* argv[]) {
                     feSpaMode   = spaMode;
                     feApiPrefix = apiPrefix;
                     feIndexPath = std::filesystem::absolute(distPath + "/index.html").string();
+                    // 根据前端 SPA 模式自动切换 HTTP 响应策略
+                    // SPA 模式：HTTP 200 + X-Business-Code 头；非 SPA：HTTP 真实状态码
+                    HttpStatus::setSpaMode(spaMode);
                 } else {
                     LOG_WARN << "[Frontend] dist_path 不存在或缺少 index.html: "
                              << distPath << "（已跳过托管）";
@@ -978,6 +1218,9 @@ int main(int argc, char* argv[]) {
                 feEmbedded  = true;
                 feSpaMode   = spaMode;
                 feApiPrefix = apiPrefix;
+                // 根据前端 SPA 模式自动切换 HTTP 响应策略
+                // SPA 模式：HTTP 200 + X-Business-Code 头；非 SPA：HTTP 真实状态码
+                HttpStatus::setSpaMode(spaMode);
 #else
                 std::cerr << "\n[错误] embedded_frontend 已启用，但本次编译未嵌入前端！\n"
                           << "  请用 cmake -DRUOYI_EMBED_FRONTEND=ON -DRUOYI_EMBED_FRONTEND_DIR=./web 重新编译。\n"
@@ -1097,8 +1340,19 @@ int main(int argc, char* argv[]) {
                                   code == drogon::k405MethodNotAllowed);
                 if (isSpaCode && feHosted && feSpaMode) {
                     std::string p = req->path();
-                    bool isApi = !feApiPrefix.empty() && feApiPrefix != "/" &&
-                                 p.rfind(feApiPrefix, 0) == 0;
+                    // API 路径判断：有 feApiPrefix 则按前缀判断；无前缀时，
+                    // 若路径有 ≥2 段（/xxx/yyy）视为 API，不走 SPA fallback
+                    bool isApi = false;
+                    if (!feApiPrefix.empty() && feApiPrefix != "/" &&
+                        p.rfind(feApiPrefix, 0) == 0) {
+                        isApi = true;
+                    } else {
+                        // 统计路径段数：>= 2 段的视为 API（不含 feApiPrefix 的情况）
+                        int cnt = 0;
+                        for (size_t i = 0; i < p.size(); ++i)
+                            if (p[i] == '/') ++cnt;
+                        isApi = (cnt >= 2);
+                    }
                     auto slash = p.find_last_of('/');
                     auto seg   = (slash == std::string::npos) ? p : p.substr(slash + 1);
                     bool hasExt = seg.find('.') != std::string::npos;
@@ -1111,26 +1365,7 @@ int main(int argc, char* argv[]) {
                         // 兜底返回简单 200 让前端继续加载（极少触发）
                     }
                 }
-                std::string msg;
-                int bodyCode = (int)code;
-                switch (code) {
-                    case drogon::k400BadRequest:          msg = "请求参数错误";   break;
-                    case drogon::k401Unauthorized:        msg = "认证失败";       break;
-                    case drogon::k403Forbidden:           msg = "无权限访问";     break;
-                    case drogon::k404NotFound:            msg = "资源不存在";     break;
-                    case drogon::k405MethodNotAllowed:    msg = "方法不允许";     break;
-                    case drogon::k413RequestEntityTooLarge: msg = "请求体过大"; break;
-                    case drogon::k500InternalServerError: msg = "服务器内部错误"; break;
-                    case drogon::k502BadGateway:          msg = "网关错误";       break;
-                    case drogon::k503ServiceUnavailable:  msg = "服务不可用";     break;
-                    default:                               msg = "请求失败";      break;
-                }
-                Json::Value j;
-                j["code"] = bodyCode;
-                j["msg"]  = msg;
-                auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
-                resp->setStatusCode(code);
-                return resp;
+                return ErrorPage::build(code);
             });
 
         // ── 安全响应头（XSS/点击劫持/内容嗅探防御）────────────────────────────
@@ -1325,7 +1560,6 @@ int main(int argc, char* argv[]) {
             cb(drogon::HttpResponse::newFileResponse(filePath));
         };
         drogon::app().registerHandler("/profile/{dir}/{file}", serveUpload, {drogon::Get});
-
 
         // ── iconfont 字体文件路由 ──────────────────────────────────────
         drogon::app().registerHandler("/iconfont-sys.woff2",
@@ -2019,12 +2253,29 @@ load();
                 }
             }
             if (!dbCfg.isNull()) {
-                std::string connStr = buildDbConnStr(configFile, 5);
+                // 检查数据库类型
+                std::string dbType = dbCfg.get("type", "postgresql").asString();
+                std::transform(dbType.begin(), dbType.end(), dbType.begin(), ::tolower);
+                
+                int displayPort = dbCfg.get("port", 5432).asInt();
+                if (dbType == "mysql" || dbType == "mariadb") {
+                    displayPort = dbCfg.get("port", 3306).asInt();
+                }
+                
                 LOG_INFO << "正在连接数据库: " << dbCfg.get("host","127.0.0.1").asString()
-                         << ":" << dbCfg.get("port",5432).asInt()
-                         << "/" << dbCfg.get("dbname","ruoyi").asString();
-                (void)connStr;
-                bool pgOk = DatabaseService::instance().connect(buildDbConnStr(*cfgLoader, 5));
+                         << ":" << displayPort
+                         << "/" << dbCfg.get("dbname","ruoyi").asString()
+                         << " (type=" << dbType << ")";
+                
+                // 如果是 MySQL，跳过 PostgreSQL 连接，由 DatabaseAdapter 处理
+                bool pgOk = false;
+                if (dbType == "mysql" || dbType == "mariadb") {
+                    LOG_INFO << "[MySQL] 使用 DatabaseAdapter 处理 MySQL 连接，跳过 PostgreSQL 驱动";
+                    pgOk = false;  // MySQL 不使用 PostgreSQL 驱动
+                } else {
+                    // PostgreSQL 或其他类型，使用 PostgreSQL 驱动
+                    pgOk = DatabaseService::instance().connect(buildDbConnStr(*cfgLoader, 5));
+                }
                 // 慢查询阈值（默认 200ms WARN, 1000ms ERROR；可在 config.database.slow_query_warn_ms / err_ms 调整）
                 {
                     int warnMs = dbCfg.get("slow_query_warn_ms", 200).asInt();

@@ -350,6 +350,253 @@ std::vector<std::string> DatabaseInit::getCreateTableSqls() {
         ))",
 
         // -------------------------------------------------------
+        // oa_approval 轻量审批单
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_approval (
+            id             BIGSERIAL    PRIMARY KEY,
+            title          VARCHAR(128) NOT NULL DEFAULT '',
+            approval_type  VARCHAR(32)  NOT NULL DEFAULT 'general',
+            status         VARCHAR(16)  NOT NULL DEFAULT 'draft',
+            applicant_id   BIGINT       NOT NULL DEFAULT 0,
+            applicant_name VARCHAR(64)  NOT NULL DEFAULT '',
+            reviewer_id    BIGINT       NOT NULL DEFAULT 0,
+            reviewer_name  VARCHAR(64)  NOT NULL DEFAULT '',
+            form_data      TEXT         NOT NULL DEFAULT '{}',
+            current_step   VARCHAR(32)  NOT NULL DEFAULT 'submitted',
+            review_comment VARCHAR(500) NOT NULL DEFAULT '',
+            review_time    TIMESTAMP,
+            create_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            update_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            update_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_oa_approval_status ON oa_approval(status, create_time DESC))",
+        R"(CREATE INDEX IF NOT EXISTS idx_oa_approval_applicant ON oa_approval(applicant_id, create_time DESC))",
+
+        // -------------------------------------------------------
+        // oa_meeting_room_booking 会议室预约
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_meeting_room_booking (
+            id             BIGSERIAL    PRIMARY KEY,
+            subject        VARCHAR(128) NOT NULL DEFAULT '',
+            room_name      VARCHAR(64)  NOT NULL DEFAULT '',
+            organizer_id   BIGINT       NOT NULL DEFAULT 0,
+            organizer_name VARCHAR(64)  NOT NULL DEFAULT '',
+            start_time     TIMESTAMP,
+            end_time       TIMESTAMP,
+            status         VARCHAR(16)  NOT NULL DEFAULT 'scheduled',
+            attendees      TEXT         NOT NULL DEFAULT '[]',
+            remark         VARCHAR(500) NOT NULL DEFAULT '',
+            create_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            update_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            update_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_oa_meeting_time ON oa_meeting_room_booking(start_time, end_time))",
+
+        // -------------------------------------------------------
+        // oa_knowledge_article 知识库
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_knowledge_article (
+            id             BIGSERIAL    PRIMARY KEY,
+            title          VARCHAR(200) NOT NULL DEFAULT '',
+            category       VARCHAR(64)  NOT NULL DEFAULT 'general',
+            summary        VARCHAR(500) NOT NULL DEFAULT '',
+            content        TEXT         NOT NULL DEFAULT '',
+            author_id      BIGINT       NOT NULL DEFAULT 0,
+            author_name    VARCHAR(64)  NOT NULL DEFAULT '',
+            status         VARCHAR(16)  NOT NULL DEFAULT 'published',
+            view_count     BIGINT       NOT NULL DEFAULT 0,
+            create_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            update_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            update_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_oa_knowledge_category ON oa_knowledge_article(category, status, create_time DESC))",
+
+        // -------------------------------------------------------
+        // oa_approval_template 审批模板
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_approval_template (
+            id             BIGSERIAL    PRIMARY KEY,
+            name           VARCHAR(64)  NOT NULL DEFAULT '',
+            approval_type  VARCHAR(32)  NOT NULL DEFAULT 'general',
+            form_schema    TEXT         NOT NULL DEFAULT '{}',
+            status         VARCHAR(16)  NOT NULL DEFAULT 'active',
+            create_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            update_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            update_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+
+        // oa_approval 已有字段追加：template_id, cc_users, review_comment, review_time
+        // 多级审批追加：workflow_id, next_reviewer_id, step_order, timeout_hours, transfer_target_id
+        R"(DO $$ BEGIN
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS template_id BIGINT NOT NULL DEFAULT 0;
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS cc_users TEXT NOT NULL DEFAULT '[]';
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS review_comment VARCHAR(500) NOT NULL DEFAULT '';
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS review_time TIMESTAMP;
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS workflow_id BIGINT NOT NULL DEFAULT 0;
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS next_reviewer_id BIGINT NOT NULL DEFAULT 0;
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS step_order INT NOT NULL DEFAULT 1;
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS timeout_hours INT NOT NULL DEFAULT 72;
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS transfer_target_id BIGINT NOT NULL DEFAULT 0;
+            ALTER TABLE oa_approval ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP;
+        EXCEPTION WHEN others THEN NULL; END $$)",
+
+        // -------------------------------------------------------
+        // oa_workflow_node 多级审批工作流节点
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_workflow_node (
+            id             BIGSERIAL    PRIMARY KEY,
+            workflow_id    BIGINT       NOT NULL DEFAULT 0,
+            node_order     INT          NOT NULL DEFAULT 1,
+            node_name      VARCHAR(64)  NOT NULL DEFAULT '',
+            reviewer_id    BIGINT       NOT NULL DEFAULT 0,
+            reviewer_name  VARCHAR(64)  NOT NULL DEFAULT '',
+            timeout_hours  INT          NOT NULL DEFAULT 72,
+            node_type      VARCHAR(16)  NOT NULL DEFAULT 'approval',
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_workflow_node_wid ON oa_workflow_node(workflow_id))",
+
+        // oa_knowledge_article 已有字段追加：tags, attachments, scope
+        R"(DO $$ BEGIN
+            ALTER TABLE oa_knowledge_article ADD COLUMN IF NOT EXISTS tags TEXT NOT NULL DEFAULT '[]';
+            ALTER TABLE oa_knowledge_article ADD COLUMN IF NOT EXISTS attachments TEXT NOT NULL DEFAULT '[]';
+            ALTER TABLE oa_knowledge_article ADD COLUMN IF NOT EXISTS scope VARCHAR(16) NOT NULL DEFAULT 'public';
+        EXCEPTION WHEN others THEN NULL; END $$)",
+
+        // -------------------------------------------------------
+        // oa_vehicle 公务车辆台账
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_vehicle (
+            id             BIGSERIAL    PRIMARY KEY,
+            plate_number   VARCHAR(20)  NOT NULL DEFAULT '',
+            model          VARCHAR(64)  NOT NULL DEFAULT '',
+            driver_name    VARCHAR(64)  NOT NULL DEFAULT '',
+            driver_phone   VARCHAR(20)  NOT NULL DEFAULT '',
+            status         VARCHAR(16)  NOT NULL DEFAULT 'available',
+            remark         VARCHAR(500) NOT NULL DEFAULT '',
+            create_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            update_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            update_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_oa_vehicle_plate ON oa_vehicle(plate_number))",
+
+        // -------------------------------------------------------
+        // oa_vehicle_usage 用车申请
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_vehicle_usage (
+            id             BIGSERIAL    PRIMARY KEY,
+            vehicle_id     BIGINT       NOT NULL DEFAULT 0,
+            applicant_id   BIGINT       NOT NULL DEFAULT 0,
+            applicant_name VARCHAR(64)  NOT NULL DEFAULT '',
+            driver_name    VARCHAR(64)  NOT NULL DEFAULT '',
+            use_date       DATE,
+            start_time     TIMESTAMP,
+            end_time       TIMESTAMP,
+            destination    VARCHAR(200) NOT NULL DEFAULT '',
+            purpose        VARCHAR(500) NOT NULL DEFAULT '',
+            status         VARCHAR(16)  NOT NULL DEFAULT 'pending',
+            create_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            update_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            update_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_oa_vehicle_usage_vehicle ON oa_vehicle_usage(vehicle_id, start_time, end_time))",
+
+        // -------------------------------------------------------
+        // oa_meeting_room 会议室台账
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_meeting_room (
+            id             BIGSERIAL    PRIMARY KEY,
+            room_name      VARCHAR(64)  NOT NULL DEFAULT '',
+            capacity       INT          NOT NULL DEFAULT 0,
+            location       VARCHAR(128) NOT NULL DEFAULT '',
+            manager_id     BIGINT       NOT NULL DEFAULT 0,
+            manager_name   VARCHAR(64)  NOT NULL DEFAULT '',
+            equipment      TEXT         NOT NULL DEFAULT '[]',
+            status         VARCHAR(16)  NOT NULL DEFAULT 'enabled',
+            create_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            update_by      VARCHAR(64)  NOT NULL DEFAULT '',
+            update_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_oa_meeting_room_name ON oa_meeting_room(room_name))",
+
+        // -------------------------------------------------------
+        // oa_knowledge_comment / like / favorite 知识互动
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_knowledge_comment (
+            id             BIGSERIAL    PRIMARY KEY,
+            article_id     BIGINT       NOT NULL DEFAULT 0,
+            user_id        BIGINT       NOT NULL DEFAULT 0,
+            user_name      VARCHAR(64)  NOT NULL DEFAULT '',
+            content        VARCHAR(1000) NOT NULL DEFAULT '',
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_oa_knowledge_comment_article ON oa_knowledge_comment(article_id, create_time DESC))",
+        R"(CREATE TABLE IF NOT EXISTS oa_knowledge_like (
+            id             BIGSERIAL    PRIMARY KEY,
+            article_id     BIGINT       NOT NULL DEFAULT 0,
+            user_id        BIGINT       NOT NULL DEFAULT 0,
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE UNIQUE INDEX IF NOT EXISTS uq_oa_knowledge_like_user ON oa_knowledge_like(article_id, user_id))",
+        R"(CREATE TABLE IF NOT EXISTS oa_knowledge_favorite (
+            id             BIGSERIAL    PRIMARY KEY,
+            article_id     BIGINT       NOT NULL DEFAULT 0,
+            user_id        BIGINT       NOT NULL DEFAULT 0,
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE UNIQUE INDEX IF NOT EXISTS uq_oa_knowledge_favorite_user ON oa_knowledge_favorite(article_id, user_id))",
+
+        // oa_knowledge_article 补互动计数字段
+        R"(DO $$ BEGIN
+            ALTER TABLE oa_knowledge_article ADD COLUMN IF NOT EXISTS like_count BIGINT NOT NULL DEFAULT 0;
+            ALTER TABLE oa_knowledge_article ADD COLUMN IF NOT EXISTS favorite_count BIGINT NOT NULL DEFAULT 0;
+            ALTER TABLE oa_knowledge_article ADD COLUMN IF NOT EXISTS comment_count BIGINT NOT NULL DEFAULT 0;
+        EXCEPTION WHEN others THEN NULL; END $$)",
+
+        // -------------------------------------------------------
+        // sys_mobile_device 移动端推送终端
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_mobile_device (
+            id             BIGSERIAL    PRIMARY KEY,
+            user_id        BIGINT       NOT NULL DEFAULT 0,
+            device_type    VARCHAR(16)  NOT NULL DEFAULT 'android',
+            push_token     VARCHAR(255) NOT NULL DEFAULT '',
+            channel_type   VARCHAR(32)  NOT NULL DEFAULT 'ws',
+            enabled        SMALLINT     NOT NULL DEFAULT 1,
+            create_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            update_time    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_sys_mobile_device_user ON sys_mobile_device(user_id, enabled))",
+
+        // -------------------------------------------------------
+        // oa_asset_borrow 资产借用
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS oa_asset_borrow (
+            id                 BIGSERIAL    PRIMARY KEY,
+            asset_name         VARCHAR(128) NOT NULL DEFAULT '',
+            asset_code         VARCHAR(64)  NOT NULL DEFAULT '',
+            applicant_id       BIGINT       NOT NULL DEFAULT 0,
+            applicant_name     VARCHAR(64)  NOT NULL DEFAULT '',
+            borrow_date        DATE,
+            expect_return_date DATE,
+            actual_return_date DATE,
+            purpose            VARCHAR(500) NOT NULL DEFAULT '',
+            status             VARCHAR(16)  NOT NULL DEFAULT 'pending',
+            create_by          VARCHAR(64)  NOT NULL DEFAULT '',
+            create_time        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            update_by          VARCHAR(64)  NOT NULL DEFAULT '',
+            update_time        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_oa_asset_borrow_code ON oa_asset_borrow(asset_code))",
+
+        // -------------------------------------------------------
         // sys_job 定时任务表
         // -------------------------------------------------------
         R"(CREATE TABLE IF NOT EXISTS sys_job (
@@ -633,7 +880,23 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
            (107,'通知公告',1,8,'notice','system/notice/index','','1','0','C','0','0','system:notice:list','message','admin',NOW(),'通知公告菜单') ON CONFLICT (menu_id) DO NOTHING)",
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
-           (2001,'邮件发件箱',1,9,'emailConfig','system/emailConfig','','1','0','C','1','0','system:emailConfig:query','email','admin',NOW(),'邮件发件箱配置') ON CONFLICT (menu_id) DO NOTHING)",
+           (140,'OA协同',1,9,'oa','','','1','0','M','0','0','','peoples','admin',NOW(),'轻量OA目录') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (141,'审批中心',140,1,'approval','oa/approval/index','','1','0','C','0','0','oa:approval:list','form','admin',NOW(),'审批中心菜单') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (142,'会议室预约',140,2,'meeting','oa/meeting/index','','1','0','C','0','0','oa:meeting:list','date','admin',NOW(),'会议室预约菜单') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (143,'知识库',140,3,'knowledge','oa/knowledge/index','','1','0','C','0','0','oa:knowledge:list','documentation','admin',NOW(),'知识库菜单') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (144,'OA看板',140,4,'dashboard','oa/dashboard/index','','1','0','C','0','0','oa:dashboard:view','dashboard','admin',NOW(),'OA看板菜单') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (145,'车辆管理',140,5,'vehicle','oa/vehicle/index','','1','0','C','0','0','oa:vehicle:list','car','admin',NOW(),'公务车辆管理菜单') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (146,'用车申请',140,6,'vehicleUsage','oa/vehicleUsage/index','','1','0','C','0','0','oa:vehicle:usage','visa','admin',NOW(),'用车申请菜单') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (147,'资产借用',140,7,'assetBorrow','oa/assetBorrow/index','','1','0','C','0','0','oa:asset:borrow','shopping','admin',NOW(),'资产借用菜单') ON CONFLICT (menu_id) DO NOTHING)",
+        R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
+           (2001,'邮件发件箱',1,10,'emailConfig','system/emailConfig','','1','0','C','1','0','system:emailConfig:query','email','admin',NOW(),'邮件发件箱配置') ON CONFLICT (menu_id) DO NOTHING)",
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
            (2002,'查询',2001,1,'','','','1','0','F','0','0','system:emailConfig:query','#','admin',NOW(),'') ON CONFLICT (menu_id) DO NOTHING)",
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
@@ -1071,6 +1334,30 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
            VALUES (2,'系统默认（有参）','DEFAULT','ryTask.RyParams(''ry'')','0/15 * * * * ?','3','1','1','admin',NOW()) ON CONFLICT (job_id) DO NOTHING)",
         R"(INSERT INTO sys_job (job_id,job_name,job_group,invoke_target,cron_expression,misfire_policy,concurrent,status,create_by,create_time)
            VALUES (3,'系统默认（多参）','DEFAULT','ryTask.RyMultipleParams(''ry'', true, 2000L, 316.50D, 100)','0/20 * * * * ?','3','1','1','admin',NOW()) ON CONFLICT (job_id) DO NOTHING)",
+        R"(INSERT INTO sys_job (job_id,job_name,job_group,invoke_target,cron_expression,misfire_policy,concurrent,status,create_by,create_time)
+           VALUES (4,'OA审批超时转交巡检','DEFAULT','oaTask.approvalTimeoutTransfer','0 0/10 * * * ?','3','1','0','admin',NOW()) ON CONFLICT (job_id) DO NOTHING)",
+        R"(INSERT INTO sys_job (job_id,job_name,job_group,invoke_target,cron_expression,misfire_policy,concurrent,status,create_by,create_time)
+           VALUES (5,'OA资产逾期提醒巡检','DEFAULT','oaTask.assetOverdueReminder','0 0 9 * * ?','3','1','0','admin',NOW()) ON CONFLICT (job_id) DO NOTHING)",
+
+        // =====================================================================
+        // 14.1 OA 二阶段初始化数据
+        // =====================================================================
+        R"(INSERT INTO oa_approval_template (id,name,approval_type,form_schema,status,create_by,create_time)
+           VALUES (1,'通用费用审批','expense','{"fields":[{"name":"amount","label":"金额","type":"number"},{"name":"reason","label":"事由","type":"textarea"}]}','active','admin',NOW()) ON CONFLICT (id) DO NOTHING)",
+        R"(INSERT INTO oa_approval_template (id,name,approval_type,form_schema,status,create_by,create_time)
+           VALUES (2,'用车审批','vehicle','{"fields":[{"name":"destination","label":"目的地","type":"input"},{"name":"purpose","label":"用途","type":"textarea"}]}','active','admin',NOW()) ON CONFLICT (id) DO NOTHING)",
+        R"(INSERT INTO oa_workflow_node (id,workflow_id,node_order,node_name,reviewer_id,reviewer_name,timeout_hours,node_type,create_time)
+           VALUES (1,1,1,'部门负责人审批',1,'admin',24,'approval',NOW()) ON CONFLICT (id) DO NOTHING)",
+        R"(INSERT INTO oa_workflow_node (id,workflow_id,node_order,node_name,reviewer_id,reviewer_name,timeout_hours,node_type,create_time)
+           VALUES (2,1,2,'财务审批',1,'admin',24,'approval',NOW()) ON CONFLICT (id) DO NOTHING)",
+        R"(INSERT INTO oa_meeting_room (id,room_name,capacity,location,manager_id,manager_name,equipment,status,create_by,create_time)
+           VALUES (1,'一号会议室',12,'A栋3楼',1,'admin','["投影仪","白板"]','enabled','admin',NOW()) ON CONFLICT (id) DO NOTHING)",
+        R"(INSERT INTO oa_meeting_room (id,room_name,capacity,location,manager_id,manager_name,equipment,status,create_by,create_time)
+           VALUES (2,'二号会议室',8,'A栋5楼',1,'admin','["电视","电话会议"]','enabled','admin',NOW()) ON CONFLICT (id) DO NOTHING)",
+        R"(INSERT INTO oa_vehicle (id,plate_number,model,driver_name,driver_phone,status,remark,create_by,create_time)
+           VALUES (1,'粤A-10001','别克GL8','张师傅','13800000001','available','商务接待车','admin',NOW()) ON CONFLICT (id) DO NOTHING)",
+        R"(INSERT INTO oa_vehicle (id,plate_number,model,driver_name,driver_phone,status,remark,create_by,create_time)
+           VALUES (2,'粤A-10002','比亚迪汉','李师傅','13800000002','available','行政通勤车','admin',NOW()) ON CONFLICT (id) DO NOTHING)",
 
         // =====================================================================
         // 15. 重置所有序列，避免手动插入 ID 后自增冲突
@@ -1085,6 +1372,16 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         "SELECT setval('sys_dict_data_dict_code_seq', GREATEST((SELECT COALESCE(MAX(dict_code),1) FROM sys_dict_data), 1))",
         "SELECT setval('sys_notice_notice_id_seq', GREATEST((SELECT COALESCE(MAX(notice_id),1) FROM sys_notice), 1))",
         "SELECT setval('sys_job_job_id_seq', GREATEST((SELECT COALESCE(MAX(job_id),1) FROM sys_job), 1))",
+        "SELECT setval('oa_approval_template_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM oa_approval_template), 1))",
+        "SELECT setval('oa_workflow_node_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM oa_workflow_node), 1))",
+        "SELECT setval('oa_meeting_room_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM oa_meeting_room), 1))",
+        "SELECT setval('oa_vehicle_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM oa_vehicle), 1))",
+        "SELECT setval('oa_vehicle_usage_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM oa_vehicle_usage), 1))",
+        "SELECT setval('oa_asset_borrow_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM oa_asset_borrow), 1))",
+        "SELECT setval('oa_knowledge_comment_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM oa_knowledge_comment), 1))",
+        "SELECT setval('oa_knowledge_like_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM oa_knowledge_like), 1))",
+        "SELECT setval('oa_knowledge_favorite_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM oa_knowledge_favorite), 1))",
+        "SELECT setval('sys_mobile_device_id_seq', GREATEST((SELECT COALESCE(MAX(id),1) FROM sys_mobile_device), 1))",
         "SELECT setval('sys_oper_log_oper_id_seq', GREATEST((SELECT COALESCE(MAX(oper_id),1) FROM sys_oper_log), 1))",
         "SELECT setval('sys_logininfor_info_id_seq', GREATEST((SELECT COALESCE(MAX(info_id),1) FROM sys_logininfor), 1))",
         "SELECT setval('sys_job_log_job_log_id_seq', GREATEST((SELECT COALESCE(MAX(job_log_id),1) FROM sys_job_log), 1))",

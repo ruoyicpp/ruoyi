@@ -9,13 +9,56 @@
 
 /**
  * @file AlertAggregator.h
- * @brief 告警聚合和去重
+ * @brief 告警聚合和去重 — 合并相同告警，避免告警风暴
  * 
- * 功能：
- *   - 告警聚合（相同告警合并）
- *   - 告警去重（避免重复告警）
- *   - 告警分组（按类型、源、级别分组）
- *   - 告警统计
+ * 功能概述：
+ *   - 告警聚合：合并相同或相似的告警
+ *   - 告警去重：避免重复告警
+ *   - 告警分组：按类型、源、级别分组
+ *   - 告警统计：统计告警数量和分布
+ *   - 告警窗口：时间窗口内的告警聚合
+ *   - 告警关联：关联相关的告警
+ * 
+ * 核心特性：
+ *   - 智能聚合：根据规则聚合相同告警
+ *   - 时间窗口：支持时间窗口聚合
+ *   - 阈值控制：支持聚合阈值配置
+ *   - 去重机制：避免重复告警
+ *   - 告警分组：多维度分组统计
+ *   - 实时更新：实时更新聚合状态
+ * 
+ * 聚合策略：
+ *   - 完全匹配：相同规则、源、级别的告警合并
+ *   - 模糊匹配：相似的告警合并
+ *   - 时间窗口：时间窗口内的告警合并
+ *   - 阈值聚合：达到阈值后聚合
+ * 
+ * 使用示例：
+ *   ```cpp
+ *   AlertAggregator& aggregator = AlertAggregator::instance();
+ *   
+ *   // 添加告警
+ *   Alert alert;
+ *   alert.ruleId = "rule_1";
+ *   alert.severity = AlertSeverity::ERROR;
+ *   aggregator.addAlert(alert);
+ *   
+ *   // 获取聚合告警
+ *   auto aggregated = aggregator.getAggregatedAlerts();
+ *   for (const auto& alert : aggregated) {
+ *       std::cout << "Alert: " << alert.ruleName << std::endl;
+ *   }
+ *   ```
+ * 
+ * 配置项（config.json）：
+ *   - alert.aggregation.enabled: 是否启用聚合（默认 true）
+ *   - alert.aggregation.window: 聚合时间窗口（秒，默认 60）
+ *   - alert.aggregation.threshold: 聚合阈值（默认 5）
+ *   - alert.aggregation.dedup_enabled: 是否启用去重（默认 true）
+ * 
+ * @see AlertEngine - 告警引擎
+ * @see AlertRule - 告警规则
+ * @see AlertNotifier - 告警通知器
  */
 
 /**

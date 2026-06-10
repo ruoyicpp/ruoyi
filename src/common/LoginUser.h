@@ -38,7 +38,7 @@
  * @struct LoginUser
  * @brief 登录用户信息
  * 
- * 对应 RuoYi.Net 中的 LoginUser，存储登录用户的完整信息。
+ * 对应 RuoYi 中的 LoginUser，存储登录用户的完整信息。
  * 支持 JSON 序列化和反序列化，用于会话管理和缓存存储。
  */
 struct LoginUser {

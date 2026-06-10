@@ -47,7 +47,7 @@
  * @class SysLoginService
  * @brief 系统登录服务单例
  * 
- * 对应 RuoYi.Net 中的 SysLoginService，处理用户登录认证。
+ * 对应 RuoYi 中的 SysLoginService，处理用户登录认证。
  * 采用单例模式，全局唯一实例。
  * 
  * 使用 libpq 直接查询 PostgreSQL 数据库，支持完整的登录流程和安全防护。

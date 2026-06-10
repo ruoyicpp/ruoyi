@@ -65,6 +65,42 @@
  *   - 自动补全：缺失的配置自动从 Vault 补全
  */
 
+/**
+ * @file ConfigLoader.h
+ * @brief 配置加载器 — 支持多源配置和热重载
+ * 
+ * 功能概述：
+ *   - 多源配置：支持 JSON、YAML、环境变量、命令行参数
+ *   - 配置合并：支持多个配置源的合并和覆盖
+ *   - 配置验证：支持配置项的类型检查和值验证
+ *   - 热重载：支持配置热重载，无需重启应用
+ *   - 配置加密：支持敏感配置项的加密存储
+ *   - Vault 集成：支持从 HashiCorp Vault 读取密钥
+ * 
+ * 核心特性：
+ *   - 优先级管理：命令行 > 环境变量 > 配置文件 > 默认值
+ *   - 路径表达式：支持 "database.host" 这样的点号路径表达式
+ *   - 类型转换：自动转换配置值为指定类型
+ *   - 默认值：支持为配置项设置默认值
+ *   - 监听变化：支持监听配置变化事件
+ *   - 配置导出：支持导出当前配置为 JSON/YAML
+ * 
+ * 支持的配置源：
+ *   - config.json：主配置文件
+ *   - config.local.json：本地覆盖配置
+ *   - 环境变量：RUOYI_* 前缀的环境变量
+ *   - 命令行参数：--key=value 格式
+ *   - Vault：HashiCorp Vault 密钥管理
+ * 
+ * 配置项示例：
+ *   - database.host：数据库主机
+ *   - database.port：数据库端口
+ *   - jwt.secret：JWT 签名密钥
+ *   - jwt.expire_minutes：JWT 过期时间
+ *   - server.port：服务器端口
+ *   - server.threads：工作线程数
+ */
+
 #pragma once
 #include <string>
 #include <json/json.h>

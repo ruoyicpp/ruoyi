@@ -37,7 +37,7 @@
  * @class DictCache
  * @brief 字典内存缓存单例
  * 
- * 对应 RuoYi.Net 中的 DictUtils，提供字典数据的内存缓存。
+ * 对应 RuoYi 中的 DictUtils，提供字典数据的内存缓存。
  * 采用单例模式，全局唯一实例。
  * 
  * 使用 std::unordered_map 存储字典数据，std::mutex 保护并发访问。
@@ -99,7 +99,7 @@ private:
  * @class SysDictService
  * @brief 系统字典服务单例
  * 
- * 对应 RuoYi.Net 中的 SysDictTypeService + SysDictDataService，
+ * 对应 RuoYi 中的 SysDictTypeService + SysDictDataService，
  * 处理字典数据的查询和缓存。
  * 采用单例模式，全局唯一实例。
  * 

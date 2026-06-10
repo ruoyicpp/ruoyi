@@ -15,13 +15,58 @@
 #include "../../system/controllers/WsTicketCtrl.h"
 
 /**
- * WsNotifyCtrl — 服务端推送通知 WebSocket
- * 路由：GET /ws/notify?token=<JWT>
- *
- * 功能：
- *   - 客户端登录后连接，token 鉴权
- *   - 被强制踢出时，服务端推送 {"type":"kick","msg":"您已被管理员强制下线"}
- *     并主动关闭连接
+ * @file WsNotifyCtrl.h
+ * @brief WebSocket 通知控制器 — 实时推送系统通知和事件
+ * 
+ * 功能概述：
+ *   - 实时通知：推送系统通知、告警、消息等
+ *   - 用户踢出：强制踢出用户，推送踢出通知
+ *   - 在线状态：推送用户在线状态变化
+ *   - 系统事件：推送系统事件（维护、更新等）
+ *   - 心跳检测：定期发送心跳，检测连接状态
+ * 
+ * 核心特性：
+ *   - JWT 认证：使用 JWT Token 进行身份验证
+ *   - 连接管理：自动管理 WebSocket 连接的生命周期
+ *   - 消息队列：支持消息缓存和异步推送
+ *   - 错误恢复：连接断开时自动清理资源
+ *   - 性能监控：记录连接数、消息吞吐量等指标
+ * 
+ * WebSocket 路由：
+ *   - GET /ws/notify?token=<JWT> - 连接通知 WebSocket
+ * 
+ * 消息格式：
+ *   ```json
+ *   {
+ *     "type": "kick|notify|online|system",
+ *     "msg": "消息内容",
+ *     "timestamp": 1623456789000,
+ *     "data": { ... }
+ *   }
+ *   ```
+ * 
+ * 消息类型：
+ *   - kick：用户被强制踢出（管理员操作）
+ *   - notify：系统通知（告警、消息等）
+ *   - online：在线状态变化
+ *   - system：系统事件（维护、更新等）
+ * 
+ * 使用示例：
+ *   ```javascript
+ *   const ws = new WebSocket('ws://localhost:18080/ws/notify?token=' + token);
+ *   ws.onmessage = (event) => {
+ *     const msg = JSON.parse(event.data);
+ *     if (msg.type === 'kick') {
+ *       // 处理被踢出
+ *       alert(msg.msg);
+ *       location.href = '/login';
+ *     }
+ *   };
+ *   ```
+ * 
+ * @see WsBus - WebSocket 消息总线
+ * @see TokenService - Token 管理服务
+ * @see SecurityUtils - 安全工具
  */
 class WsNotifyCtrl : public drogon::WebSocketController<WsNotifyCtrl> {
 public:

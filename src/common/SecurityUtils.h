@@ -34,7 +34,7 @@ struct LoginUser;
  * @class SecurityUtils
  * @brief 安全工具类单例
  * 
- * 对应 RuoYi.Net 中的 SecurityUtils，提供密码加密、验证、令牌提取等功能。
+ * 对应 RuoYi 中的 SecurityUtils，提供密码加密、验证、令牌提取等功能。
  * 支持传统 PBKDF2-SHA256 和国密 PBKDF2-SM3 两种密码哈希算法。
  */
 class SecurityUtils {

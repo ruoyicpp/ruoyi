@@ -26,7 +26,97 @@
 #include "../../common/SecurityUtils.h"
 #include "../../common/AjaxResult.h"
 
-// 系统健康监控页 —— 原 main.cc /druid/{path} handler 迁移
+/**
+ * @file DruidCtrl.h
+ * @brief 系统健康监控控制器 — 综合系统监控和诊断面板
+ * 
+ * 功能概述：
+ *   - 系统健康检查：监控系统整体健康状态
+ *   - 数据库监控：监控数据库连接池和性能
+ *   - Redis 监控：监控 Redis 连接和缓存状态
+ *   - Nginx 监控：监控 Nginx 服务状态和性能
+ *   - 服务监控：监控各个后端服务状态
+ *   - 性能诊断：诊断系统性能问题
+ * 
+ * 核心特性：
+ *   - 综合监控：一个页面查看所有系统组件状态
+ *   - 实时数据：实时获取各组件的性能指标
+ *   - 健康评分：综合评分系统整体健康状态
+ *   - 告警提示：异常情况实时告警
+ *   - 详细报告：生成详细的诊断报告
+ *   - 历史趋势：展示性能指标的历史趋势
+ * 
+ * 监控组件：
+ *   - DatabaseService：数据库连接池、查询性能
+ *   - Redis：缓存命中率、内存使用
+ *   - Nginx：请求数、响应时间、错误率
+ *   - DdnsGoManager：DDNS 服务状态
+ *   - KoboldCppManager：AI 推理服务状态
+ *   - WhisperService：语音识别服务状态
+ * 
+ * API 端点：
+ *   - GET /druid/health - 获取系统健康状态
+ *   - GET /druid/database - 获取数据库监控信息
+ *   - GET /druid/redis - 获取 Redis 监控信息
+ *   - GET /druid/nginx - 获取 Nginx 监控信息
+ *   - GET /druid/services - 获取所有服务状态
+ *   - GET /druid/report - 获取诊断报告
+ * 
+ * 请求/响应示例：
+ *   ```
+ *   GET /druid/health
+ *   Authorization: Bearer <JWT>
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "status": "healthy",
+ *       "score": 95,
+ *       "components": {
+ *         "database": { "status": "ok", "connections": 10, "maxConnections": 20 },
+ *         "redis": { "status": "ok", "memory": "100MB", "hitRate": 0.95 },
+ *         "nginx": { "status": "ok", "requests": 1000, "avgTime": 50 }
+ *       }
+ *     }
+ *   }
+ *   ```
+ * 
+ * 权限要求：
+ *   - monitor:druid:query - 查看系统监控信息
+ *   - monitor:druid:report - 生成诊断报告
+ * 
+ * 配置项（config.json）：
+ *   - druid.enabled: 是否启用 Druid 监控（默认 true）
+ *   - druid.refresh_interval: 刷新间隔（秒，默认 5）
+ *   - druid.alert_threshold: 告警阈值配置
+ *   - druid.history_retention: 历史数据保留天数（默认 7）
+ * 
+ * 健康评分标准：
+ *   - 90-100：优秀（绿色）- 系统运行正常
+ *   - 70-89：良好（黄色）- 存在轻微问题
+ *   - 50-69：一般（橙色）- 存在明显问题
+ *   - <50：较差（红色）- 需要立即处理
+ * 
+ * 监控指标：
+ *   - CPU 使用率：系统 CPU 占用百分比
+ *   - 内存使用率：系统内存占用百分比
+ *   - 磁盘使用率：磁盘空间占用百分比
+ *   - 数据库连接数：当前活跃连接数
+ *   - 数据库查询时间：平均查询耗时
+ *   - Redis 内存：Redis 内存占用
+ *   - Redis 命中率：缓存命中率
+ *   - Nginx 请求数：每秒请求数
+ *   - Nginx 响应时间：平均响应时间
+ *   - 错误率：系统错误率
+ * 
+ * @see DatabaseService - 数据库服务
+ * @see NginxManager - Nginx 管理器
+ * @see DdnsGoManager - DDNS 管理器
+ * @see KoboldCppManager - AI 推理管理器
+ * @see WhisperService - 语音识别服务
+ */
 class DruidCtrl : public drogon::HttpController<DruidCtrl> {
 public:
     METHOD_LIST_BEGIN

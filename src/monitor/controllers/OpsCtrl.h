@@ -20,7 +20,85 @@
 #  include <sys/utsname.h>
 #endif
 
-// 系统运维面板 /monitor/ops
+/**
+ * @file OpsCtrl.h
+ * @brief 系统运维管理控制器 — 应用生命周期和配置管理
+ * 
+ * 功能概述：
+ *   - 运维概览：显示应用运行状态和关键指标
+ *   - 配置重载：热重载应用配置，无需重启
+ *   - 应用重启：优雅重启应用服务
+ *   - 日志管理：查看和管理应用日志
+ *   - 性能统计：显示应用性能指标
+ *   - 系统信息：显示系统和应用版本信息
+ * 
+ * 核心特性：
+ *   - 运行时管理：无需重启即可更新配置
+ *   - 优雅关闭：确保所有请求完成后再关闭
+ *   - 实时监控：实时显示应用性能指标
+ *   - 日志分析：快速定位问题
+ *   - 版本管理：跟踪应用和系统版本
+ *   - 跨平台支持：Windows 和 Linux 完全兼容
+ * 
+ * API 端点：
+ *   - GET /monitor/ops/overview - 获取运维概览
+ *   - POST /monitor/ops/reload - 重载配置
+ *   - POST /monitor/ops/restart - 重启应用
+ *   - GET /monitor/ops/logs - 获取应用日志
+ *   - GET /monitor/ops/version - 获取版本信息
+ * 
+ * 请求/响应示例：
+ *   ```
+ *   GET /monitor/ops/overview
+ *   Authorization: Bearer <JWT>
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "appName": "RuoYi-C++",
+ *       "version": "1.3.2",
+ *       "uptime": 86400,
+ *       "startTime": "2026-06-10 10:00:00",
+ *       "status": "running",
+ *       "cpu": 15.5,
+ *       "memory": 512,
+ *       "threads": 32,
+ *       "requests": 10000
+ *     }
+ *   }
+ *   ```
+ * 
+ * 权限要求：
+ *   - monitor:ops:query - 查看运维信息
+ *   - monitor:ops:reload - 重载配置
+ *   - monitor:ops:restart - 重启应用
+ * 
+ * 配置项（config.json）：
+ *   - ops.enabled: 是否启用运维面板（默认 true）
+ *   - ops.allow_reload: 是否允许热重载（默认 true）
+ *   - ops.allow_restart: 是否允许重启（默认 false）
+ *   - ops.graceful_shutdown_timeout: 优雅关闭超时（秒，默认 30）
+ * 
+ * 运维操作：
+ *   - 重载配置：重新加载 config.json，无需重启应用
+ *   - 重启应用：优雅关闭后重新启动应用
+ *   - 查看日志：查看最近的应用日志
+ *   - 性能分析：分析应用性能指标
+ * 
+ * 监控指标：
+ *   - 应用运行时间：从启动到现在的时间
+ *   - CPU 使用率：应用占用的 CPU 百分比
+ *   - 内存使用：应用占用的内存大小
+ *   - 线程数：应用当前线程数
+ *   - 请求数：应用处理的总请求数
+ *   - 错误数：应用发生的错误数
+ *   - 平均响应时间：平均请求响应时间
+ * 
+ * @see DatabaseService - 数据库服务
+ * @see ConfigLoader - 配置加载器
+ */
 class OpsCtrl : public drogon::HttpController<OpsCtrl> {
     inline static auto startTime_ = std::chrono::steady_clock::now();
     inline static auto startWall_ = std::chrono::system_clock::now();

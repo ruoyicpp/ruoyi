@@ -1,21 +1,81 @@
-#pragma once
-/*
- * CrashHandler.h  ——  Windows 全场景崩溃捕获
- *
- * 覆盖：
- *   SEH 异常        (空指针/越界/除零/非法指令/堆损坏...)
- *   C++ 未捕获异常  (std::terminate / throw 无 catch)
- *   信号             SIGABRT / SIGSEGV / SIGFPE / SIGILL / SIGTERM
- *   纯虚函数调用    _set_purecall_handler
- *   CRT 非法参数    _set_invalid_parameter_handler
- *   栈溢出          单独辅助线程写日志（原线程栈已满无法使用）
- *
- * 输出：
- *   crash_YYYYMMDD_HHMMSS.log  —— 可读文本（进程/系统/线程/栈/模块）
- *   crash_YYYYMMDD_HHMMSS.dmp  —— Minidump（WinDbg / VS 可分析）
- *
- * 使用：
- *   在 main() 第一行调用 CrashHandler::install("./logs");
+/**
+ * @file CrashHandler.h
+ * @brief 崩溃处理器 — Windows 全场景崩溃捕获和诊断
+ * 
+ * 功能概述：
+ *   - SEH 异常捕获：捕获所有 Windows 结构化异常
+ *   - C++ 异常捕获：捕获未处理的 C++ 异常
+ *   - 信号处理：捕获 SIGABRT、SIGSEGV、SIGFPE 等信号
+ *   - 栈跟踪：生成完整的调用栈信息
+ *   - Minidump 生成：生成可在 WinDbg/VS 中分析的 Minidump 文件
+ *   - 系统诊断：记录进程、系统、线程等诊断信息
+ * 
+ * 核心特性：
+ *   - 全面覆盖：覆盖所有常见崩溃场景
+ *   - 自动恢复：尝试优雅关闭而不是直接退出
+ *   - 详细日志：生成可读的文本日志和二进制 Minidump
+ *   - 线程安全：使用原子操作防止重复处理
+ *   - 栈溢出处理：使用辅助线程处理栈溢出
+ * 
+ * 捕获的异常类型：
+ *   - SEH 异常：空指针、越界、除零、非法指令、堆损坏等
+ *   - C++ 异常：std::terminate、未捕获的 throw
+ *   - 信号：SIGABRT、SIGSEGV、SIGFPE、SIGILL、SIGTERM
+ *   - 纯虚函数调用：_set_purecall_handler
+ *   - CRT 非法参数：_set_invalid_parameter_handler
+ *   - 栈溢出：单独辅助线程处理
+ * 
+ * 输出文件：
+ *   - crash_YYYYMMDD_HHMMSS.log - 可读文本日志
+ *     包含：进程信息、系统信息、线程列表、调用栈、加载模块等
+ *   - crash_YYYYMMDD_HHMMSS.dmp - Minidump 文件
+ *     可在 WinDbg 或 Visual Studio 中分析
+ * 
+ * 使用示例：
+ *   ```cpp
+ *   int main() {
+ *       // 在 main() 第一行调用，安装崩溃处理器
+ *       CrashHandler::install("./logs");
+ *       
+ *       try {
+ *           // 应用代码
+ *           app.run();
+ *       } catch (const std::exception& e) {
+ *           LOG(ERROR) << "Exception: " << e.what();
+ *       }
+ *       
+ *       return 0;
+ *   }
+ *   ```
+ * 
+ * 日志内容：
+ *   - 进程信息：PID、命令行、可执行文件路径
+ *   - 系统信息：OS 版本、CPU 数量、内存使用
+ *   - 异常信息：异常类型、异常代码、异常地址
+ *   - 线程信息：线程 ID、线程状态、线程栈
+ *   - 调用栈：函数名、文件、行号、地址
+ *   - 加载模块：DLL 名称、基地址、大小
+ * 
+ * 配置项（config.json）：
+ *   - crash_handler.enabled: 是否启用崩溃处理（默认 true）
+ *   - crash_handler.log_dir: 崩溃日志目录（默认 ./logs）
+ *   - crash_handler.minidump: 是否生成 Minidump（默认 true）
+ *   - crash_handler.upload_url: 崩溃日志上传 URL（可选）
+ * 
+ * 最佳实践：
+ *   - 在 main() 最开始调用 install()
+ *   - 定期检查和分析崩溃日志
+ *   - 配置日志上传，便于远程诊断
+ *   - 在生产环境中启用 Minidump 生成
+ *   - 保留足够的磁盘空间存储崩溃日志
+ * 
+ * 注意事项：
+ *   - 仅在 Windows 平台可用
+ *   - 需要 dbghelp.dll（通常已包含）
+ *   - 栈溢出时可能无法正常处理
+ *   - 某些异常可能无法捕获（如内核异常）
+ * 
+ * @see ErrorLogger - 错误日志记录
  */
 #ifdef _WIN32
 #include <windows.h>

@@ -11,7 +11,7 @@
  *   - 成功：{ "code": 200, "msg": "操作成功", "data": {...} }
  *   - 失败：{ "code": 500, "msg": "错误信息" }
  * 
- * 对应 RuoYi.Net 中的 AjaxResult。
+ * 对应 RuoYi 中的 AjaxResult。
  */
 
 #pragma once

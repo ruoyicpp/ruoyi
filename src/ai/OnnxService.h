@@ -31,6 +31,42 @@
  *   ```
  */
 
+/**
+ * @file OnnxService.h
+ * @brief ONNX 推理服务 — 支持深度学习模型推理
+ * 
+ * 功能概述：
+ *   - 模型加载：支持加载 ONNX 格式的深度学习模型
+ *   - 推理执行：支持 CPU 和 GPU 推理
+ *   - 批量推理：支持批量数据推理，提高吞吐量
+ *   - 模型管理：支持多模型管理和版本控制
+ *   - 性能优化：模型量化、剪枝、融合等优化
+ *   - 推理监控：记录推理延迟、吞吐量、错误率
+ * 
+ * 核心特性：
+ *   - ONNX Runtime：使用 ONNX Runtime 作为推理引擎
+ *   - 多后端支持：支持 CPU、CUDA、TensorRT 等多种后端
+ *   - 动态输入：支持动态 Batch Size 和动态输入形状
+ *   - 内存管理：自动管理模型内存，防止内存泄漏
+ *   - 错误恢复：推理失败时自动回退或重试
+ *   - 热更新：支持模型热更新，无需重启应用
+ * 
+ * 支持的模型类型：
+ *   - 图像分类：ResNet、VGG、MobileNet 等
+ *   - 目标检测：YOLO、Faster R-CNN、SSD 等
+ *   - 自然语言处理：BERT、GPT、T5 等
+ *   - 时间序列预测：LSTM、GRU、Transformer 等
+ *   - 推荐系统：Wide&Deep、DeepFM 等
+ * 
+ * 配置项（config.json）：
+ *   - onnx.enabled: 是否启用 ONNX 推理（默认 false）
+ *   - onnx.model_dir: 模型文件目录
+ *   - onnx.backend: "cpu" | "cuda" | "tensorrt"（默认 "cpu"）
+ *   - onnx.num_threads: CPU 线程数（默认 4）
+ *   - onnx.batch_size: 推理 Batch Size（默认 1）
+ *   - onnx.cache_size: 模型缓存大小（MB，默认 512）
+ */
+
 #pragma once
 #include <string>
 #include <vector>

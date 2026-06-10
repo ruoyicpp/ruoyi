@@ -1,9 +1,11 @@
 // =============================================================
 // RuoYiDaemon.cc — 独立守护进程
 //
-// 用法：RuoYiDaemon.exe [--exe path/to/ruoyi-cpp.exe] [--work-dir ./]
+// 用法：
+//   Windows: RuoYiDaemon.exe [--exe path/to/ruoyi-cpp.exe] [--work-dir ./]
+//   Linux:   RuoYiDaemon     [--exe path/to/ruoyi-cpp]     [--work-dir ./]
 // 功能：
-//   - 启动并监控 ruoyi-cpp.exe
+//   - 启动并监控 ruoyi-cpp
 //   - 若进程崩溃，自动重启（指数退避）
 //   - 收到 Ctrl+C 时优雅关闭子进程
 // =============================================================
@@ -45,7 +47,11 @@ namespace {
 }
 
 int main(int argc, char* argv[]) {
+#ifdef _WIN32
     std::string exePath = "ruoyi-cpp.exe";
+#else
+    std::string exePath = "./ruoyi-cpp";
+#endif
     std::string workDir = "./";
     int maxRestarts = 10;
     int restartBackoffMs = 2000;
@@ -138,7 +144,7 @@ int main(int argc, char* argv[]) {
     while (!g_shutdown.load()) {
         pid = fork();
         if (pid == 0) {
-            // 子进程：执行 ruoyi-cpp.exe
+            // 子进程：执行目标主程序
             chdir(workDir.c_str());
             execl(exePath.c_str(), exePath.c_str(), nullptr);
             _exit(127);

@@ -7,11 +7,95 @@
 #include "../../common/SslManager.h"
 #include "../../services/DatabaseService.h"
 
-// SSL 证书与 HTTPS 配置管理
-// GET  /system/ssl/config      查询当前配置
-// PUT  /system/ssl/config      保存配置（重启生效）
-// POST /system/ssl/uploadCert  上传证书文件 (.pem/.crt/.cer)
-// POST /system/ssl/uploadKey   上传私钥文件 (.pem/.key)
+/**
+ * @file SysSslConfigCtrl.h
+ * @brief SSL/TLS 证书管理控制器 — 支持 HTTPS 配置和证书管理
+ * 
+ * 功能概述：
+ *   - 证书管理：上传、查看、更新 SSL 证书
+ *   - 私钥管理：安全存储和管理私钥
+ *   - HTTPS 配置：配置 HTTPS 端口和协议版本
+ *   - 证书验证：验证证书有效性和过期时间
+ *   - 自动续期：支持自动续期提醒
+ *   - 证书链：支持完整的证书链配置
+ * 
+ * 核心特性：
+ *   - 多证书支持：支持多个域名和通配符证书
+ *   - 证书验证：自动验证证书有效性和完整性
+ *   - 过期提醒：证书即将过期时自动提醒
+ *   - 安全存储：私钥加密存储，防止泄露
+ *   - 热更新：支持证书热更新，无需重启应用
+ *   - 审计日志：记录所有证书操作
+ * 
+ * 支持的证书格式：
+ *   - PEM 格式：.pem、.crt、.cer（最常用）
+ *   - DER 格式：.der、.cer
+ *   - PKCS#12 格式：.p12、.pfx
+ * 
+ * 支持的私钥格式：
+ *   - PKCS#1 格式：RSA 私钥
+ *   - PKCS#8 格式：通用私钥格式
+ *   - OpenSSL 格式：EC 私钥
+ * 
+ * API 端点：
+ *   - GET /system/ssl/config - 查询当前 SSL 配置
+ *   - PUT /system/ssl/config - 保存 SSL 配置
+ *   - POST /system/ssl/uploadCert - 上传证书文件
+ *   - POST /system/ssl/uploadKey - 上传私钥文件
+ * 
+ * 请求/响应示例：
+ *   ```
+ *   GET /system/ssl/config
+ *   Authorization: Bearer <JWT>
+ *   
+ *   响应：
+ *   {
+ *     "code": 200,
+ *     "msg": "success",
+ *     "data": {
+ *       "httpsEnabled": true,
+ *       "httpsPort": 18443,
+ *       "certPath": "/path/to/cert.pem",
+ *       "keyPath": "/path/to/key.pem",
+ *       "certInfo": {
+ *         "subject": "CN=example.com",
+ *         "issuer": "CN=Let's Encrypt",
+ *         "notBefore": "2024-01-01T00:00:00Z",
+ *         "notAfter": "2025-01-01T00:00:00Z",
+ *         "daysUntilExpiry": 365
+ *       }
+ *     }
+ *   }
+ *   ```
+ * 
+ * 权限要求：
+ *   - system:ssl:query - 查询 SSL 配置
+ *   - system:ssl:edit - 编辑 SSL 配置
+ *   - system:ssl:upload - 上传证书和私钥
+ * 
+ * 配置项（config.json）：
+ *   - https.enabled: 是否启用 HTTPS（默认 false）
+ *   - https.port: HTTPS 端口（默认 18443）
+ *   - https.cert_path: 证书文件路径
+ *   - https.key_path: 私钥文件路径
+ *   - https.min_tls_version: 最小 TLS 版本（默认 "TLSv1.2"）
+ *   - https.ciphers: 加密套件列表（可选）
+ * 
+ * 安全建议：
+ *   - 使用强加密算法（RSA 2048+ 或 ECDSA 256+）
+ *   - 定期更新证书，不要等到过期
+ *   - 使用 HSTS 头强制 HTTPS
+ *   - 启用 OCSP Stapling 提高性能
+ *   - 定期审计证书使用情况
+ * 
+ * 证书来源：
+ *   - Let's Encrypt：免费证书，推荐用于生产环境
+ *   - DigiCert、GlobalSign：商业证书
+ *   - 自签名证书：仅用于开发和测试
+ * 
+ * @see SslManager - SSL 管理工具
+ * @see DatabaseService - 数据库服务
+ */
 class SysSslConfigCtrl : public drogon::HttpController<SysSslConfigCtrl> {
 public:
     METHOD_LIST_BEGIN

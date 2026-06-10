@@ -1,3 +1,41 @@
+/**
+ * @file BuildCtrl.h
+ * @brief 表单构建控制器 — 提供拖拽表单设计和管理功能
+ * 
+ * 功能概述：
+ *   - 表单设计：拖拽式表单设计器，支持多种字段类型
+ *   - 表单管理：创建、编辑、删除表单配置
+ *   - 表单查询：查询表单列表和详情
+ *   - 配置存储：存储表单配置和字段定义
+ *   - 权限控制：基于权限字符串的访问控制
+ * 
+ * API 端点：
+ *   - GET    /tool/build/list      - 查询表单列表
+ *   - GET    /tool/build/{id}      - 查询表单详情
+ *   - POST   /tool/build           - 创建表单
+ *   - PUT    /tool/build           - 更新表单
+ *   - DELETE /tool/build/{ids}     - 删除表单
+ * 
+ * 权限要求：
+ *   - tool:build:list   - 查询表单列表
+ *   - tool:build:query  - 查询表单详情
+ *   - tool:build:add    - 创建表单
+ *   - tool:build:edit   - 编辑表单
+ *   - tool:build:remove - 删除表单
+ * 
+ * 表单配置结构：
+ *   {
+ *     "formId": 1,
+ *     "formName": "用户注册表单",
+ *     "formConf": { ... },        // 表单配置 JSON
+ *     "formFields": [ ... ],      // 字段定义数组
+ *     "remark": "用户注册"
+ *   }
+ * 
+ * @see DatabaseService - 数据库服务
+ * @see PermFilter - 权限检查工具
+ */
+
 #pragma once
 #include <drogon/HttpController.h>
 #include <sstream>
@@ -5,7 +43,13 @@
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
 
-// 表单构建 /tool/build  (与 Java 版一致：存储、查询拖拽表单配置)
+/**
+ * @class BuildCtrl
+ * @brief 表单构建控制器
+ * 
+ * 提供拖拽式表单设计和管理功能，支持表单配置的创建、编辑、删除和查询。
+ * 与 Java 版若依保持一致，存储和查询拖拽表单配置。
+ */
 class BuildCtrl : public drogon::HttpController<BuildCtrl> {
 public:
     METHOD_LIST_BEGIN
@@ -16,7 +60,15 @@ public:
         ADD_METHOD_TO(BuildCtrl::remove, "/tool/build/{ids}",   drogon::Delete, "JwtAuthFilter");
     METHOD_LIST_END
 
-    // 查询表单列表
+    /**
+     * @brief 查询表单列表
+     * 
+     * GET /tool/build/list
+     * 
+     * @param req HTTP 请求
+     * @param cb 回调函数
+     * @return 表单列表
+     */
     void list(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         CHECK_PERM(req, cb, "tool:build:list");
         auto& db = DatabaseService::instance();

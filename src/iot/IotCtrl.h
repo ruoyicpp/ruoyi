@@ -1,20 +1,65 @@
+/**
+ * @file IotCtrl.h
+ * @brief IoT 设备管理控制器 — 提供 Modbus TCP 设备管理和数据读写
+ * 
+ * 功能概述：
+ *   - 设备管理：注册、列表、删除、连通性测试
+ *   - Modbus 读写：支持读寄存器、线圈、线圈组
+ *   - 批量轮询：一次请求批量读取多个地址
+ *   - 连接管理：自动连接复用、超时控制
+ * 
+ * API 端点：
+ *   - GET    /iot/devices              - 列出所有设备
+ *   - POST   /iot/devices              - 注册新设备
+ *   - DELETE /iot/devices/{id}         - 删除设备
+ *   - GET    /iot/devices/{id}/ping    - 连通性测试
+ *   - POST   /iot/modbus/read          - 读寄存器/线圈
+ *   - POST   /iot/modbus/write         - 写寄存器/线圈
+ *   - POST   /iot/modbus/poll          - 批量轮询多个地址
+ * 
+ * 权限要求：
+ *   - 所有接口都需要 JWT 认证
+ *   - 需要 iot:device:list、iot:device:add、iot:device:delete 权限
+ * 
+ * 使用示例：
+ *   // 注册设备
+ *   POST /iot/devices
+ *   {
+ *     "id": "device_001",
+ *     "name": "温度传感器",
+ *     "host": "192.168.1.100",
+ *     "port": 502,
+ *     "unitId": 1,
+ *     "timeoutMs": 2000,
+ *     "description": "车间温度监测"
+ *   }
+ *   
+ *   // 读寄存器
+ *   POST /iot/modbus/read
+ *   {
+ *     "deviceId": "device_001",
+ *     "functionCode": 3,
+ *     "startAddress": 0,
+ *     "quantity": 10
+ *   }
+ * 
+ * @see ModbusGateway - Modbus TCP 网关
+ * @see DatabaseService - 数据库服务
+ */
+
 #pragma once
-// ════════════════════════════════════════════════════════════════════════════
-// IotCtrl.h — IoT 设备管理 + Modbus TCP REST API
-//
-// GET    /iot/devices              列出设备
-// POST   /iot/devices              注册设备
-// DELETE /iot/devices/:id          删除设备
-// GET    /iot/devices/:id/ping     连通性测试
-// POST   /iot/modbus/read          读寄存器/线圈
-// POST   /iot/modbus/write         写寄存器/线圈
-// GET    /iot/modbus/poll          轮询多个地址（一次请求批量读）
-// ════════════════════════════════════════════════════════════════════════════
 #include <drogon/drogon.h>
 #include "ModbusGateway.h"
 #include "../common/AjaxResult.h"
 #include "../services/DatabaseService.h"
 
+/**
+ * @class IotCtrl
+ * @brief IoT 设备管理控制器
+ * 
+ * 提供 Modbus TCP 设备的管理和数据读写功能。
+ * 支持多个设备的并发操作和批量数据读取。
+ */
 class IotCtrl : public drogon::HttpController<IotCtrl> {
 public:
     METHOD_LIST_BEGIN
@@ -27,7 +72,15 @@ public:
         ADD_METHOD_TO(IotCtrl::modbusPoll,   "/iot/modbus/poll",      drogon::Post,   "JwtAuthFilter");
     METHOD_LIST_END
 
-    // GET /iot/devices
+    /**
+     * @brief 列出所有设备
+     * 
+     * GET /iot/devices
+     * 
+     * @param req HTTP 请求
+     * @param cb 回调函数
+     * @return 设备列表 JSON 数组
+     */
     void listDevices(const drogon::HttpRequestPtr&,
                      std::function<void(const drogon::HttpResponsePtr&)> &&cb) {
         Json::Value arr(Json::arrayValue);
