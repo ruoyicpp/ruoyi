@@ -31,7 +31,7 @@ Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% 
 
 ## Live Demo
 
-🌐 **v1.3.0 Demo**: [https://ruoyi1.mymq.site:20443](https://ruoyi1.mymq.site:20443)
+🌐 **v1.3.0 Demo**: [https://www.mymq.site](https://www.mymq.site)
 
 🌐 **v1.2.x Demo**: [https://ruoyi.mymq.site](https://ruoyi.mymq.site)
 
