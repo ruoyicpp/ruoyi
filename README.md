@@ -31,7 +31,7 @@
 
 ## 在线演示
 
-🌐 **v1.3.0 演示地址**：[https://ruoyi1.mymq.site:20443](https://ruoyi1.mymq.site:20443)
+🌐 **v1.3.0 演示地址**：[https://www.mymq.site](https://www.mymq.site)
 
 🌐 **v1.2.x 演示地址**：[https://ruoyi.mymq.site](https://ruoyi.mymq.site)
 
