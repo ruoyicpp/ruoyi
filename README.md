@@ -1489,7 +1489,7 @@ cp ruoyi-cpp.v1.2.x ./ruoyi-cpp
 
 ## 交流群
 
-QQ 交流群：**7827982393**
+QQ 交流群：**782798239**
 
 广州市八股文科技官网：<http://www.gzbgw.com>
 
