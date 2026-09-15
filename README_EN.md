@@ -1415,7 +1415,7 @@ Issues and Pull Requests are welcome!
 
 ## Community
 
-QQ Group: **7827982393**
+QQ Group: **782798239**
 
 Official Website: <http://www.gzbgw.com>
 
