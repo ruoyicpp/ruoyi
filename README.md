@@ -1,12 +1,12 @@
-﻿<div align="center">
+<div align="center">
 
-[English](README_EN.md) | 涓枃
+[English](README_EN.md) | 中文
 
 # RuoYi-Cpp
 
-**RuoYi 绠＄悊妗嗘灦鐨?C++ 楂樻€ц兘鐗堟湰** 路 `v1.3.3`
+**RuoYi 管理框架的 C++ 高性能版本** · `v1.3.3`
 
-鍩轰簬 [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL锛屼笌 RuoYi-Vue 鍓嶇 100% 鍏煎
+基于 [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL，与 RuoYi-Vue 前端 100% 兼容
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![C++](https://img.shields.io/badge/C++-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
@@ -29,198 +29,198 @@
 
 ---
 
-## 鍦ㄧ嚎婕旂ず
+## 在线演示
 
-馃寪 **婕旂ず鍦板潃**锛歔https://www.nulk.cn/](https://www.nulk.cn/)
+🌐 **演示地址**：[https://www.nulk.cn/](https://www.nulk.cn/)
 
-> 榛樿璐﹀彿锛歚admin` / `admin123`
+> 默认账号：`admin` / `admin123`
 
 ---
 
-## 椤圭洰绠€浠?
+## 项目简介
 
-RuoYi-Cpp 鏄?[鑻ヤ緷锛圧uoYi-Vue锛塢(https://gitee.com/y_project/RuoYi-Vue) 绠＄悊妗嗘灦鐨?C++ 楂樻€ц兘鐗堟湰锛屽悗绔熀浜?Drogon 寮傛 HTTP 妗嗘灦锛屾暟鎹簱浣跨敤 PostgreSQL锛屼笌鍘熺増 RuoYi-Vue 鍓嶇淇濇寔瀹屽叏 API 鍏煎銆?
+RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管理框架的 C++ 高性能版本，后端基于 Drogon 异步 HTTP 框架，数据库使用 PostgreSQL，与原版 RuoYi-Vue 前端保持完全 API 兼容。
 
-> 鉁?**骞冲彴鏀寔**锛氬凡鍦?**Windows锛圡SYS2 MinGW64锛?* 鍜?**Linux锛圙CC锛?* 涓婂畬鏁寸紪璇戦獙璇侀€氳繃銆傛暟鎹簱浣跨敤 **SQLite 鍐呭祵妯″紡**锛堟棤闇€瀹夎 PostgreSQL 鍗冲彲杩愯锛夛紝PostgreSQL 浣滀负鍙€変富鏁版嵁搴撱€?
+> ✅ **平台支持**：已在 **Windows（MSYS2 MinGW64）** 和 **Linux（GCC）** 上完整编译验证通过。数据库使用 **SQLite 内嵌模式**（无需安装 PostgreSQL 即可运行），PostgreSQL 作为可选主数据库。
 
-**鐩告瘮 Java 鐗堟湰鐨勪紭鍔匡細**
+**相比 Java 版本的优势：**
 
-| 瀵规瘮椤?| Java (Spring Boot) | RuoYi-Cpp |
+| 对比项 | Java (Spring Boot) | RuoYi-Cpp |
 |--------|-------------------|-----------|
-| 鍚姩鍐呭瓨 | ~300鈥?00 MB | **~3.2-10 MB** |
-| 鍚姩鏃堕棿 | 5鈥?5 绉?| **< 1 绉?* |
-| 杩愯鏃朵緷璧?| JDK 17+ | 鏃狅紙闈欐€侀摼鎺ワ級 |
-| 閮ㄧ讲鏂瑰紡 | JAR + JVM | **鍗曚釜鍙墽琛屾枃浠?* |
-| 閫傜敤鍦烘櫙 | 浜戞湇鍔″櫒 | 浜戞湇鍔″櫒 / NAS / 宓屽叆寮?|
-| Nginx 渚濊禆 | **鍙€?* | **鍙€?*锛堝唴缃墠绔墭绠★級|
-| 鐑洿鏂拌兘鍔?| 闇€瑕侀噸鍚?| **鏀寔鍔ㄦ€佸簱鐑洿鏂?* |
+| 启动内存 | ~300–500 MB | **~3.2-10 MB** |
+| 启动时间 | 5–15 秒 | **< 1 秒** |
+| 运行时依赖 | JDK 17+ | 无（静态链接） |
+| 部署方式 | JAR + JVM | **单个可执行文件** |
+| 适用场景 | 云服务器 | 云服务器 / NAS / 嵌入式 |
+| Nginx 依赖 | **可选** | **可选**（内置前端托管）|
+| 热更新能力 | 需要重启 | **支持动态库热更新** |
 
 ---
 
-## 鏍稿績鐗规€?
+## 核心特性
 
-- 鉁?**100% API 鍏煎** - 鐩存帴浣跨敤瀹樻柟 RuoYi-Vue 鍓嶇锛屾棤闇€淇敼
-- 鉁?**鏋佽嚧鎬ц兘** - 鍗曟牳 C++17 寮傛妗嗘灦锛孮PS 鍙揪 10000+
-- 鉁?**闆朵緷璧栭儴缃?* - 闈欐€侀摼鎺ユ墍鏈夊簱锛屽崟涓彲鎵ц鏂囦欢锛屾棤闇€ JVM/Runtime
-- 鉁?**鍐呯疆鍓嶇鎵樼** - 鏃犻渶 Nginx锛孌rogon 鐩存帴鎵樼 Vue 鍓嶇
-- 鉁?**鍙屾暟鎹簱鏀寔** - PostgreSQL 涓诲簱 + SQLite 鑷姩闄嶇骇锛孭G 鎭㈠鍚庤嚜鍔ㄥ悓姝?
-- 鉁?**浼佷笟绾у姛鑳?* - RBAC 鏉冮檺銆佸璁℃棩蹇椼€佹暟鎹劚鏁忋€佽姹傜鍚嶃€佽澶囩粦瀹?
-- 鉁?**绗笁鏂圭櫥褰?* - GitHub / Google / 浼佷笟寰俊 / 閽夐拤 / 椋炰功 / QQ OAuth2
-- 鉁?**涓ゆ楠岃瘉** - Google Authenticator TOTP RFC 6238
-- 鉁?**瀵嗛挜绠＄悊** - HashiCorp Vault 闆嗘垚锛岃嚜鍔ㄥ惎鍔?瑙ｅ皝/娉ㄥ叆
-- 鉁?**鍙娴嬫€?* - Prometheus 鎸囨爣銆乆-Request-ID 閾捐矾杩借釜銆丣SON 缁撴瀯鍖栨棩蹇?
-- 鉁?**WAF 闃茬伀澧?* - 鍐呯疆 SQL 娉ㄥ叆 / XSS / 璺緞绌胯秺 / 鍛戒护娉ㄥ叆姝ｅ垯瑙勫垯寮曟搸锛孖P 榛戠櫧鍚嶅崟锛圕IDR锛夛紝Linux 涓嬪彲鑱斿姩 nftables 鍐呮牳灞傚皝绂?
-- 鉁?**鍔ㄦ€佸簱妯″潡** - 浠ｇ爜鐢熸垚妯″潡鐙珛缂栬瘧锛屾敮鎸佺儹鏇存柊鏃犻渶閲嶅惎涓荤▼搴?
-- 鉁?**闆嗙兢閮ㄧ讲** - 鏀寔澶?Worker 杩涚▼锛岃嚜鍔ㄧ敓鎴?Nginx upstream.conf
-
----
-
-## 鍔熻兘妯″潡
-
-> 馃摉 鎺ュ彛鏂囨。涓嶅湪浠撳簱涓淮鎶も€斺€斿惎鍔ㄥ悗璁块棶 **`/swagger-ui/`**锛圫wagger UI锛夋垨 `GET /v3/api-docs`锛圤penAPI 3.0 JSON锛夎幏鍙栧疄鏃舵帴鍙ｅ畾涔夈€?
-
-- **绯荤粺绠＄悊** 鈥?鐢ㄦ埛 / 瑙掕壊 / 鑿滃崟 / 閮ㄩ棬 / 宀椾綅 / 鍙傛暟閰嶇疆 / 瀛楀吀 / 閫氱煡鍏憡 / 閭欢閰嶇疆 / TOTP 涓ゆ楠岃瘉 / OAuth2 绗笁鏂圭櫥褰曪紙GitHub銆丟oogle銆佷紒涓氬井淇°€侀拤閽夈€侀涔︺€丵Q锛?
-- **绯荤粺鐩戞帶** 鈥?鎿嶄綔鏃ュ織 / 鐧诲綍鏃ュ織 / 鍦ㄧ嚎鐢ㄦ埛 / 瀹氭椂浠诲姟锛堢绾?Cron锛? 绯荤粺鏃ュ織鏌ョ湅鍣?/ 鏈嶅姟鐩戞帶锛圕PU銆佸唴瀛樸€佺鐩樸€丟PU锛? 缂撳瓨鐩戞帶 / 鏁版嵁婧愮洃鎺?/ 閲嶅惎绠＄悊椤?
-- **璐﹀彿鑷姪** 鈥?鐧诲綍锛堟敮鎸?LDAP锛? 娉ㄥ唽锛堥偖绠遍獙璇佺爜锛? 蹇樿瀵嗙爜 / 閲嶇疆瀵嗙爜
-- **浠ｇ爜鐢熸垚涓庡伐鍏?* 鈥?浠ｇ爜鐢熸垚锛堢嫭绔嬪姩鎬佸簱鎻掍欢锛屾敮鎸佺儹鏇存柊锛? 椤圭洰鏋勫缓 / 缃戠珯淇℃伅 / 瑙嗛澶勭悊
-- **AI 涓庢櫤鑳?* 鈥?澶фā鍨嬪璇濓紙娴佸紡锛? AI 浠ｇ爜鐢熸垚 / 璇煶璇嗗埆锛圵hisper锛? ONNX Embedding
-- **IoT 涓庤澶囩鐞?* 鈥?璁惧绠＄悊 / Modbus 璇诲啓 / 鎵归噺杞
-- **杩愮淮涓庡彲瑙傛祴鎬?* 鈥?`/actuator/health`銆乣/actuator/metrics`锛圥rometheus锛夈€乣/actuator/db`銆乣/actuator/reload`锛堥厤缃儹閲嶈浇锛?
-- **WAF 闃茬伀澧?* 鈥?瑙勫垯寮曟搸锛堝唴缃?SQLi / XSS / 璺緞绌胯秺 / 鍛戒护娉ㄥ叆 + 鑷畾涔夋鍒欙級銆両P 榛戠櫧鍚嶅崟锛圕IDR锛夈€乁RI / UA 鍚嶅崟銆佸皝绂佺鐞嗭紙`/monitor/waf/**`锛夈€丯DJSON 鎷︽埅鏃ュ織銆乶ftables 鍐呮牳灞傚皝绂侊紙浠?Linux锛?
+- ✅ **100% API 兼容** - 直接使用官方 RuoYi-Vue 前端，无需修改
+- ✅ **极致性能** - 单核 C++17 异步框架，QPS 可达 10000+
+- ✅ **零依赖部署** - 静态链接所有库，单个可执行文件，无需 JVM/Runtime
+- ✅ **内置前端托管** - 无需 Nginx，Drogon 直接托管 Vue 前端
+- ✅ **双数据库支持** - PostgreSQL 主库 + SQLite 自动降级，PG 恢复后自动同步
+- ✅ **企业级功能** - RBAC 权限、审计日志、数据脱敏、请求签名、设备绑定
+- ✅ **第三方登录** - GitHub / Google / 企业微信 / 钉钉 / 飞书 / QQ OAuth2
+- ✅ **两步验证** - Google Authenticator TOTP RFC 6238
+- ✅ **密钥管理** - HashiCorp Vault 集成，自动启动/解封/注入
+- ✅ **可观测性** - Prometheus 指标、X-Request-ID 链路追踪、JSON 结构化日志
+- ✅ **WAF 防火墙** - 内置 SQL 注入 / XSS / 路径穿越 / 命令注入正则规则引擎，IP 黑白名单（CIDR），Linux 下可联动 nftables 内核层封禁
+- ✅ **动态库模块** - 代码生成模块独立编译，支持热更新无需重启主程序
+- ✅ **集群部署** - 支持多 Worker 进程，自动生成 Nginx upstream.conf
 
 ---
 
-## 鎶€鏈爤
+## 功能模块
 
-| 缁勪欢 | 鎶€鏈?|
+> 📖 接口文档不在仓库中维护——启动后访问 **`/swagger-ui/`**（Swagger UI）或 `GET /v3/api-docs`（OpenAPI 3.0 JSON）获取实时接口定义。
+
+- **系统管理** — 用户 / 角色 / 菜单 / 部门 / 岗位 / 参数配置 / 字典 / 通知公告 / 邮件配置 / TOTP 两步验证 / OAuth2 第三方登录（GitHub、Google、企业微信、钉钉、飞书、QQ）
+- **系统监控** — 操作日志 / 登录日志 / 在线用户 / 定时任务（秒级 Cron）/ 系统日志查看器 / 服务监控（CPU、内存、磁盘、GPU）/ 缓存监控 / 数据源监控 / 重启管理页
+- **账号自助** — 登录（支持 LDAP）/ 注册（邮箱验证码）/ 忘记密码 / 重置密码
+- **代码生成与工具** — 代码生成（独立动态库插件，支持热更新）/ 项目构建 / 网站信息 / 视频处理
+- **AI 与智能** — 大模型对话（流式）/ AI 代码生成 / 语音识别（Whisper）/ ONNX Embedding
+- **IoT 与设备管理** — 设备管理 / Modbus 读写 / 批量轮询
+- **运维与可观测性** — `/actuator/health`、`/actuator/metrics`（Prometheus）、`/actuator/db`、`/actuator/reload`（配置热重载）
+- **WAF 防火墙** — 规则引擎（内置 SQLi / XSS / 路径穿越 / 命令注入 + 自定义正则）、IP 黑白名单（CIDR）、URI / UA 名单、封禁管理（`/monitor/waf/**`）、NDJSON 拦截日志、nftables 内核层封禁（仅 Linux）
+
+---
+
+## 技术栈
+
+| 组件 | 技术 |
 |------|-----|
-| HTTP 妗嗘灦 | [Drogon](https://github.com/drogonframework/drogon) (C++17, 寮傛闈為樆濉? |
-| 涓绘暟鎹簱 | PostgreSQL (libpq 鐩磋繛 + 杩炴帴姹? |
-| 澶囩敤鏁版嵁搴?| SQLite锛堣嚜鍔ㄩ檷绾э紝PG 鎭㈠鍚庤嚜鍔ㄥ悓姝ュ洖鍐欙級|
-| 缂撳瓨灞?| 杩涚▼鍐?MemCache / GPU VramCache / Redis锛堜笁绾у彲閫夛級|
-| 鏂囦欢瀛樺偍 | 鏈湴纾佺洏锛堥粯璁わ級/ MinIO / AWS S3锛圓WS SigV4 绛惧悕锛墊
-| 璁よ瘉 | JWT锛圼jwt-cpp](https://github.com/Thalhammer/jwt-cpp)锛夛紝PBKDF2-SHA256 瀵嗙爜鍝堝笇 |
-| 涓ゆ楠岃瘉 | TOTP RFC 6238锛圙oogle Authenticator锛岀函 OpenSSL 瀹炵幇锛墊
-| 绗笁鏂圭櫥褰?| OAuth2锛欸itHub / Google / 浼佷笟寰俊 / 閽夐拤 / 椋炰功 / QQ锛孋SRF-state 闃叉姢 |
-| LDAP/AD | OpenLDAP CLI 闆嗘垚锛圠inux锛夛紝Windows 棰勭暀鎺ュ彛 |
-| 瀵嗛挜绠＄悊 | HashiCorp Vault锛堣嚜鍔ㄥ惎鍔?/ 瑙ｅ皝 / 瀵嗛挜娉ㄥ叆锛墊
-| 閭欢鍙戦€?| OpenSSL Implicit-TLS SMTP锛圦Q/163/浼佷笟閭锛屽鍙戜欢浜鸿疆杞級|
-| 鍓嶇 | RuoYi-Vue锛圴ue 2 + Element UI锛夛紝Drogon **鍐呯疆鎵樼**锛屾棤闇€ Nginx |
-| 鍙嶅悜浠ｇ悊 | Nginx锛堝彲閫夛紝椤圭洰鍐呯疆鍚姩绠＄悊锛岃嚜鍔ㄧ敓鎴?upstream.conf锛墊
-| 鏃ュ織 | JSON 缁撴瀯鍖栨棩蹇楋紙`.jsonl`锛屾瘡琛屼竴涓?JSON 瀵硅薄锛屽彲鎺?ELK锛墊
-| 鍙娴?| Prometheus 鎸囨爣绔偣銆乆-Request-ID 鍏ㄩ摼璺拷韪?|
-| 瀹夊叏 | 璇锋眰绛惧悕楠岃瘉銆両P 闄愭祦銆乆SS 杩囨护銆乄AF 瑙勫垯寮曟搸 + nftables 灏佺銆佽澶囩粦瀹氥€佽鍙瘉绠＄悊 |
+| HTTP 框架 | [Drogon](https://github.com/drogonframework/drogon) (C++17, 异步非阻塞) |
+| 主数据库 | PostgreSQL (libpq 直连 + 连接池) |
+| 备用数据库 | SQLite（自动降级，PG 恢复后自动同步回写）|
+| 缓存层 | 进程内 MemCache / GPU VramCache / Redis（三级可选）|
+| 文件存储 | 本地磁盘（默认）/ MinIO / AWS S3（AWS SigV4 签名）|
+| 认证 | JWT（[jwt-cpp](https://github.com/Thalhammer/jwt-cpp)），PBKDF2-SHA256 密码哈希 |
+| 两步验证 | TOTP RFC 6238（Google Authenticator，纯 OpenSSL 实现）|
+| 第三方登录 | OAuth2：GitHub / Google / 企业微信 / 钉钉 / 飞书 / QQ，CSRF-state 防护 |
+| LDAP/AD | OpenLDAP CLI 集成（Linux），Windows 预留接口 |
+| 密钥管理 | HashiCorp Vault（自动启动 / 解封 / 密钥注入）|
+| 邮件发送 | OpenSSL Implicit-TLS SMTP（QQ/163/企业邮箱，多发件人轮转）|
+| 前端 | RuoYi-Vue（Vue 2 + Element UI），Drogon **内置托管**，无需 Nginx |
+| 反向代理 | Nginx（可选，项目内置启动管理，自动生成 upstream.conf）|
+| 日志 | JSON 结构化日志（`.jsonl`，每行一个 JSON 对象，可接 ELK）|
+| 可观测 | Prometheus 指标端点、X-Request-ID 全链路追踪 |
+| 安全 | 请求签名验证、IP 限流、XSS 过滤、WAF 规则引擎 + nftables 封禁、设备绑定、许可证管理 |
 
-### 鎶€鏈爤鐗堟湰璇︽儏
+### 技术栈版本详情
 
-| 缁勪欢 | 鐗堟湰 | 璇存槑 |
+| 组件 | 版本 | 说明 |
 |------|------|-----|
-| **C++ 鏍囧噯** | C++20 | 浣跨敤鏈€鏂?C++ 鐗规€э紝缂栬瘧鍣ㄩ渶鏀寔 C++20 |
-| **Drogon** | latest | 寮傛 HTTP 妗嗘灦锛屾敮鎸?WebSocket銆丠TTP/2 |
-| **PostgreSQL** | 12+ | 涓绘暟鎹簱锛屾敮鎸?JSON銆乁UID銆佸叏鏂囨悳绱㈢瓑楂樼骇鐗规€?|
-| **SQLite** | 3.x | 澶囩敤鏁版嵁搴擄紝鑷姩闄嶇骇鍜屾仮澶?|
-| **OpenSSL** | 3.x | 瀵嗙爜瀛﹀簱锛屾敮鎸?TLS 1.3銆丳BKDF2銆丠MAC-SHA256 |
-| **JsonCpp** | latest | JSON 瑙ｆ瀽鍜岀敓鎴愬簱 |
-| **jwt-cpp** | latest | JWT 浠ょ墝鐢熸垚鍜岄獙璇侊紙header-only锛?|
-| **RuoYi-Vue** | 3.8 | 鍓嶇妗嗘灦锛孷ue 2 + Element UI |
-| **Nginx** | 1.20+ | 鍙嶅悜浠ｇ悊鍜岃礋杞藉潎琛★紙鍙€夛級 |
-| **MinIO** | latest | 瀵硅薄瀛樺偍鏈嶅姟锛堝彲閫夛級 |
-| **Redis** | 6.0+ | 缂撳瓨鍜屼細璇濆瓨鍌紙鍙€夛級 |
-| **HashiCorp Vault** | 1.12+ | 瀵嗛挜绠＄悊鏈嶅姟锛堝彲閫夛級 |
+| **C++ 标准** | C++20 | 使用最新 C++ 特性，编译器需支持 C++20 |
+| **Drogon** | latest | 异步 HTTP 框架，支持 WebSocket、HTTP/2 |
+| **PostgreSQL** | 12+ | 主数据库，支持 JSON、UUID、全文搜索等高级特性 |
+| **SQLite** | 3.x | 备用数据库，自动降级和恢复 |
+| **OpenSSL** | 3.x | 密码学库，支持 TLS 1.3、PBKDF2、HMAC-SHA256 |
+| **JsonCpp** | latest | JSON 解析和生成库 |
+| **jwt-cpp** | latest | JWT 令牌生成和验证（header-only） |
+| **RuoYi-Vue** | 3.8 | 前端框架，Vue 2 + Element UI |
+| **Nginx** | 1.20+ | 反向代理和负载均衡（可选） |
+| **MinIO** | latest | 对象存储服务（可选） |
+| **Redis** | 6.0+ | 缓存和会话存储（可选） |
+| **HashiCorp Vault** | 1.12+ | 密钥管理服务（可选） |
 
 ---
 
 ---
 
-## 绯荤粺瑕佹眰
+## 系统要求
 
-### 杩愯鐜
+### 运行环境
 
-| 椤圭洰 | 瑕佹眰 | 璇存槑 |
+| 项目 | 要求 | 说明 |
 |------|------|-----|
-| **鎿嶄綔绯荤粺** | Windows 10+ / Linux / macOS | 宸插湪 Windows 11锛圡SYS2 MinGW64锛変笌 Linux锛圙CC锛夐獙璇?|
-| **澶勭悊鍣?* | x86-64 鎴?ARM64 | 鎺ㄨ崘 4 鏍镐互涓?|
-| **鍐呭瓨** | 鏈€灏?512MB锛屾帹鑽?2GB+ | 鍖呭惈鏁版嵁搴撳拰搴旂敤 |
-| **纾佺洏** | 鏈€灏?500MB | 鍖呭惈搴旂敤銆佹棩蹇椼€佷笂浼犳枃浠?|
-| **鏁版嵁搴?* | PostgreSQL 12+ 鎴?SQLite 3.x | 榛樿浣跨敤 SQLite锛屽彲鍒囨崲 PostgreSQL |
-| **缃戠粶** | TCP 18080 绔彛鍙敤 | 榛樿鐩戝惉 0.0.0.0:18080 |
+| **操作系统** | Windows 10+ / Linux / macOS | 已在 Windows 11（MSYS2 MinGW64）与 Linux（GCC）验证 |
+| **处理器** | x86-64 或 ARM64 | 推荐 4 核以上 |
+| **内存** | 最小 512MB，推荐 2GB+ | 包含数据库和应用 |
+| **磁盘** | 最小 500MB | 包含应用、日志、上传文件 |
+| **数据库** | PostgreSQL 12+ 或 SQLite 3.x | 默认使用 SQLite，可切换 PostgreSQL |
+| **网络** | TCP 18080 端口可用 | 默认监听 0.0.0.0:18080 |
 
-### 缂栬瘧鐜
+### 编译环境
 
-| 宸ュ叿 | 鐗堟湰 | 璇存槑 |
+| 工具 | 版本 | 说明 |
 |------|------|-----|
-| **CMake** | 3.15+ | 鏋勫缓绯荤粺 |
-| **C++ 缂栬瘧鍣?* | GCC 11+ / Clang 13+ / MSVC 2019+ | 闇€鏀寔 C++20 |
-| **Git** | 2.0+ | 鐗堟湰鎺у埗 |
-| **MSYS2 MinGW64** | 鏈€鏂扮増 | Windows 缂栬瘧鐜锛圵indows 鐢ㄦ埛锛?|
-| **Drogon** | latest | 寮傛 HTTP 妗嗘灦锛堥渶棰勫厛缂栬瘧锛?|
-| **PostgreSQL** | 12+ | 寮€鍙戝簱锛坙ibpq锛?|
-| **OpenSSL** | 3.x | 寮€鍙戝簱 |
+| **CMake** | 3.15+ | 构建系统 |
+| **C++ 编译器** | GCC 11+ / Clang 13+ / MSVC 2019+ | 需支持 C++20 |
+| **Git** | 2.0+ | 版本控制 |
+| **MSYS2 MinGW64** | 最新版 | Windows 编译环境（Windows 用户） |
+| **Drogon** | latest | 异步 HTTP 框架（需预先编译） |
+| **PostgreSQL** | 12+ | 开发库（libpq） |
+| **OpenSSL** | 3.x | 开发库 |
 
-### 鍙€変緷璧?
+### 可选依赖
 
-| 缁勪欢 | 鐗堟湰 | 鐢ㄩ€?|
+| 组件 | 版本 | 用途 |
 |------|------|-----|
-| **Redis** | 6.0+ | 缂撳瓨鍔犻€熴€佷細璇濆瓨鍌?|
-| **Nginx** | 1.20+ | 鍙嶅悜浠ｇ悊銆佽礋杞藉潎琛?|
-| **MinIO** | latest | 瀵硅薄瀛樺偍锛堟浛浠ｆ湰鍦板瓨鍌級 |
-| **HashiCorp Vault** | 1.12+ | 瀵嗛挜绠＄悊 |
-| **Prometheus** | latest | 鎬ц兘鐩戞帶 |
-| **Grafana** | latest | 鍙鍖栦华琛ㄦ澘 |
+| **Redis** | 6.0+ | 缓存加速、会话存储 |
+| **Nginx** | 1.20+ | 反向代理、负载均衡 |
+| **MinIO** | latest | 对象存储（替代本地存储） |
+| **HashiCorp Vault** | 1.12+ | 密钥管理 |
+| **Prometheus** | latest | 性能监控 |
+| **Grafana** | latest | 可视化仪表板 |
 
 ---
 
-## 蹇€熶綋楠岋紙5 鍒嗛挓锛?
+## 快速体验（5 分钟）
 
-**鏈€蹇笂鎵嬫柟寮?*锛堟棤闇€缂栬瘧锛夛細
+**最快上手方式**（无需编译）：
 
-1. **涓嬭浇棰勭紪璇戠増鏈?*
+1. **下载预编译版本**
    ```bash
-   # 浠?Release 椤甸潰涓嬭浇 ruoyi-cpp-v1.3.3-windows.zip
+   # 从 Release 页面下载 ruoyi-cpp-v1.3.3-windows.zip
    unzip ruoyi-cpp-v1.3.3-windows.zip
    cd ruoyi-cpp
    ```
 
-2. **閰嶇疆鏁版嵁搴?*
+2. **配置数据库**
    ```bash
-   # 缂栬緫 config.json锛屼慨鏀规暟鎹簱杩炴帴锛堝彲閫夛紝榛樿鐢?SQLite锛?
-   # 濡傛灉浣跨敤 PostgreSQL锛屼慨鏀逛互涓嬪瓧娈碉細
+   # 编辑 config.json，修改数据库连接（可选，默认用 SQLite）
+   # 如果使用 PostgreSQL，修改以下字段：
    # "database": { "host": "127.0.0.1", "port": 5432, "dbname": "ruoyi.c", "user": "postgres", "passwd": "your_password" }
    ```
 
-3. **鍚姩鏈嶅姟**
+3. **启动服务**
    ```bash
    ./ruoyi-cpp.exe
-   # 杈撳嚭锛歔INFO] Server started on http://0.0.0.0:18080
+   # 输出：[INFO] Server started on http://0.0.0.0:18080
    ```
 
-4. **璁块棶搴旂敤**
-   - 鍓嶇锛歨ttp://localhost:18080
-   - API 鏂囨。锛歨ttp://localhost:18080/swagger-ui/
-   - 榛樿璐﹀彿锛歚admin` / `admin123`
+4. **访问应用**
+   - 前端：http://localhost:18080
+   - API 文档：http://localhost:18080/swagger-ui/
+   - 默认账号：`admin` / `admin123`
 
-> 鈿狅笍 **鐢熶骇鐜**锛氳绔嬪嵆淇敼榛樿瀵嗙爜鍜?JWT secret锛?
+> ⚠️ **生产环境**：请立即修改默认密码和 JWT secret！
 
 ---
 
-## 蹇€熷紑濮?
+## 快速开始
 
-### 鍓嶇疆渚濊禆
+### 前置依赖
 
-**鏁版嵁搴?*锛氶渶瑕佽繍琛屼腑鐨?PostgreSQL 瀹炰緥锛堢増鏈?12+锛?
+**数据库**：需要运行中的 PostgreSQL 实例（版本 12+）
 
 ```sql
--- 鍒涘缓鏁版嵁搴擄紙棣栨杩愯鑷姩寤鸿〃锛屾棤闇€鎵嬪姩瀵煎叆 SQL锛?
+-- 创建数据库（首次运行自动建表，无需手动导入 SQL）
 CREATE DATABASE "ruoyi.c";
 ```
 
-**Redis**锛堝彲閫夛級锛氫笉閰嶇疆鏃惰嚜鍔ㄩ€€鍖栦负杩涚▼鍐呯紦瀛樸€?
+**Redis**（可选）：不配置时自动退化为进程内缓存。
 
 ---
 
-### Windows锛圡SYS2 MinGW64锛?
+### Windows（MSYS2 MinGW64）
 
-**1. 瀹夎 MSYS2 渚濊禆**
+**1. 安装 MSYS2 依赖**
 
 ```bash
 pacman -S --needed \
@@ -237,7 +237,7 @@ pacman -S --needed \
     mingw-w64-x86_64-hiredis
 ```
 
-**2. 缂栬瘧瀹夎 Drogon**
+**2. 编译安装 Drogon**
 
 ```bash
 git clone https://github.com/drogonframework/drogon
@@ -252,14 +252,14 @@ cmake .. -G Ninja \
 ninja && ninja install
 ```
 
-**3. 瀹夎 jwt-cpp锛圚eader-Only锛?*
+**3. 安装 jwt-cpp（Header-Only）**
 
 ```bash
 git clone https://github.com/Thalhammer/jwt-cpp
 cp -r jwt-cpp/include/jwt-cpp /mingw64/include/
 ```
 
-**4. 缂栬瘧椤圭洰**
+**4. 编译项目**
 
 ```bash
 git clone https://gitee.com/ruoyicpp/ruoyi ruoyi-cpp
@@ -270,19 +270,19 @@ cmake .. -G Ninja \
 ninja
 ```
 
-**5. 閰嶇疆骞惰繍琛?*
+**5. 配置并运行**
 
 ```bash
-# 缂栬緫 config.json锛堟暟鎹簱杩炴帴銆丣WT 瀵嗛挜绛夛級
-# 棣栨杩愯鑷姩寤鸿〃 + 鎻掑叆鍒濆鏁版嵁
+# 编辑 config.json（数据库连接、JWT 密钥等）
+# 首次运行自动建表 + 插入初始数据
 ./ruoyi-cpp.exe
 ```
 
 ---
 
-### Linux锛圙CC锛?
+### Linux（GCC）
 
-**1. 瀹夎渚濊禆**
+**1. 安装依赖**
 
 ```bash
 sudo apt install -y gcc g++ cmake make \
@@ -291,7 +291,7 @@ sudo apt install -y gcc g++ cmake make \
     libsqlite3-dev librocksdb-dev
 ```
 
-**2. 缂栬瘧瀹夎 Drogon**锛堝悓 Windows 姝ラ锛岀暐鍘?`-G Ninja` 鍙敤榛樿 Makefiles锛?
+**2. 编译安装 Drogon**（同 Windows 步骤，略去 `-G Ninja` 可用默认 Makefiles）
 
 ```bash
 git clone https://github.com/drogonframework/drogon
@@ -302,7 +302,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
 make -j$(nproc) && sudo make install
 ```
 
-**3. 缂栬瘧椤圭洰**
+**3. 编译项目**
 
 ```bash
 git clone https://gitee.com/ruoyicpp/ruoyi ruoyi-cpp
@@ -312,15 +312,15 @@ make -j$(nproc)
 ./ruoyi-cpp
 ```
 
-> 鍙€夛細`-DRUOYI_USE_NGINX=ON` 鍚敤宓屽叆寮?Nginx锛堥渶鍏堟寜 `nginx-1.29.8-linux/` 璇存槑缂栬瘧 `libnginx.a`锛夛紱`-DRUOYI_BUILD_TESTS=ON` 缂栬瘧鍗曞厓娴嬭瘯銆?
+> 可选：`-DRUOYI_USE_NGINX=ON` 启用嵌入式 Nginx（需先按 `nginx-1.29.8-linux/` 说明编译 `libnginx.a`）；`-DRUOYI_BUILD_TESTS=ON` 编译单元测试。
 
 ---
 
-## 閰嶇疆璇存槑
+## 配置说明
 
-涓婚厤缃枃浠讹細`config.json`锛堝弬鑰?`build-nginx/config.template.json`锛?
+主配置文件：`config.json`（参考 `build-nginx/config.template.json`）
 
-### 鏍稿績閰嶇疆
+### 核心配置
 
 ```jsonc
 {
@@ -330,25 +330,25 @@ make -j$(nproc)
     "dbname": "ruoyi.c", "user": "postgres", "passwd": ""
   },
   "jwt": {
-    "secret": "鑷冲皯16浣嶉殢鏈哄瓧绗︿覆",  // 鈿狅笍 鐢熶骇鐜蹇呴』淇敼
+    "secret": "至少16位随机字符串",  // ⚠️ 生产环境必须修改
     "expire_minutes": 30,
     "jwt_expire_days": 7
   }
 }
 ```
 
-### 鏂囦欢瀛樺偍锛堥粯璁ゆ湰鍦帮紝鍙€?MinIO/S3锛?
+### 文件存储（默认本地，可选 MinIO/S3）
 
 ```jsonc
 "storage": {
   "type":       "local",          // "local" | "minio" | "s3"
-  "local_path": "./upload",       // type=local 鏃剁敓鏁?
+  "local_path": "./upload",       // type=local 时生效
   "endpoint":   "http://127.0.0.1:9000",  // MinIO/S3 endpoint
   "bucket":     "ruoyi",
   "access_key": "minioadmin",
   "secret_key": "minioadmin",
   "region":     "us-east-1",
-  "public_url": ""                // 瀵瑰 CDN 鍦板潃锛岀┖鍒欑敤 endpoint
+  "public_url": ""                // 对外 CDN 地址，空则用 endpoint
 }
 ```
 
@@ -363,22 +363,22 @@ make -j$(nproc)
   "bind_dn":      "CN=svc_ruoyi,OU=Service Accounts,DC=example,DC=com",
   "bind_pass":    "service_password",
   "user_filter":  "(&(objectClass=person)(sAMAccountName={username}))",
-  "fallback_local": true          // LDAP 澶辫触鏃跺厑璁告湰鍦拌处鍙风櫥褰?
+  "fallback_local": true          // LDAP 失败时允许本地账号登录
 }
 ```
 
-### 涓ゆ楠岃瘉锛圱OTP锛?
+### 两步验证（TOTP）
 
 ```jsonc
 "totp": {
   "enabled": true,
-  "issuer":  "RuoYi-Cpp"          // 鏄剧ず鍦?Authenticator App 涓殑鍚嶇О
+  "issuer":  "RuoYi-Cpp"          // 显示在 Authenticator App 中的名称
 }
 ```
 
-> TOTP 浣跨敤娴佺▼锛氳皟鐢?`POST /system/totp/generate` 鑾峰彇 `qrUri`锛岀敤鍓嶇 qrcode.js 娓叉煋浜岀淮鐮侊紝鐢ㄦ埛鐢?Google/Microsoft Authenticator 鎵爜锛岀劧鍚庤皟鐢?`POST /system/totp/enable` 杈撳叆 6 浣嶇爜婵€娲汇€?
+> TOTP 使用流程：调用 `POST /system/totp/generate` 获取 `qrUri`，用前端 qrcode.js 渲染二维码，用户用 Google/Microsoft Authenticator 扫码，然后调用 `POST /system/totp/enable` 输入 6 位码激活。
 
-### 绗笁鏂圭櫥褰曪紙OAuth2锛?
+### 第三方登录（OAuth2）
 
 ```jsonc
 "oauth2": {
@@ -389,8 +389,8 @@ make -j$(nproc)
     "redirect_uri":  "http://yourdomain/oauth2/callback/github",
     "scope":         "user:email"
   },
-  "google": { "enabled": false, ... },     // 鍚岀粨鏋勶紝scope: "openid email profile"
-  "wechat_work": {                           // 浼佷笟寰俊闇€棰濆 corp_id / agent_id
+  "google": { "enabled": false, ... },     // 同结构，scope: "openid email profile"
+  "wechat_work": {                           // 企业微信需额外 corp_id / agent_id
     "enabled":       false,
     "corp_id":       "YOUR_CORP_ID",
     "client_secret": "YOUR_CORP_SECRET",
@@ -403,246 +403,246 @@ make -j$(nproc)
 }
 ```
 
-**OAuth2 鐧诲綍瀹屾暣娴佺▼锛?*
+**OAuth2 登录完整流程：**
 
-1. 鍓嶇璋?`GET /oauth2/providers` 鑾峰彇宸插惎鐢?provider 鍒楄〃
-2. 鍓嶇璋?`GET /oauth2/authorize/{provider}` 鑾峰彇 `{url, state}`
-3. 鍓嶇璺宠浆鍒?`url`锛坧rovider 鎺堟潈椤碉級
-4. 鐢ㄦ埛鎺堟潈鍚?provider 閲嶅畾鍚戝埌 `redirect_uri`锛堝嵆 `GET /oauth2/callback/{provider}?code=xxx&state=xxx`锛?
-5. 鍚庣楠岃瘉 state锛堥槻 CSRF锛夆啋 鐢?code 鎹?access_token 鈫?鑾峰彇鐢ㄦ埛淇℃伅 鈫?绛惧彂 JWT
-6. 棣栨鐧诲綍鑷姩鍒涘缓鏈湴璐﹀彿锛坄{provider}_{openId鍓?6浣峿`锛?
-7. 宸茬櫥褰曠敤鎴峰彲閫氳繃 `POST /oauth2/bind/{provider}` 缁戝畾鐜版湁璐﹀彿
+1. 前端调 `GET /oauth2/providers` 获取已启用 provider 列表
+2. 前端调 `GET /oauth2/authorize/{provider}` 获取 `{url, state}`
+3. 前端跳转到 `url`（provider 授权页）
+4. 用户授权后 provider 重定向到 `redirect_uri`（即 `GET /oauth2/callback/{provider}?code=xxx&state=xxx`）
+5. 后端验证 state（防 CSRF）→ 用 code 换 access_token → 获取用户信息 → 签发 JWT
+6. 首次登录自动创建本地账号（`{provider}_{openId前16位}`）
+7. 已登录用户可通过 `POST /oauth2/bind/{provider}` 绑定现有账号
 
-> **瀹夊叏鎻愮ず**锛歴tate 閫氳繃 `MemCache` 瀛樺偍 60s 鑷姩杩囨湡锛屾潨缁?CSRF 鏀诲嚮銆?
+> **安全提示**：state 通过 `MemCache` 存储 60s 自动过期，杜绝 CSRF 攻击。
 
-### 鍓嶇鍐呯疆鎵樼锛堟棤闇€ Nginx锛?
+### 前端内置托管（无需 Nginx）
 
 ```jsonc
 "frontend": {
   "enabled":      true,
-  "dist_path":    "./web",         // Vue dist 鐩綍
-  "spa_mode":     true,            // SPA history 妯″紡鍥為€€
-  "api_prefix":   "/prod-api",     // 鑷姩鍓ョ璇ュ墠缂€杞彂鍒板悗绔?
+  "dist_path":    "./web",         // Vue dist 目录
+  "spa_mode":     true,            // SPA history 模式回退
+  "api_prefix":   "/prod-api",     // 自动剥离该前缀转发到后端
   "cache_seconds": 3600
 }
 ```
 
-> 灏?`npm run build:prod` 鐢熸垚鐨?`dist/` 鍐呭鏀惧埌 `./web/` 鐩綍锛岀洿鎺ヨ闂?`:18080` 鍗冲彲锛屾棤闇€ Nginx銆?
+> 将 `npm run build:prod` 生成的 `dist/` 内容放到 `./web/` 目录，直接访问 `:18080` 即可，无需 Nginx。
 
-### 鏁忔劅淇℃伅绠＄悊
+### 敏感信息管理
 
-鍙戝竷浠撳簱鏃讹紝鍚湡瀹炲瘑鐮佺殑閰嶇疆鏂囦欢涓嶄細琚彁浜わ細
+发布仓库时，含真实密码的配置文件不会被提交：
 
-| 鏂囦欢 | 璇存槑 |
+| 文件 | 说明 |
 |---|---|
-| `build-nginx/config.json` | 鐪熷疄閰嶇疆锛岃 `.gitignore` 鎺掗櫎 |
-| `build-nginx/ruoyi1.mymq.site.json` | 鐪熷疄閰嶇疆锛岃 `.gitignore` 鎺掗櫎 |
-| `build-nginx/config.template.json` | 閰嶇疆妯℃澘锛屽惈鍗犱綅绗︼紙`YOUR_DATABASE_PASSWORD` 绛夛級锛?*浼氶殢 git 鎻愪氦** |
+| `build-nginx/config.json` | 真实配置，被 `.gitignore` 排除 |
+| `build-nginx/ruoyi1.mymq.site.json` | 真实配置，被 `.gitignore` 排除 |
+| `build-nginx/config.template.json` | 配置模板，含占位符（`YOUR_DATABASE_PASSWORD` 等），**会随 git 提交** |
 
-閮ㄧ讲鍒版柊鏈哄櫒鏃讹細
+部署到新机器时：
 
-1. 鍏嬮殕浠撳簱鍚庯紝浠?`build-nginx/config.template.json` 澶嶅埗涓€浠戒负 `build-nginx/config.json`
-2. 濉啓 `database.passwd`銆乣jwt.secret`銆乣security.*.admin_unlock_key` 绛夋晱鎰熷瓧娈?
-3. 鎴栭€氳繃鐜鍙橀噺娉ㄥ叆锛坄RUOYI_DATABASE_PASSWD`銆乣RUOYI_JWT_SECRET` 绛夛級
+1. 克隆仓库后，从 `build-nginx/config.template.json` 复制一份为 `build-nginx/config.json`
+2. 填写 `database.passwd`、`jwt.secret`、`security.*.admin_unlock_key` 等敏感字段
+3. 或通过环境变量注入（`RUOYI_DATABASE_PASSWD`、`RUOYI_JWT_SECRET` 等）
 
-鐜鍙橀噺浼樺厛绾ч珮浜庨厤缃枃浠讹紝璇﹁鍚勫瓧娈垫梺鐨?`_comment` 璇存槑銆?
+环境变量优先级高于配置文件，详见各字段旁的 `_comment` 说明。
 
-### 閭欢閰嶇疆锛堢郴缁熷唴閰嶇疆锛?
+### 邮件配置（系统内配置）
 
-鐧诲綍鍚庤繘鍏?**绯荤粺绠＄悊 鈫?閭欢鍙戜欢绠?* 閰嶇疆 SMTP锛屾棤闇€淇敼閰嶇疆鏂囦欢锛?
+登录后进入 **系统管理 → 邮件发件箱** 配置 SMTP，无需修改配置文件：
 
-| 鍙傛暟閿?| 璇存槑 | 绀轰緥鍊?|
+| 参数键 | 说明 | 示例值 |
 |--------|-----|--------|
-| `sys.email.host` | SMTP 鏈嶅姟鍣?| `smtp.qq.com` |
-| `sys.email.port` | 绔彛锛圛mplicit TLS锛墊 `465` |
-| `sys.email.fromName` | 鍙戜欢浜烘樉绀哄悕 | `绯荤粺閫氱煡` |
-| `sys.email.senders` | 鍙戜欢浜哄垪琛紙JSON 鏁扮粍锛墊 `[{"email":"a@qq.com","authCode":"xxxx"}]` |
+| `sys.email.host` | SMTP 服务器 | `smtp.qq.com` |
+| `sys.email.port` | 端口（Implicit TLS）| `465` |
+| `sys.email.fromName` | 发件人显示名 | `系统通知` |
+| `sys.email.senders` | 发件人列表（JSON 数组）| `[{"email":"a@qq.com","authCode":"xxxx"}]` |
 
-### SQLite 鍔犲瘑锛堝彲閫夛級
+### SQLite 加密（可选）
 
-椤圭洰鏀寔涓ょ SQLite 鍔犲瘑鏂瑰紡锛屽叡鐢ㄥ悓涓€閰嶇疆鍏ュ彛锛屾寜缂栬瘧閫夐」鑷姩閫夋嫨锛?
+项目支持两种 SQLite 加密方式，共用同一配置入口，按编译选项自动选择：
 
-- **椤电骇鍔犲瘑**锛圫QLite3MC锛夛細纾佺洏濮嬬粓瀵嗘枃锛屾棤鏄庢枃绐楀彛锛涢渶 `scripts/download_sqlite3mc.ps1` 鎷夊彇 amalgamation
-- **鏂囦欢绾у姞瀵?*锛圧YENC1锛変綔涓哄厹搴曪細AES-256-GCM + HMAC-SHA256 + 鑷爺灏佽鏍煎紡锛屼粎渚濊禆 OpenSSL
+- **页级加密**（SQLite3MC）：磁盘始终密文，无明文窗口；需 `scripts/download_sqlite3mc.ps1` 拉取 amalgamation
+- **文件级加密**（RYENC1）作为兜底：AES-256-GCM + HMAC-SHA256 + 自研封装格式，仅依赖 OpenSSL
 
-鏈€绠€閰嶇疆锛?
+最简配置：
 
 ```jsonc
 "sqlite": { "encrypt_key": "Your#Strong@Pass2026" }
 ```
 
-瀹屾暣鏋舵瀯銆? 绉嶅瘑閽ユ潵婧愶紙hwid/vault/env/...锛夈€佽縼绉昏矾寰勩€丆LI 宸ュ叿銆佽繍缁?FAQ 瑙?[`docs/SQLITE_ENCRYPTION.md`](docs/SQLITE_ENCRYPTION.md)銆?
+完整架构、5 种密钥来源（hwid/vault/env/...）、迁移路径、CLI 工具、运维 FAQ 见 [`docs/SQLITE_ENCRYPTION.md`](docs/SQLITE_ENCRYPTION.md)。
 
-### 鍙娴嬫€?/ Prometheus 鎸囨爣
+### 可观测性 / Prometheus 指标
 
-鍐呯疆 `/actuator/health`銆乣/actuator/metrics`銆乣/actuator/db`銆乣/actuator/shutdown` 绛夌鐐癸紝鏀寔 Prometheus 鎶撳彇銆?
-鎸囨爣瀹氫箟銆丳romQL 鏌ヨ銆丟rafana 闈㈡澘銆佸憡璀﹁鍒欒 [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md)銆?
+内置 `/actuator/health`、`/actuator/metrics`、`/actuator/db`、`/actuator/shutdown` 等端点，支持 Prometheus 抓取。
+指标定义、PromQL 查询、Grafana 面板、告警规则见 [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md)。
 
 ---
 
-## 椤圭洰缁撴瀯
+## 项目结构
 
 ```
 ruoyi-cpp/
-鈹溾攢鈹€ build-nginx/
-鈹?  鈹溾攢鈹€ config.json                      # 涓婚厤缃枃浠讹紙涓嶉殢 git 鎻愪氦锛屾晱鎰熶俊鎭級
-鈹?  鈹溾攢鈹€ config.template.json             # 閰嶇疆妯℃澘锛坓it 鎻愪氦锛屾晱鎰熷€肩敤鍗犱綅绗︼級
-鈹?  鈹斺攢鈹€ ruoyi-cpp.exe                    # 缂栬瘧浜х墿
-鈹溾攢鈹€ web/                             # 鍓嶇 dist 鐩綍锛堟斁杩欓噷鍗冲彲锛屾棤闇€ Nginx锛?
-鈹溾攢鈹€ logs/                            # 鏃ュ織鐩綍锛?log 鏂囨湰 + .jsonl 缁撴瀯鍖栵級
-鈹溾攢鈹€ upload/                          # 鏈湴涓婁紶鏂囦欢鐩綍
-鈹溾攢鈹€ src/
-鈹?  鈹溾攢鈹€ main.cc                      # 鏃у崟鏂囦欢鍏ュ彛锛堜繚鐣欏鐓э紝涓嶅弬涓庣紪璇戯級
-鈹?  鈹溾攢鈹€ main/                        # 鍚姩妯″潡锛堟媶鍒嗚嚜鍘?main.cc锛?
-鈹?  鈹?  鈹溾攢鈹€ main.cc                  # 鍏ュ彛锛氭寜闃舵涓茶仈鍚姩娴佺▼
-鈹?  鈹?  鈹斺攢鈹€ main/                    # 鍚勫惎鍔ㄩ樁娈靛疄鐜帮紙boot::*锛?
-鈹?  鈹?      鈹溾攢鈹€ AppBootstrap.h       #   AppContext 鍏变韩涓婁笅鏂?+ 闃舵鍑芥暟澹版槑
-鈹?  鈹?      鈹溾攢鈹€ EarlyInit.cc         #   鏃╂湡鍒濆鍖栵細watchdog 绉讳氦 / 鍗曞疄渚嬮攣 / 缂栨帓鍣?
-鈹?  鈹?      鈹溾攢鈹€ ConfigInit.cc        #   閰嶇疆鍔犺浇銆乴icense銆丏B 杩炴帴涓?
-鈹?  鈹?      鈹溾攢鈹€ HttpSetup.cc         #   Drogon 鐩戝惉鍣?/ 涓棿浠?/ 杩囨护鍣?
-鈹?  鈹?      鈹溾攢鈹€ RoutesSetup.cc       #   鍐呯疆璺敱娉ㄥ唽
-鈹?  鈹?      鈹溾攢鈹€ CertRoutes.cc        #   璇佷功 / ACME 鐩稿叧璺敱
-鈹?  鈹?      鈹溾攢鈹€ StartupAdvice.cc     #   beginningAdvice锛欴B 鍒濆鍖栥€佸閮ㄦ湇鍔?
-鈹?  鈹?      鈹溾攢鈹€ RuntimeSetup.cc      #   杩愯鏃舵湇鍔★紙NginxEmbedded銆佸績璺筹級+ 娓呯悊
-鈹?  鈹?      鈹斺攢鈹€ DbConnStr.cc         #   libpq 杩炴帴涓叉瀯閫?
-鈹?  鈹溾攢鈹€ AppIncludes.h                # 鍏ㄥ眬闆嗕腑 include
-鈹?  鈹溾攢鈹€ codegen/                     # 浠ｇ爜鐢熸垚妯″潡锛堢紪璇戜负鍔ㄦ€佸簱锛?
-鈹?  鈹?  鈹溾攢鈹€ CMakeLists.txt           # 鍔ㄦ€佸簱缂栬瘧閰嶇疆
-鈹?  鈹?  鈹溾攢鈹€ CodeGenerator.h/cc       # 浠ｇ爜鐢熸垚寮曟搸
-鈹?  鈹?  鈹溾攢鈹€ DynamicCompiler.h/cc     # 鍔ㄦ€佺紪璇戝櫒锛圕Make + MinGW/GCC锛?
-鈹?  鈹?  鈹溾攢鈹€ PluginManager.h/cc       # 鎻掍欢绠＄悊锛堝姞杞?鍗歌浇/璋冪敤锛?
-鈹?  鈹?  鈹斺攢鈹€ controllers/
-鈹?  鈹?      鈹斺攢鈹€ CodeGenCtrl.h/cc     # 浠ｇ爜鐢熸垚闈欐€佹柟娉曪紙琚姩鎬佸簱瀵煎嚭锛?
-鈹?  鈹溾攢鈹€ common/
-鈹?  鈹?  鈹溾攢鈹€ AjaxResult.h             # 缁熶竴 JSON 鍝嶅簲浣?
-鈹?  鈹?  鈹溾攢鈹€ DatabaseInit.cc          # 鑷姩寤鸿〃 + 鍒濆鏁版嵁 + Schema 杩佺Щ
-鈹?  鈹?  鈹溾攢鈹€ JwtUtils.h               # JWT 鐢熸垚/瑙ｆ瀽
-鈹?  鈹?  鈹溾攢鈹€ JsonLogger.h             # JSON 缁撴瀯鍖栨棩蹇楋紙瑕嗙洊 Drogon 杈撳嚭锛?
-鈹?  鈹?  鈹溾攢鈹€ RequestTracing.h         # X-Request-ID 閾捐矾杩借釜涓棿浠?
-鈹?  鈹?  鈹溾攢鈹€ DataMaskUtils.h          # 鎵嬫満/韬唤璇?閾惰鍗?閭鑴辨晱
-鈹?  鈹?  鈹溾攢鈹€ MetricsCollector.h       # Prometheus 鎸囨爣 + ActuatorCtrl
-鈹?  鈹?  鈹溾攢鈹€ TotpUtils.h              # TOTP RFC 6238锛圙oogle Authenticator锛?
-鈹?  鈹?  鈹溾攢鈹€ OAuth2Manager.h          # 绗笁鏂圭櫥褰曪細GitHub/Google/浼佷笟寰俊/閽夐拤/椋炰功/QQ
-鈹?  鈹?  鈹溾攢鈹€ HotConfig.h              # 閰嶇疆鏂囦欢鐑噸杞斤紙5s 杞锛?
-鈹?  鈹?  鈹溾攢鈹€ LdapAuth.h               # LDAP/Active Directory 璁よ瘉
-鈹?  鈹?  鈹溾攢鈹€ FrontendHost.h           # Drogon 鍐呯疆鍓嶇鎵樼 + SPA 鍥為€€
-鈹?  鈹?  鈹溾攢鈹€ RateLimiter.h            # IP 闄愭祦
-鈹?  鈹?  鈹溾攢鈹€ XssUtils.h               # XSS 杩囨护 + SQL 娉ㄥ叆妫€娴?
-鈹?  鈹?  鈹溾攢鈹€ SignUtils.h              # API 璇锋眰绛惧悕楠岃瘉
-鈹?  鈹?  鈹溾攢鈹€ SslManager.h             # SSL 璇佷功绠＄悊
-鈹?  鈹?  鈹溾攢鈹€ LicenseManager.h         # 杞欢璁稿彲璇佺鐞?
-鈹?  鈹?  鈹溾攢鈹€ DeviceBinding.h          # 璁惧缁戝畾锛堢‖浠舵寚绾癸級
-鈹?  鈹?  鈹溾攢鈹€ SmtpUtils.h              # SMTP 閭欢鍙戦€侊紙OpenSSL Implicit-TLS锛?
-鈹?  鈹?  鈹溾攢鈹€ MonitorManager.h         # 宕╂簝/閲嶅惎鍛婅
-鈹?  鈹?  鈹溾攢鈹€ CrashHandler.h           # 宕╂簝鎹曡幏锛圫EH/VEH/terminate锛?
-鈹?  鈹?  鈹斺攢鈹€ ColorLogger.h            # 鎺у埗鍙板僵鑹叉棩蹇?
-鈹?  鈹溾攢鈹€ filters/
-鈹?  鈹?  鈹溾攢鈹€ JwtAuthFilter.h          # JWT 璁よ瘉涓棿浠讹紙HttpMiddleware锛?
-鈹?  鈹?  鈹斺攢鈹€ PermFilter.h             # 鏉冮檺妫€鏌ュ畯 CHECK_PERM
-鈹?  鈹溾攢鈹€ services/
-鈹?  鈹?  鈹溾攢鈹€ DatabaseService.h        # PostgreSQL(姹? + SQLite 鍙屽啓/鑷姩闄嶇骇
-鈹?  鈹?  鈹溾攢鈹€ StorageService.h         # 鏂囦欢瀛樺偍锛氭湰鍦?MinIO/S3锛圫igV4锛?
-鈹?  鈹?  鈹溾攢鈹€ VaultManager.h           # HashiCorp Vault 闆嗘垚
-鈹?  鈹?  鈹溾攢鈹€ NginxManager.h           # Nginx 瀛愯繘绋嬬鐞?
-鈹?  鈹?  鈹斺攢鈹€ ...                      # KoboldCpp/Whisper/DDNS 绛夋墿灞曟湇鍔?
-鈹?  鈹溾攢鈹€ system/
-鈹?  鈹?  鈹溾攢鈹€ services/
-鈹?  鈹?  鈹?  鈹溾攢鈹€ TokenService.h       # Token 鍒涘缓/鍒锋柊/鍒犻櫎
-鈹?  鈹?  鈹?  鈹溾攢鈹€ SysConfigService.h   # 绯荤粺鍙傛暟锛堝甫缂撳瓨锛?
-鈹?  鈹?  鈹?  鈹溾攢鈹€ SysDictService.h     # 瀛楀吀缂撳瓨
-鈹?  鈹?  鈹?  鈹斺攢鈹€ SysMenuService.h     # 鑿滃崟鏍?璺敱鏋勫缓
-鈹?  鈹?  鈹斺攢鈹€ controllers/
-鈹?  鈹?      鈹溾攢鈹€ SysLoginCtrl.h       # 鐧诲綍/娉ㄥ唽/蹇樿瀵嗙爜/璺敱
-鈹?  鈹?      鈹溾攢鈹€ SysUserCtrl.h        # 鐢ㄦ埛绠＄悊
-鈹?  鈹?      鈹溾攢鈹€ SysRoleCtrl.h        # 瑙掕壊绠＄悊锛堝疄鏃舵潈闄愬埛鏂帮級
-鈹?  鈹?      鈹溾攢鈹€ SysTotpCtrl.h        # TOTP 涓ゆ楠岃瘉 API
-鈹?  鈹?      鈹溾攢鈹€ OAuth2Ctrl.h         # 绗笁鏂圭櫥褰曪細鎺堟潈/鍥炶皟/缁戝畾/瑙ｇ粦
-鈹?  鈹?      鈹斺攢鈹€ ...                  # 鑿滃崟/閮ㄩ棬/瀛楀吀/鍏憡绛?
-鈹?  鈹斺攢鈹€ monitor/
-鈹?      鈹溾攢鈹€ JobScheduler.h           # Cron 璋冨害寮曟搸锛堟敮鎸佺绾?cron 琛ㄨ揪寮忥級
-鈹?      鈹斺攢鈹€ controllers/
-鈹?          鈹溾攢鈹€ SysLogFileCtrl.h     # 绯荤粺鏃ュ織鏂囦欢鏌ョ湅鍣?
-鈹?          鈹溾攢鈹€ SysJobCtrl.h         # 瀹氭椂浠诲姟绠＄悊
-鈹?          鈹溾攢鈹€ ServerCtrl.h         # 鏈嶅姟鍣ㄧ洃鎺?
-鈹?          鈹溾攢鈹€ DruidCtrl.h          # 鏁版嵁搴撹繛鎺ユ睜鐩戞帶
-鈹?          鈹溾攢鈹€ SysRestartCtrl.h     # 閲嶅惎鍚庣鏈嶅姟锛堝唴缃?HTML 绠＄悊椤碉紝admin 閴存潈锛?
-鈹?          鈹斺攢鈹€ ...                  # 鎿嶄綔鏃ュ織/鐧诲綍鏃ュ織/鍦ㄧ嚎鐢ㄦ埛
-鈹斺攢鈹€ ui/                              # 鍓嶇婧愮爜锛圴ue 2 + Element UI锛?
+├── build-nginx/
+│   ├── config.json                      # 主配置文件（不随 git 提交，敏感信息）
+│   ├── config.template.json             # 配置模板（git 提交，敏感值用占位符）
+│   └── ruoyi-cpp.exe                    # 编译产物
+├── web/                             # 前端 dist 目录（放这里即可，无需 Nginx）
+├── logs/                            # 日志目录（.log 文本 + .jsonl 结构化）
+├── upload/                          # 本地上传文件目录
+├── src/
+│   ├── main.cc                      # 旧单文件入口（保留对照，不参与编译）
+│   ├── main/                        # 启动模块（拆分自原 main.cc）
+│   │   ├── main.cc                  # 入口：按阶段串联启动流程
+│   │   └── main/                    # 各启动阶段实现（boot::*）
+│   │       ├── AppBootstrap.h       #   AppContext 共享上下文 + 阶段函数声明
+│   │       ├── EarlyInit.cc         #   早期初始化：watchdog 移交 / 单实例锁 / 编排器
+│   │       ├── ConfigInit.cc        #   配置加载、license、DB 连接串
+│   │       ├── HttpSetup.cc         #   Drogon 监听器 / 中间件 / 过滤器
+│   │       ├── RoutesSetup.cc       #   内置路由注册
+│   │       ├── CertRoutes.cc        #   证书 / ACME 相关路由
+│   │       ├── StartupAdvice.cc     #   beginningAdvice：DB 初始化、外部服务
+│   │       ├── RuntimeSetup.cc      #   运行时服务（NginxEmbedded、心跳）+ 清理
+│   │       └── DbConnStr.cc         #   libpq 连接串构造
+│   ├── AppIncludes.h                # 全局集中 include
+│   ├── codegen/                     # 代码生成模块（编译为动态库）
+│   │   ├── CMakeLists.txt           # 动态库编译配置
+│   │   ├── CodeGenerator.h/cc       # 代码生成引擎
+│   │   ├── DynamicCompiler.h/cc     # 动态编译器（CMake + MinGW/GCC）
+│   │   ├── PluginManager.h/cc       # 插件管理（加载/卸载/调用）
+│   │   └── controllers/
+│   │       └── CodeGenCtrl.h/cc     # 代码生成静态方法（被动态库导出）
+│   ├── common/
+│   │   ├── AjaxResult.h             # 统一 JSON 响应体
+│   │   ├── DatabaseInit.cc          # 自动建表 + 初始数据 + Schema 迁移
+│   │   ├── JwtUtils.h               # JWT 生成/解析
+│   │   ├── JsonLogger.h             # JSON 结构化日志（覆盖 Drogon 输出）
+│   │   ├── RequestTracing.h         # X-Request-ID 链路追踪中间件
+│   │   ├── DataMaskUtils.h          # 手机/身份证/银行卡/邮箱脱敏
+│   │   ├── MetricsCollector.h       # Prometheus 指标 + ActuatorCtrl
+│   │   ├── TotpUtils.h              # TOTP RFC 6238（Google Authenticator）
+│   │   ├── OAuth2Manager.h          # 第三方登录：GitHub/Google/企业微信/钉钉/飞书/QQ
+│   │   ├── HotConfig.h              # 配置文件热重载（5s 轮询）
+│   │   ├── LdapAuth.h               # LDAP/Active Directory 认证
+│   │   ├── FrontendHost.h           # Drogon 内置前端托管 + SPA 回退
+│   │   ├── RateLimiter.h            # IP 限流
+│   │   ├── XssUtils.h               # XSS 过滤 + SQL 注入检测
+│   │   ├── SignUtils.h              # API 请求签名验证
+│   │   ├── SslManager.h             # SSL 证书管理
+│   │   ├── LicenseManager.h         # 软件许可证管理
+│   │   ├── DeviceBinding.h          # 设备绑定（硬件指纹）
+│   │   ├── SmtpUtils.h              # SMTP 邮件发送（OpenSSL Implicit-TLS）
+│   │   ├── MonitorManager.h         # 崩溃/重启告警
+│   │   ├── CrashHandler.h           # 崩溃捕获（SEH/VEH/terminate）
+│   │   └── ColorLogger.h            # 控制台彩色日志
+│   ├── filters/
+│   │   ├── JwtAuthFilter.h          # JWT 认证中间件（HttpMiddleware）
+│   │   └── PermFilter.h             # 权限检查宏 CHECK_PERM
+│   ├── services/
+│   │   ├── DatabaseService.h        # PostgreSQL(池) + SQLite 双写/自动降级
+│   │   ├── StorageService.h         # 文件存储：本地/MinIO/S3（SigV4）
+│   │   ├── VaultManager.h           # HashiCorp Vault 集成
+│   │   ├── NginxManager.h           # Nginx 子进程管理
+│   │   └── ...                      # KoboldCpp/Whisper/DDNS 等扩展服务
+│   ├── system/
+│   │   ├── services/
+│   │   │   ├── TokenService.h       # Token 创建/刷新/删除
+│   │   │   ├── SysConfigService.h   # 系统参数（带缓存）
+│   │   │   ├── SysDictService.h     # 字典缓存
+│   │   │   └── SysMenuService.h     # 菜单树/路由构建
+│   │   └── controllers/
+│   │       ├── SysLoginCtrl.h       # 登录/注册/忘记密码/路由
+│   │       ├── SysUserCtrl.h        # 用户管理
+│   │       ├── SysRoleCtrl.h        # 角色管理（实时权限刷新）
+│   │       ├── SysTotpCtrl.h        # TOTP 两步验证 API
+│   │       ├── OAuth2Ctrl.h         # 第三方登录：授权/回调/绑定/解绑
+│   │       └── ...                  # 菜单/部门/字典/公告等
+│   └── monitor/
+│       ├── JobScheduler.h           # Cron 调度引擎（支持秒级 cron 表达式）
+│       └── controllers/
+│           ├── SysLogFileCtrl.h     # 系统日志文件查看器
+│           ├── SysJobCtrl.h         # 定时任务管理
+│           ├── ServerCtrl.h         # 服务器监控
+│           ├── DruidCtrl.h          # 数据库连接池监控
+│           ├── SysRestartCtrl.h     # 重启后端服务（内置 HTML 管理页，admin 鉴权）
+│           └── ...                  # 操作日志/登录日志/在线用户
+└── ui/                              # 前端源码（Vue 2 + Element UI）
 ```
 
 ---
 
-## 鏉冮檺璁捐
+## 权限设计
 
-- **瓒呯骇绠＄悊鍛?*锛坄user_id=1`锛夛細鎷ユ湁鎵€鏈夋潈闄愶紝涓嶅彈 RBAC 闄愬埗
-- **鏅€氱敤鎴?*锛氶€氳繃 `sys_user_role` 鍏宠仈瑙掕壊锛岃鑹插叧鑱旇彍鍗曟潈闄?
-- **鑿滃崟鏉冮檺瀛楃**锛氬 `system:user:list`锛屽湪 `CHECK_PERM` 瀹忎腑鑷姩鏍￠獙
-- **瑙掕壊鏉冮檺瀹炴椂鐢熸晥**锛氫慨鏀硅鑹茶彍鍗曞悗锛?*鏃犻渶鍦ㄧ嚎鐢ㄦ埛閲嶆柊鐧诲綍**锛屽悗绔嚜鍔ㄥ埛鏂?Token 鏉冮檺缂撳瓨鍜岃矾鐢辩紦瀛?
+- **超级管理员**（`user_id=1`）：拥有所有权限，不受 RBAC 限制
+- **普通用户**：通过 `sys_user_role` 关联角色，角色关联菜单权限
+- **菜单权限字符**：如 `system:user:list`，在 `CHECK_PERM` 宏中自动校验
+- **角色权限实时生效**：修改角色菜单后，**无需在线用户重新登录**，后端自动刷新 Token 权限缓存和路由缓存
 
-### 娉ㄥ唽鐢ㄦ埛鏉冮檺
+### 注册用户权限
 
-閫氳繃绯荤粺鍙傛暟 `sys.account.initRoleId` 鎺у埗锛?
+通过系统参数 `sys.account.initRoleId` 控制：
 
-| 鍙傛暟鍊?| 鏁堟灉 |
+| 参数值 | 效果 |
 |--------|-----|
-| 绌猴紙榛樿锛?| 娉ㄥ唽鍚庢棤瑙掕壊锛岀鐞嗗憳鎵嬪姩鍒嗛厤 |
-| 瑙掕壊 ID锛堝 `2`锛?| 娉ㄥ唽鍚庤嚜鍔ㄥ垎閰嶆寚瀹氳鑹?|
+| 空（默认） | 注册后无角色，管理员手动分配 |
+| 角色 ID（如 `2`） | 注册后自动分配指定角色 |
 
 ---
 
-## 榛樿璐﹀彿
+## 默认账号
 
-| 鐢ㄦ埛鍚?| 瀵嗙爜 | 璇存槑 |
+| 用户名 | 密码 | 说明 |
 |--------|------|-----|
-| `admin` | `admin123` | 瓒呯骇绠＄悊鍛橈紝鎷ユ湁鍏ㄩ儴鏉冮檺 |
+| `admin` | `admin123` | 超级管理员，拥有全部权限 |
 
-> 鈿狅笍 **鐢熶骇鐜璇风珛鍗充慨鏀归粯璁ゅ瘑鐮侊紒**
+> ⚠️ **生产环境请立即修改默认密码！**
 
-瀵嗙爜浣跨敤 OpenSSL PBKDF2-SHA256锛?0000 杞級瀛樺偍锛宐crypt 鍙€夈€?
-
----
-
-## 鐢ㄦ埛鎵归噺瀵煎叆
-
-鏀寔閫氳繃 CSV 鏂囦欢鎵归噺瀵煎叆鐢ㄦ埛锛?*绯荤粺绠＄悊 鈫?鐢ㄦ埛绠＄悊 鈫?瀵煎叆**锛夛細
-
-1. 鐐瑰嚮"涓嬭浇妯℃澘"鑾峰彇 CSV 鏍煎紡妯℃澘
-2. 鎸夋ā鏉垮～鍐欑敤鎴锋暟鎹紙榛樿瀵嗙爜 `123456`锛?
-3. 鍕鹃€?鏄惁鏇存柊"鍙鐩栧凡鏈夎处鍙?
-4. 涓婁紶 CSV 鏂囦欢锛屾敮鎸?UTF-8锛堝惈 BOM锛夌紪鐮?
-
-CSV 鍒楁牸寮忥細`鐧诲綍璐﹀彿, 鐢ㄦ埛鏄电О, 閮ㄩ棬缂栧彿, 鎵嬫満鍙风爜, 閭, 鎬у埆(0/1/2), 鐘舵€?0/1)`
+密码使用 OpenSSL PBKDF2-SHA256（10000 轮）存储，bcrypt 可选。
 
 ---
 
-## 鍓嶇璇存槑
+## 用户批量导入
 
-**鍓嶇鐩存帴浣跨敤鑻ヤ緷瀹樻柟婧愮爜锛?*
+支持通过 CSV 文件批量导入用户（**系统管理 → 用户管理 → 导入**）：
+
+1. 点击"下载模板"获取 CSV 格式模板
+2. 按模板填写用户数据（默认密码 `123456`）
+3. 勾选"是否更新"可覆盖已有账号
+4. 上传 CSV 文件，支持 UTF-8（含 BOM）编码
+
+CSV 列格式：`登录账号, 用户昵称, 部门编号, 手机号码, 邮箱, 性别(0/1/2), 状态(0/1)`
+
+---
+
+## 前端说明
+
+**前端直接使用若依官方源码：**
 
 ```bash
-# 鍏嬮殕鑻ヤ緷瀹樻柟鍓嶇
+# 克隆若依官方前端
 git clone https://gitee.com/y_project/RuoYi-Vue.git
 cd RuoYi-Vue
 
-# 淇敼 .env.development 涓殑鍚庣鍦板潃
+# 修改 .env.development 中的后端地址
 VUE_APP_BASE_API = 'http://127.0.0.1:18080'
 
-# 瀹夎渚濊禆骞跺惎鍔?
+# 安装依赖并启动
 npm install
 npm run dev
 ```
 
-鐢熶骇閮ㄧ讲鏃跺皢 `npm run build:prod` 鐢熸垚鐨?`dist/` 鐩綍閮ㄧ讲鍒?Nginx 鍗冲彲锛屽悗绔湴鍧€鎸囧悜鏈」鐩殑鐩戝惉绔彛锛堥粯璁?`18080`锛夈€?
+生产部署时将 `npm run build:prod` 生成的 `dist/` 目录部署到 Nginx 即可，后端地址指向本项目的监听端口（默认 `18080`）。
 
-**Nginx 浼潤鎬?+ 鍙嶅悜浠ｇ悊閰嶇疆锛?*
+**Nginx 伪静态 + 反向代理配置：**
 
 ```nginx
-# Vue 璺敱 history 妯″紡浼潤鎬?
+# Vue 路由 history 模式伪静态
 location / {
     try_files $uri $uri/ /index.html;
 }
 
-# 鍚庣 API 浠ｇ悊锛堝搴斿墠绔?VUE_APP_BASE_API = '/prod-api'锛?
+# 后端 API 代理（对应前端 VUE_APP_BASE_API = '/prod-api'）
 location /prod-api/ {
     proxy_pass http://127.0.0.1:18080/;
     proxy_set_header Host              $host;
@@ -654,7 +654,7 @@ location /prod-api/ {
     proxy_read_timeout    60s;
 }
 
-# WebSocket 閫氱煡
+# WebSocket 通知
 location /ws/ {
     proxy_pass http://127.0.0.1:18080/ws/;
     proxy_http_version 1.1;
@@ -667,31 +667,31 @@ location /ws/ {
 
 ---
 
-## 涓庡師鐗?RuoYi-Vue 鐨勫吋瀹规€?
+## 与原版 RuoYi-Vue 的兼容性
 
-- 鉁?鎵€鏈?`/system/**`銆乣/monitor/**` API 璺敱涓庡師鐗堝畬鍏ㄤ竴鑷?
-- 鉁?JWT Token 鏍煎紡銆乣getInfo`銆乣getRouters` 鍝嶅簲缁撴瀯瀹屽叏鍏煎
-- 鉁?鐩存帴鍏嬮殕[鑻ヤ緷瀹樻柟鍓嶇](https://gitee.com/y_project/RuoYi-Vue)锛屽彧鏀瑰悗绔湴鍧€鍗冲彲杩愯
-- 鉃?鏂板锛氶偖浠跺彂浠剁绠＄悊銆佸繕璁板瘑鐮併€佹敞鍐岄偖绠遍獙璇佺爜銆佹秷鎭€氱煡涓績銆丄PI Key 绠＄悊銆佹搷浣滃璁″寮虹瓑鍔熻兘
+- ✅ 所有 `/system/**`、`/monitor/**` API 路由与原版完全一致
+- ✅ JWT Token 格式、`getInfo`、`getRouters` 响应结构完全兼容
+- ✅ 直接克隆[若依官方前端](https://gitee.com/y_project/RuoYi-Vue)，只改后端地址即可运行
+- ➕ 新增：邮件发件箱管理、忘记密码、注册邮箱验证码、消息通知中心、API Key 管理、操作审计增强等功能
 
 ---
 
-## 閮ㄧ讲鏈€浣冲疄璺?
+## 部署最佳实践
 
-### 鐢熶骇鐜閮ㄧ讲娓呭崟
+### 生产环境部署清单
 
-- [ ] **淇敼榛樿瀵嗙爜** - 绔嬪嵆淇敼 `admin` 璐﹀彿鐨?`admin123` 瀵嗙爜
-- [ ] **璁剧疆寮?JWT Secret** - 鑷冲皯 32 浣嶉殢鏈哄瓧绗︿覆锛屼娇鐢?`/dev/urandom` 鎴栧瘑閽ョ鐞嗘湇鍔＄敓鎴?
-- [ ] **鍚敤 HTTPS** - 閰嶇疆 SSL 璇佷功锛岃缃?`listeners[].https=true`
-- [ ] **閰嶇疆鏁版嵁搴?* - 浣跨敤 PostgreSQL 涓诲簱锛孲QLite 浠呬綔涓哄浠介檷绾?
-- [ ] **鍚敤鏃ュ織** - 閰嶇疆鏃ュ織绾у埆涓?`INFO`锛屽畾鏈熻疆杞棩蹇楁枃浠?
-- [ ] **璁剧疆鐩戞帶鍛婅** - 閰嶇疆 Prometheus + Grafana锛岀洃鎺?CPU/鍐呭瓨/纾佺洏
-- [ ] **鍚敤瀹¤鏃ュ織** - 璁板綍鎵€鏈夌敤鎴锋搷浣滐紝瀹氭湡瀵煎嚭澶囦唤
-- [ ] **閰嶇疆澶囦唤绛栫暐** - 鏁版嵁搴撴瘡鏃ュ浠斤紝寮傚湴瀛樺偍
-- [ ] **闄愬埗璁块棶** - 浣跨敤闃茬伀澧欓檺鍒?`/actuator/*` 绔偣浠呭唴缃戣闂?
-- [ ] **鍚敤閫熺巼闄愬埗** - 閰嶇疆 `rateLimiter.enabled=true`锛岄槻姝?DDoS
+- [ ] **修改默认密码** - 立即修改 `admin` 账号的 `admin123` 密码
+- [ ] **设置强 JWT Secret** - 至少 32 位随机字符串，使用 `/dev/urandom` 或密钥管理服务生成
+- [ ] **启用 HTTPS** - 配置 SSL 证书，设置 `listeners[].https=true`
+- [ ] **配置数据库** - 使用 PostgreSQL 主库，SQLite 仅作为备份降级
+- [ ] **启用日志** - 配置日志级别为 `INFO`，定期轮转日志文件
+- [ ] **设置监控告警** - 配置 Prometheus + Grafana，监控 CPU/内存/磁盘
+- [ ] **启用审计日志** - 记录所有用户操作，定期导出备份
+- [ ] **配置备份策略** - 数据库每日备份，异地存储
+- [ ] **限制访问** - 使用防火墙限制 `/actuator/*` 端点仅内网访问
+- [ ] **启用速率限制** - 配置 `rateLimiter.enabled=true`，防止 DDoS
 
-### Docker 閮ㄧ讲
+### Docker 部署
 
 ```dockerfile
 FROM ubuntu:22.04
@@ -704,10 +704,10 @@ CMD ["./ruoyi-cpp"]
 ```
 
 ```bash
-# 鏋勫缓闀滃儚
+# 构建镜像
 docker build -t ruoyi-cpp:latest .
 
-# 杩愯瀹瑰櫒
+# 运行容器
 docker run -d \
   --name ruoyi-cpp \
   -p 18080:18080 \
@@ -717,7 +717,7 @@ docker run -d \
   ruoyi-cpp:latest
 ```
 
-### Kubernetes 閮ㄧ讲
+### Kubernetes 部署
 
 ```yaml
 apiVersion: apps/v1
@@ -762,62 +762,62 @@ spec:
 
 ---
 
-## 鎬ц兘浼樺寲寤鸿
+## 性能优化建议
 
-| 浼樺寲椤?| 寤鸿 | 鏁堟灉 |
+| 优化项 | 建议 | 效果 |
 |--------|------|------|
-| **鏁版嵁搴撹繛鎺ユ睜** | 閰嶇疆 `database.pool_size=20`锛屾牴鎹苟鍙戞暟璋冩暣 | 鎻愬崌 30-50% QPS |
-| **缂撳瓨绛栫暐** | 鍚敤 Redis锛岄厤缃儹鏁版嵁缂撳瓨锛堢敤鎴枫€佽鑹层€佽彍鍗曪級 | 闄嶄綆 DB 鍘嬪姏 80% |
-| **寮傛澶勭悊** | 浣跨敤 Drogon 寮傛鍥炶皟锛岄伩鍏嶉樆濉炴搷浣?| 鎻愬崌 2-3 鍊嶅悶鍚愰噺 |
-| **鏃ュ織绾у埆** | 鐢熶骇鐜璁剧疆 `WARN` 绾у埆锛屽噺灏?I/O | 鎻愬崌 10-15% 鎬ц兘 |
-| **鍓嶇璧勬簮** | 鍚敤 gzip 鍘嬬缉锛孋DN 鍒嗗彂闈欐€佽祫婧?| 鍑忓皯 70% 甯﹀ |
-| **鏁版嵁搴撶储寮?* | 涓哄父鐢ㄦ煡璇㈠瓧娈靛缓绔嬬储寮曪紙username銆乪mail 绛夛級 | 鏌ヨ蹇?10-100 鍊?|
-| **杩炴帴澶嶇敤** | 鍚敤 HTTP Keep-Alive锛屽鐢?TCP 杩炴帴 | 鍑忓皯寤惰繜 50% |
+| **数据库连接池** | 配置 `database.pool_size=20`，根据并发数调整 | 提升 30-50% QPS |
+| **缓存策略** | 启用 Redis，配置热数据缓存（用户、角色、菜单） | 降低 DB 压力 80% |
+| **异步处理** | 使用 Drogon 异步回调，避免阻塞操作 | 提升 2-3 倍吞吐量 |
+| **日志级别** | 生产环境设置 `WARN` 级别，减少 I/O | 提升 10-15% 性能 |
+| **前端资源** | 启用 gzip 压缩，CDN 分发静态资源 | 减少 70% 带宽 |
+| **数据库索引** | 为常用查询字段建立索引（username、email 等） | 查询快 10-100 倍 |
+| **连接复用** | 启用 HTTP Keep-Alive，复用 TCP 连接 | 减少延迟 50% |
 
 ---
 
-## 鏁呴殰鎺掓煡鎸囧崡
+## 故障排查指南
 
-### 鍚姩澶辫触
+### 启动失败
 
 ```bash
-# 鏌ョ湅璇︾粏鏃ュ織
+# 查看详细日志
 tail -f logs/ruoyi-cpp.log
 
-# 甯歌閿欒锛?
+# 常见错误：
 # 1. "cannot connect to database"
-#    鈫?妫€鏌?PostgreSQL 鏄惁杩愯锛歱sql -U postgres
-#    鈫?妫€鏌ヨ繛鎺ュ瓧绗︿覆锛歨ost/port/dbname/user/passwd
+#    → 检查 PostgreSQL 是否运行：psql -U postgres
+#    → 检查连接字符串：host/port/dbname/user/passwd
 
 # 2. "Address already in use"
-#    鈫?绔彛琚崰鐢紝淇敼 config.json 涓殑 listeners[].port
+#    → 端口被占用，修改 config.json 中的 listeners[].port
 
 # 3. "Permission denied"
-#    鈫?妫€鏌ユ枃浠舵潈闄愶細chmod +x ruoyi-cpp
-#    鈫?妫€鏌ユ棩蹇楃洰褰曪細mkdir -p logs && chmod 755 logs
+#    → 检查文件权限：chmod +x ruoyi-cpp
+#    → 检查日志目录：mkdir -p logs && chmod 755 logs
 ```
 
-### 鎬ц兘闂
+### 性能问题
 
 ```bash
-# 鐩戞帶 CPU/鍐呭瓨
+# 监控 CPU/内存
 GET /monitor/server
 
-# 鏌ョ湅鏁版嵁搴撹繛鎺ョ姸鎬?
+# 查看数据库连接状态
 GET /actuator/db
 
-# 鏌ョ湅 Prometheus 鎸囨爣
+# 查看 Prometheus 指标
 GET /actuator/metrics
 
-# 妫€鏌ユ參鏌ヨ锛圥ostgreSQL锛?
+# 检查慢查询（PostgreSQL）
 SELECT query, mean_time FROM pg_stat_statements 
 ORDER BY mean_time DESC LIMIT 10;
 ```
 
-### 鏉冮檺闂
+### 权限问题
 
 ```bash
-# 妫€鏌ョ敤鎴锋潈闄?
+# 检查用户权限
 SELECT u.username, r.role_name, m.menu_name 
 FROM sys_user u
 LEFT JOIN sys_user_role ur ON u.user_id = ur.user_id
@@ -826,38 +826,38 @@ LEFT JOIN sys_role_menu rm ON r.role_id = rm.role_id
 LEFT JOIN sys_menu m ON rm.menu_id = m.menu_id
 WHERE u.username = 'admin';
 
-# 鍒锋柊鏉冮檺缂撳瓨
+# 刷新权限缓存
 POST /actuator/reload
 ```
 
 ---
 
-## 甯歌闂
+## 常见问题
 
-**Q锛氬惎鍔ㄦ姤 `cannot connect to database`锛?*
-> 妫€鏌?`config.json` 涓?`database.host/port/dbname/user/passwd` 鏄惁姝ｇ‘锛岀‘璁?PostgreSQL 鏈嶅姟宸插惎鍔ㄣ€備娇鐢?SQLite 妯″紡鏃朵繚鎸?`host` 涓虹┖鍗冲彲銆?
+**Q：启动报 `cannot connect to database`？**
+> 检查 `config.json` 中 `database.host/port/dbname/user/passwd` 是否正确，确认 PostgreSQL 服务已启动。使用 SQLite 模式时保持 `host` 为空即可。
 
-**Q锛氱櫥褰曟彁绀洪獙璇佺爜閿欒锛?*
-> 纭 `captcha.enabled` 涓?`true`锛屼笖绯荤粺鏃堕棿姝ｇ‘锛堥獙璇佺爜鏈?120 绉掓湁鏁堟湡锛夈€?
+**Q：登录提示验证码错误？**
+> 确认 `captcha.enabled` 为 `true`，且系统时间正确（验证码有 120 秒有效期）。
 
-**Q锛氬墠绔法鍩熸姤閿欙紵**
-> 寮€鍙戞ā寮忎笅妫€鏌?`vue.config.js` 涓?`devServer.proxy` 鐨勭洰鏍囧湴鍧€鏄惁鎸囧悜姝ｇ‘鐨勫悗绔鍙ｏ紙榛樿 `18080`锛夈€傜敓浜х幆澧冩鏌?Nginx `/prod-api/` 浠ｇ悊閰嶇疆銆?
+**Q：前端跨域报错？**
+> 开发模式下检查 `vue.config.js` 中 `devServer.proxy` 的目标地址是否指向正确的后端端口（默认 `18080`）。生产环境检查 Nginx `/prod-api/` 代理配置。
 
-**Q锛欽WT secret 涓虹┖鑳藉惎鍔ㄥ悧锛?*
-> 鍙互鍚姩锛屼絾鎵€鏈?Token 灏嗕娇鐢ㄧ┖瀵嗛挜绛惧彂锛?*瀛樺湪涓ラ噸瀹夊叏椋庨櫓**锛岀敓浜х幆澧冨姟蹇呭～鍐欏己闅忔満瀵嗛挜銆?
+**Q：JWT secret 为空能启动吗？**
+> 可以启动，但所有 Token 将使用空密钥签发，**存在严重安全风险**，生产环境务必填写强随机密钥。
 
-**Q锛氶厤缃慨鏀瑰悗闇€瑕侀噸鍚湇鍔″悧锛?*
-> 涓嶉渶瑕併€傜▼搴忓唴缃?`HotConfig` 鐩戣鍣紝姣?5 绉掓娴?`config.json` 鐨勪慨鏀规椂闂达紝鍙樺寲鏃惰嚜鍔ㄩ噸杞?JWT 閰嶇疆鍜岃皟鐢?`onReload` 鍥炶皟锛屾棤闇€閲嶅惎銆?
-> 涔熷彲閫氳繃 `POST /actuator/reload` 鎵嬪姩瑙﹀彂绔嬪嵆閲嶈浇銆?
+**Q：配置修改后需要重启服务吗？**
+> 不需要。程序内置 `HotConfig` 监视器，每 5 秒检测 `config.json` 的修改时间，变化时自动重载 JWT 配置和调用 `onReload` 回调，无需重启。
+> 也可通过 `POST /actuator/reload` 手动触发立即重载。
 
-**Q锛氬浣曟煡鐪?API 鏂囨。锛?*
-> 鍚姩鍚庤闂?`http://localhost:18080/swagger-ui/index.html`锛堝姞杞借嚜 CDN锛屾棤闇€棰濆閰嶇疆锛夛紝鎴栫洿鎺ヨ姹?`GET /v3/api-docs` 鑾峰彇 OpenAPI 3.0 JSON 瑙勮寖銆?
+**Q：如何查看 API 文档？**
+> 启动后访问 `http://localhost:18080/swagger-ui/index.html`（加载自 CDN，无需额外配置），或直接请求 `GET /v3/api-docs` 获取 OpenAPI 3.0 JSON 规范。
 
-**Q锛氳鑹叉潈闄愪慨鏀瑰悗涓嶇敓鏁堬紵**
-> 鍚庣浼氳嚜鍔ㄥ埛鏂板湪绾跨敤鎴风殑鏉冮檺缂撳瓨锛岃嫢浠嶄笉鐢熸晥璇锋鏌?`MemCache` / Redis 杩炴帴鏄惁姝ｅ父銆?
+**Q：角色权限修改后不生效？**
+> 后端会自动刷新在线用户的权限缓存，若仍不生效请检查 `MemCache` / Redis 连接是否正常。
 
-**Q锛氬浣曞湪鐢熶骇鐜鍚敤 HTTPS锛?*
-> 鍦?`config.json` 涓厤缃細
+**Q：如何在生产环境启用 HTTPS？**
+> 在 `config.json` 中配置：
 > ```json
 > "listeners": [{
 >   "address": "0.0.0.0",
@@ -868,21 +868,21 @@ POST /actuator/reload
 > }]
 > ```
 
-**Q锛氬浣曠洃鎺у簲鐢ㄦ€ц兘锛?*
-> 璁块棶 `/actuator/metrics` 鑾峰彇 Prometheus 鏍煎紡鎸囨爣锛屾帴鍏?Grafana 鍙鍖栥€傛垨璁块棶 `/monitor/server` 鏌ョ湅瀹炴椂鏈嶅姟鍣ㄧ姸鎬併€?
+**Q：如何监控应用性能？**
+> 访问 `/actuator/metrics` 获取 Prometheus 格式指标，接入 Grafana 可视化。或访问 `/monitor/server` 查看实时服务器状态。
 
-**Q锛氭敮鎸侀泦缇ら儴缃插悧锛?*
-> 鏀寔銆傞厤缃涓?Worker 杩涚▼锛屼娇鐢?Nginx 璐熻浇鍧囪　銆傜▼搴忎細鑷姩鐢熸垚 `upstream.conf`锛岄厤缃墍鏈?Worker 鑺傜偣銆?
-
----
+**Q：支持集群部署吗？**
+> 支持。配置多个 Worker 进程，使用 Nginx 负载均衡。程序会自动生成 `upstream.conf`，配置所有 Worker 节点。
 
 ---
 
-## 寮€鍙戣€呮寚鍗?
+---
 
-### 娣诲姞鏂扮殑 API 绔偣
+## 开发者指南
 
-**1. 鍒涘缓鎺у埗鍣?*
+### 添加新的 API 端点
+
+**1. 创建控制器**
 
 ```cpp
 // src/system/controllers/MyCtrl.h
@@ -901,7 +901,7 @@ public:
     void list(const drogon::HttpRequestPtr &req, 
               std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         CHECK_PERM(req, cb, "my:list");
-        // 瀹炵幇閫昏緫
+        // 实现逻辑
         RESP_OK(cb, Json::Value());
     }
 
@@ -909,28 +909,28 @@ public:
              std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         CHECK_PERM(req, cb, "my:add");
         auto body = req->getJsonObject();
-        // 瀹炵幇閫昏緫
+        // 实现逻辑
         RESP_OK(cb, Json::Value());
     }
 };
 ```
 
-**2. 鍦?AppIncludes.h 涓寘鍚?*
+**2. 在 AppIncludes.h 中包含**
 
 ```cpp
 #include "system/controllers/MyCtrl.h"
 ```
 
-**3. 娣诲姞鏉冮檺瀛楃涓插埌鏁版嵁搴?*
+**3. 添加权限字符串到数据库**
 
 ```sql
 INSERT INTO sys_menu (menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status, perms, icon, create_time)
-VALUES ('鎴戠殑鍔熻兘', 1, 100, 'my', 'system/my/index', 1, 0, 'C', '0', '0', 'my:list,my:add', 'list', NOW());
+VALUES ('我的功能', 1, 100, 'my', 'system/my/index', 1, 0, 'C', '0', '0', 'my:list,my:add', 'list', NOW());
 ```
 
-### 娣诲姞鏂扮殑鏁版嵁搴撹〃
+### 添加新的数据库表
 
-**1. 鍒涘缓琛?*
+**1. 创建表**
 
 ```sql
 CREATE TABLE my_table (
@@ -945,7 +945,7 @@ CREATE TABLE my_table (
 CREATE INDEX idx_my_table_name ON my_table(name);
 ```
 
-**2. 鍒涘缓瀵瑰簲鐨?Model 绫?*
+**2. 创建对应的 Model 类**
 
 ```cpp
 // src/models/MyTable.h
@@ -963,17 +963,17 @@ struct MyTable {
 };
 ```
 
-### 娣诲姞瀹氭椂浠诲姟
+### 添加定时任务
 
 ```cpp
-// src/monitor/JobScheduler.h 涓坊鍔?
+// src/monitor/JobScheduler.h 中添加
 void scheduleMyTask() {
-    // 姣忓ぉ 02:00 鎵ц
+    // 每天 02:00 执行
     drogon::app().getLoop()->runAt(
         std::chrono::system_clock::now() + std::chrono::hours(2),
         [this]() {
-            LOG_INFO << "鎵ц瀹氭椂浠诲姟";
-            // 浠诲姟閫昏緫
+            LOG_INFO << "执行定时任务";
+            // 任务逻辑
         }
     );
 }
@@ -981,91 +981,91 @@ void scheduleMyTask() {
 
 ---
 
-## 鏁版嵁搴撴灦鏋?
+## 数据库架构
 
-### 鏍稿績琛ㄧ粨鏋?
+### 核心表结构
 
 ```
-sys_user (鐢ㄦ埛琛?
-鈹溾攢鈹€ user_id (PK)
-鈹溾攢鈹€ username (UK)
-鈹溾攢鈹€ password (PBKDF2-SHA256)
-鈹溾攢鈹€ email (UK)
-鈹溾攢鈹€ phonenumber
-鈹溾攢鈹€ sex
-鈹溾攢鈹€ avatar
-鈹溾攢鈹€ status
-鈹溾攢鈹€ del_flag
-鈹斺攢鈹€ create_time
+sys_user (用户表)
+├── user_id (PK)
+├── username (UK)
+├── password (PBKDF2-SHA256)
+├── email (UK)
+├── phonenumber
+├── sex
+├── avatar
+├── status
+├── del_flag
+└── create_time
 
-sys_role (瑙掕壊琛?
-鈹溾攢鈹€ role_id (PK)
-鈹溾攢鈹€ role_name (UK)
-鈹溾攢鈹€ role_key (UK)
-鈹溾攢鈹€ role_sort
-鈹溾攢鈹€ status
-鈹斺攢鈹€ create_time
+sys_role (角色表)
+├── role_id (PK)
+├── role_name (UK)
+├── role_key (UK)
+├── role_sort
+├── status
+└── create_time
 
-sys_menu (鑿滃崟琛?
-鈹溾攢鈹€ menu_id (PK)
-鈹溾攢鈹€ menu_name
-鈹溾攢鈹€ parent_id (FK)
-鈹溾攢鈹€ order_num
-鈹溾攢鈹€ path
-鈹溾攢鈹€ component
-鈹溾攢鈹€ perms (鏉冮檺瀛楃涓?
-鈹溾攢鈹€ icon
-鈹溾攢鈹€ menu_type (C/M/F)
-鈹斺攢鈹€ visible
+sys_menu (菜单表)
+├── menu_id (PK)
+├── menu_name
+├── parent_id (FK)
+├── order_num
+├── path
+├── component
+├── perms (权限字符串)
+├── icon
+├── menu_type (C/M/F)
+└── visible
 
-sys_user_role (鐢ㄦ埛-瑙掕壊鍏宠仈)
-鈹溾攢鈹€ user_id (FK)
-鈹斺攢鈹€ role_id (FK)
+sys_user_role (用户-角色关联)
+├── user_id (FK)
+└── role_id (FK)
 
-sys_role_menu (瑙掕壊-鑿滃崟鍏宠仈)
-鈹溾攢鈹€ role_id (FK)
-鈹斺攢鈹€ menu_id (FK)
+sys_role_menu (角色-菜单关联)
+├── role_id (FK)
+└── menu_id (FK)
 
-sys_oper_log (鎿嶄綔鏃ュ織)
-鈹溾攢鈹€ oper_id (PK)
-鈹溾攢鈹€ user_id (FK)
-鈹溾攢鈹€ oper_module
-鈹溾攢鈹€ oper_type
-鈹溾攢鈹€ oper_url
-鈹溾攢鈹€ oper_method
-鈹溾攢鈹€ request_method
-鈹溾攢鈹€ oper_param
-鈹溾攢鈹€ oper_result
-鈹溾攢鈹€ error_msg
-鈹溾攢鈹€ oper_time
-鈹斺攢鈹€ cost_time
+sys_oper_log (操作日志)
+├── oper_id (PK)
+├── user_id (FK)
+├── oper_module
+├── oper_type
+├── oper_url
+├── oper_method
+├── request_method
+├── oper_param
+├── oper_result
+├── error_msg
+├── oper_time
+└── cost_time
 
-sys_login_log (鐧诲綍鏃ュ織)
-鈹溾攢鈹€ info_id (PK)
-鈹溾攢鈹€ user_id (FK)
-鈹溾攢鈹€ login_name
-鈹溾攢鈹€ ipaddr
-鈹溾攢鈹€ login_location
-鈹溾攢鈹€ browser
-鈹溾攢鈹€ os
-鈹溾攢鈹€ status
-鈹溾攢鈹€ msg
-鈹斺攢鈹€ login_time
+sys_login_log (登录日志)
+├── info_id (PK)
+├── user_id (FK)
+├── login_name
+├── ipaddr
+├── login_location
+├── browser
+├── os
+├── status
+├── msg
+└── login_time
 ```
 
-### 鏁版嵁搴撹繛鎺ョ鐞?
+### 数据库连接管理
 
 ```cpp
-// 浣跨敤 DatabaseService 杩涜鏌ヨ
+// 使用 DatabaseService 进行查询
 auto& db = DatabaseService::instance();
 
-// 鎵ц鏌ヨ
+// 执行查询
 auto res = db.query("SELECT * FROM sys_user WHERE user_id = $1", userId);
 if (res.ok() && res.rows() > 0) {
     std::string username = res.str(0, 1);
 }
 
-// 鎵ц鏇存柊
+// 执行更新
 auto updateRes = db.execute(
     "UPDATE sys_user SET status = $1 WHERE user_id = $2",
     status, userId
@@ -1074,306 +1074,306 @@ auto updateRes = db.execute(
 
 ---
 
-## 瀹夊叏鏈€浣冲疄璺?
+## 安全最佳实践
 
-### 瀵嗙爜瀹夊叏
+### 密码安全
 
 ```cpp
-// 瀵嗙爜鍝堝笇锛圥BKDF2-SHA256锛?0000 杞級
+// 密码哈希（PBKDF2-SHA256，10000 轮）
 std::string hashedPwd = SecurityUtils::hashPassword(plainPassword);
 
-// 瀵嗙爜楠岃瘉
+// 密码验证
 bool isValid = SecurityUtils::verifyPassword(plainPassword, hashedPwd);
 ```
 
-### 璇锋眰绛惧悕楠岃瘉
+### 请求签名验证
 
 ```cpp
-// 鍦?config.json 涓惎鐢?
+// 在 config.json 中启用
 "security": {
   "sign_enabled": true,
   "sign_secret": "your-secret-key",
   "sign_expire_seconds": 300
 }
 
-// 瀹㈡埛绔敓鎴愮鍚?
+// 客户端生成签名
 std::string signature = SignUtils::generateSignature(params, secret);
 
-// 鏈嶅姟绔獙璇?
+// 服务端验证
 bool isValid = SignUtils::verifySignature(params, signature, secret);
 ```
 
-### 鏁版嵁鑴辨晱
+### 数据脱敏
 
 ```cpp
-// 鑷姩鑴辨晱鏁忔劅瀛楁
+// 自动脱敏敏感字段
 Json::Value response;
 response["user"] = user;
-DataMaskUtils::maskJsonValue(response);  // 鑷姩鑴辨晱 phone/email/idcard 绛?
+DataMaskUtils::maskJsonValue(response);  // 自动脱敏 phone/email/idcard 等
 ```
 
-### XSS 闃叉姢
+### XSS 防护
 
 ```cpp
-// 杩囨护鐢ㄦ埛杈撳叆
+// 过滤用户输入
 std::string cleanInput = XssUtils::filterXss(userInput);
 
-// SQL 娉ㄥ叆妫€娴?
+// SQL 注入检测
 if (XssUtils::detectSqlInjection(userInput)) {
-    return RESP_ERR(cb, "闈炴硶杈撳叆");
+    return RESP_ERR(cb, "非法输入");
 }
 ```
 
 ---
 
-## 鎬ц兘鍩哄噯娴嬭瘯
+## 性能基准测试
 
-### 娴嬭瘯鐜
+### 测试环境
 
-- **CPU**: Intel Core i7-9700K (8 鏍?
-- **鍐呭瓨**: 16GB DDR4
-- **鏁版嵁搴?*: PostgreSQL 12
-- **骞跺彂鏁?*: 100-1000
+- **CPU**: Intel Core i7-9700K (8 核)
+- **内存**: 16GB DDR4
+- **数据库**: PostgreSQL 12
+- **并发数**: 100-1000
 
-### 娴嬭瘯缁撴灉
+### 测试结果
 
-| 鍦烘櫙 | QPS | 骞冲潎寤惰繜 | P99 寤惰繜 | 鍐呭瓨鍗犵敤 |
+| 场景 | QPS | 平均延迟 | P99 延迟 | 内存占用 |
 |------|-----|---------|---------|---------|
-| 鐢ㄦ埛鍒楄〃鏌ヨ | 8500 | 11ms | 45ms | 45MB |
-| 鐢ㄦ埛鍒涘缓 | 3200 | 30ms | 120ms | 48MB |
-| 鏉冮檺妫€鏌?| 15000 | 6ms | 20ms | 42MB |
-| 鐧诲綍 | 1800 | 55ms | 200ms | 52MB |
-| 鏂囦欢涓婁紶 (10MB) | 120 | 8.3s | 9.5s | 150MB |
+| 用户列表查询 | 8500 | 11ms | 45ms | 45MB |
+| 用户创建 | 3200 | 30ms | 120ms | 48MB |
+| 权限检查 | 15000 | 6ms | 20ms | 42MB |
+| 登录 | 1800 | 55ms | 200ms | 52MB |
+| 文件上传 (10MB) | 120 | 8.3s | 9.5s | 150MB |
 
-### 鍘嬪姏娴嬭瘯鍛戒护
+### 压力测试命令
 
 ```bash
-# 浣跨敤 Apache Bench
+# 使用 Apache Bench
 ab -n 10000 -c 100 http://localhost:18080/system/user/list
 
-# 浣跨敤 wrk
+# 使用 wrk
 wrk -t4 -c100 -d30s http://localhost:18080/system/user/list
 
-# 浣跨敤 hey
+# 使用 hey
 hey -n 10000 -c 100 http://localhost:18080/system/user/list
 ```
 
 ---
 
-## 鐗堟湰鍗囩骇鎸囧崡
+## 版本升级指南
 
-### 浠?v1.2.x 鍗囩骇鍒?v1.3.3
+### 从 v1.2.x 升级到 v1.3.3
 
-**1. 澶囦唤鏁版嵁搴?*
+**1. 备份数据库**
 
 ```bash
 pg_dump -U postgres ruoyi.c > backup_v1.2.x.sql
 ```
 
-**2. 鍋滄鏃х増鏈?*
+**2. 停止旧版本**
 
 ```bash
 pkill -f ruoyi-cpp
 ```
 
-**3. 鏇存柊鍙墽琛屾枃浠?*
+**3. 更新可执行文件**
 
 ```bash
-# 涓嬭浇鏂扮増鏈?
+# 下载新版本
 wget https://gitee.com/ruoyicpp/ruoyi/releases/download/v1.3.3/ruoyi-cpp-v1.3.3-windows.zip
 unzip ruoyi-cpp-v1.3.3-windows.zip
 ```
 
-**4. 鏇存柊閰嶇疆鏂囦欢**
+**4. 更新配置文件**
 
 ```bash
-# 姣旇緝鏂版棫 config.json锛屽悎骞舵柊澧為厤缃」
+# 比较新旧 config.json，合并新增配置项
 diff config.json.old config.json.new
 ```
 
-**5. 鏁版嵁搴撹縼绉?*
+**5. 数据库迁移**
 
 ```sql
--- 鏂板琛ㄥ拰瀛楁锛堣嚜鍔ㄦ墽琛岋級
--- 绋嬪簭鍚姩鏃朵細鑷姩妫€娴嬪苟鎵ц杩佺Щ鑴氭湰
+-- 新增表和字段（自动执行）
+-- 程序启动时会自动检测并执行迁移脚本
 ```
 
-**6. 鍚姩鏂扮増鏈?*
+**6. 启动新版本**
 
 ```bash
 ./ruoyi-cpp
 ```
 
-**7. 楠岃瘉鍗囩骇**
+**7. 验证升级**
 
 ```bash
-# 妫€鏌ョ増鏈?
+# 检查版本
 curl http://localhost:18080/version
 
-# 妫€鏌ュ仴搴风姸鎬?
+# 检查健康状态
 curl http://localhost:18080/actuator/health
 ```
 
-### 鍥炴粴姝ラ
+### 回滚步骤
 
 ```bash
-# 1. 鍋滄褰撳墠鐗堟湰
+# 1. 停止当前版本
 pkill -f ruoyi-cpp
 
-# 2. 鎭㈠澶囦唤
+# 2. 恢复备份
 psql -U postgres ruoyi.c < backup_v1.2.x.sql
 
-# 3. 鎭㈠鏃х増鏈彲鎵ц鏂囦欢
+# 3. 恢复旧版本可执行文件
 cp ruoyi-cpp.v1.2.x ./ruoyi-cpp
 
-# 4. 鍚姩鏃х増鏈?
+# 4. 启动旧版本
 ./ruoyi-cpp
 ```
 
 ---
 
-## 璐＄尞鎸囧崡
+## 贡献指南
 
-娆㈣繋鎻愪氦 Issue 鍜?Pull Request锛?
+欢迎提交 Issue 和 Pull Request！
 
-1. Fork 鏈粨搴擄細<https://gitee.com/ruoyicpp/ruoyi>
-2. 鏂板缓鍒嗘敮锛歚git checkout -b feat/your-feature`
-3. 鎻愪氦浠ｇ爜锛歚git commit -m "feat: 鎻忚堪浣犵殑鏀瑰姩"`
-4. 鎺ㄩ€佸垎鏀細`git push origin feat/your-feature`
-5. 鍙戣捣 Pull Request
+1. Fork 本仓库：<https://gitee.com/ruoyicpp/ruoyi>
+2. 新建分支：`git checkout -b feat/your-feature`
+3. 提交代码：`git commit -m "feat: 描述你的改动"`
+4. 推送分支：`git push origin feat/your-feature`
+5. 发起 Pull Request
 
-**浠ｇ爜瑙勮寖**锛?
-- C++ 浠ｇ爜閬靛惊椤圭洰鐜版湁椋庢牸锛堝ご鏂囦欢瀹炵幇銆丏rogon 寮傛鍥炶皟锛?
-- 鏂板鎺ュ彛闇€鍚屾椂鎻愪緵鏉冮檺瀛楃涓诧紙濡?`system:user:add`锛?
-- 鏁忔劅淇℃伅涓嶅緱纭紪鐮侊紝閫氳繃 `config.json` 鎴栨暟鎹簱閰嶇疆
-- 鏂板鍔熻兘闇€鎻愪緵鍗曞厓娴嬭瘯
-- 鎻愪氦鍓嶈繍琛?`clang-format` 鏍煎紡鍖栦唬鐮?
+**代码规范**：
+- C++ 代码遵循项目现有风格（头文件实现、Drogon 异步回调）
+- 新增接口需同时提供权限字符串（如 `system:user:add`）
+- 敏感信息不得硬编码，通过 `config.json` 或数据库配置
+- 新增功能需提供单元测试
+- 提交前运行 `clang-format` 格式化代码
 
 ---
 
-## 瀹夊叏娉ㄦ剰浜嬮」
+## 安全注意事项
 
-| 椤圭洰 | 璇存槑 |
+| 项目 | 说明 |
 |------|-----|
-| JWT Secret | 蹇呴』 鈮?6 浣嶉殢鏈哄瓧绗︿覆锛岀敓浜х幆澧冭鐢?`/dev/urandom` 鐢熸垚 |
-| 榛樿瀵嗙爜 | 棣栨杩愯鍚庣珛鍗充慨鏀?`admin` 鐨?`admin123` 榛樿瀵嗙爜 |
-| TOTP | 绠＄悊鍛樿处鍙峰缓璁己鍒跺紑鍚紝闃叉瀵嗙爜娉勯湶鍚庤鍏ヤ镜 |
-| LDAP bind_pass | 寤鸿閫氳繃 Vault 娉ㄥ叆锛屼笉瑕佹槑鏂囧啓鍏?`config.json` |
-| MinIO secret_key | 鍚屼笂锛孷ault 娉ㄥ叆 |
-| OAuth2 client_secret | 鍚屼笂锛孷ault 娉ㄥ叆锛涚敓浜х幆澧冧笉寰楁槑鏂囧瓨鍏?`config.json` |
-| OAuth2 redirect_uri | 蹇呴』涓?provider 鎺у埗鍙伴厤缃畬鍏ㄤ竴鑷达紝闃叉 open redirect |
-| `/actuator/*` | 寤鸿鍦?Nginx/闃茬伀澧欏眰闄愬埗鍙厑璁稿唴缃戣闂?|
-| 鏁版嵁鑴辨晱 | `DataMaskUtils::maskJsonValue()` 鍙湪鏃ュ織/鍝嶅簲涓嚜鍔ㄨ劚鏁忔晱鎰熷瓧娈?|
+| JWT Secret | 必须 ≥16 位随机字符串，生产环境请用 `/dev/urandom` 生成 |
+| 默认密码 | 首次运行后立即修改 `admin` 的 `admin123` 默认密码 |
+| TOTP | 管理员账号建议强制开启，防止密码泄露后被入侵 |
+| LDAP bind_pass | 建议通过 Vault 注入，不要明文写入 `config.json` |
+| MinIO secret_key | 同上，Vault 注入 |
+| OAuth2 client_secret | 同上，Vault 注入；生产环境不得明文存入 `config.json` |
+| OAuth2 redirect_uri | 必须与 provider 控制台配置完全一致，防止 open redirect |
+| `/actuator/*` | 建议在 Nginx/防火墙层限制只允许内网访问 |
+| 数据脱敏 | `DataMaskUtils::maskJsonValue()` 可在日志/响应中自动脱敏敏感字段 |
 
 ---
 
-## 鏇存柊鏃ュ織
+## 更新日志
 
-### v1.3.3锛堝紑鍙戜腑锛?
+### v1.3.3（开发中）
 
-- **鍚姩浠ｇ爜妯″潡鍖栨媶鍒?*锛氬師 3400+ 琛?`src/main.cc` 鎷嗗垎涓?`src/main/main.cc` 鍏ュ彛 + `src/main/main/` 涓?8 涓樁娈垫ā鍧楋紙`EarlyInit`/`ConfigInit`/`HttpSetup`/`RoutesSetup`/`CertRoutes`/`StartupAdvice`/`RuntimeSetup`/`DbConnStr`锛夛紝鍏变韩 `AppBootstrap.h` 涓殑 `AppContext` 涓婁笅鏂囷紱鏃?`src/main.cc` 淇濈暀涓哄鐓э紝涓嶅弬涓庣紪璇?
-- **Linux 骞冲彴瀹屾暣楠岃瘉**锛欸CC 缂栬瘧 + 杩愯楠岃瘉閫氳繃锛圫QLite 闄嶇骇銆亀atchdog 瀹堟姢绉讳氦銆佸崟瀹炰緥閿併€佸杩涚▼缂栨帓鍣ㄥ潎姝ｅ父锛?
-- **SQL LIKE 閫氶厤绗﹁浆涔?*锛歚StringUtils::escapeLikeParam` 鎻愬崌涓哄叕鍏卞疄鐜帮紝鍏ㄩ儴 LIKE 鏌ヨ缁熶竴 `ESCAPE` 杞箟锛岄槻姝?`%`/`_` 閫氶厤绗︽敞鍏?
-- **鍚庡彴绾跨▼浼橀泤閫€鍑?*锛歚HotConfig`銆乣LicenseWatcher` 绾跨▼鏀?joinable锛宍stop()` 鐪熸绛夊緟閫€鍑猴紝鏋愭瀯鍏滃簳闃?`std::terminate`锛沗LicenseWatcher` 杞鐫＄湢鏀?1s 绮掑害锛屽仠鏈嶇绾ц繑鍥?
-- **棣栧惎鑷姩鐢熸垚榛樿閰嶇疆**锛歚config.json` 缂哄け鏃舵寜 `DefaultConfig.h` 鍐呭祵妯℃澘鐢熸垚锛圫QLite 妯″紡锛夛紝鍐嶈繘鍏ヨ鍙瘉鏍￠獙
-- **WAF 闃茬伀澧?*锛坄src/waf/`锛夛細`WafEngine` 姝ｅ垯瑙勫垯寮曟搸锛堝唴缃?SQLi / XSS / 璺緞绌胯秺 / 鍛戒护娉ㄥ叆瑙勫垯锛屾敮鎸?config.json 杩藉姞鑷畾涔夛級锛宍CidrMatcher` IP 榛戠櫧鍚嶅崟锛宍NftBan` Linux nftables 鍐呮牳灞傚皝绂侊紙SYN 闃舵 DROP锛屾棤鏉冮檺鑷姩闄嶇骇涓哄簲鐢ㄥ眰灏佺锛夛紝`WafCtrl` 鎻愪緵 `/monitor/waf/**` 绠＄悊鎺ュ彛锛堢粺璁?/ 鎷︽埅鏃ュ織 / 灏佺 / 瑙勫垯 / CIDR / URI / UA 鍚嶅崟锛?
+- **启动代码模块化拆分**：原 3400+ 行 `src/main.cc` 拆分为 `src/main/main.cc` 入口 + `src/main/main/` 下 8 个阶段模块（`EarlyInit`/`ConfigInit`/`HttpSetup`/`RoutesSetup`/`CertRoutes`/`StartupAdvice`/`RuntimeSetup`/`DbConnStr`），共享 `AppBootstrap.h` 中的 `AppContext` 上下文；旧 `src/main.cc` 保留为对照，不参与编译
+- **Linux 平台完整验证**：GCC 编译 + 运行验证通过（SQLite 降级、watchdog 守护移交、单实例锁、多进程编排器均正常）
+- **SQL LIKE 通配符转义**：`StringUtils::escapeLikeParam` 提升为公共实现，全部 LIKE 查询统一 `ESCAPE` 转义，防止 `%`/`_` 通配符注入
+- **后台线程优雅退出**：`HotConfig`、`LicenseWatcher` 线程改 joinable，`stop()` 真正等待退出，析构兜底防 `std::terminate`；`LicenseWatcher` 轮询睡眠改 1s 粒度，停服秒级返回
+- **首启自动生成默认配置**：`config.json` 缺失时按 `DefaultConfig.h` 内嵌模板生成（SQLite 模式），再进入许可证校验
+- **WAF 防火墙**（`src/waf/`）：`WafEngine` 正则规则引擎（内置 SQLi / XSS / 路径穿越 / 命令注入规则，支持 config.json 追加自定义），`CidrMatcher` IP 黑白名单，`NftBan` Linux nftables 内核层封禁（SYN 阶段 DROP，无权限自动降级为应用层封禁），`WafCtrl` 提供 `/monitor/waf/**` 管理接口（统计 / 拦截日志 / 封禁 / 规则 / CIDR / URI / UA 名单）
 
 ### v1.3.2
 
-- **鏂囨。鍏ㄩ潰瀹屽杽** - 娣诲姞蹇€熶綋楠屻€丄PI 蹇€熷弬鑰冦€侀儴缃叉渶浣冲疄璺点€佹€ц兘浼樺寲銆佹晠闅滄帓鏌ャ€佸紑鍙戣€呮寚鍗楃瓑瀹屾暣鏂囨。
-- **鎶€鏈爤鐗堟湰鏇存柊** - C++ 鏍囧噯鍗囩骇鍒?C++20锛屾洿鏂版墍鏈変緷璧栧簱鐗堟湰淇℃伅
-- **绯荤粺瑕佹眰鏄庣‘** - 璇︾粏璇存槑杩愯鐜銆佺紪璇戠幆澧冦€佸彲閫変緷璧栫殑鐗堟湰瑕佹眰
-- **API 鏂囨。瀹屾暣** - 鏂板宸ュ叿銆丄I銆両oT 妯″潡鐨?API 鏂囨。锛屽叡 50+ 涓鐐?
-- **閮ㄧ讲鎸囧崡璇︾粏** - 娣诲姞 Docker銆並ubernetes 閮ㄧ讲绀轰緥锛岀敓浜х幆澧冮儴缃叉竻鍗?
-- **鎬ц兘鍩哄噯娴嬭瘯** - 鎻愪緵 5 涓満鏅殑鎬ц兘鏁版嵁锛圦PS銆佸欢杩熴€佸唴瀛樺崰鐢級
-- **鐗堟湰鍗囩骇鎸囧崡** - 瀹屾暣鐨勫崌绾ф楠ゅ拰鍥炴粴鏂规
-- **瀹夊叏鏈€浣冲疄璺?* - 瀵嗙爜瀹夊叏銆佽姹傜鍚嶃€佹暟鎹劚鏁忋€乆SS 闃叉姢绛夊畨鍏ㄦ寚鍗?
-- **寮€鍙戣€呮寚鍗?* - 娣诲姞鏂?API銆佹暟鎹簱琛ㄣ€佸畾鏃朵换鍔＄殑瀹屾暣绀轰緥
-- **鏁版嵁搴撴灦鏋?* - 璇︾粏鐨勮〃缁撴瀯璁捐鍜岃繛鎺ョ鐞嗕唬鐮佺ず渚?
+- **文档全面完善** - 添加快速体验、API 快速参考、部署最佳实践、性能优化、故障排查、开发者指南等完整文档
+- **技术栈版本更新** - C++ 标准升级到 C++20，更新所有依赖库版本信息
+- **系统要求明确** - 详细说明运行环境、编译环境、可选依赖的版本要求
+- **API 文档完整** - 新增工具、AI、IoT 模块的 API 文档，共 50+ 个端点
+- **部署指南详细** - 添加 Docker、Kubernetes 部署示例，生产环境部署清单
+- **性能基准测试** - 提供 5 个场景的性能数据（QPS、延迟、内存占用）
+- **版本升级指南** - 完整的升级步骤和回滚方案
+- **安全最佳实践** - 密码安全、请求签名、数据脱敏、XSS 防护等安全指南
+- **开发者指南** - 添加新 API、数据库表、定时任务的完整示例
+- **数据库架构** - 详细的表结构设计和连接管理代码示例
 
 ### v1.3.0
 
-- **浠ｇ爜鐢熸垚妯″潡鍔ㄦ€佸簱鍖?*锛歚src/codegen/` 缂栬瘧涓虹嫭绔?DLL/SO锛坄plugins/codegen_plugin.dll`锛夛紝涓荤▼搴忔棤闇€閲嶆柊缂栬瘧鍗冲彲鏇存柊浠ｇ爜鐢熸垚鍔熻兘锛涙敮鎸佽繍琛屾椂鍔ㄦ€佸姞杞?鍗歌浇锛沗CodeGenCtrl` 鏀逛负绾?C++ 闈欐€佹柟娉曪紝鎺ユ敹/杩斿洖 JSON 瀛楃涓?
-- **鍔ㄦ€佺紪璇戝櫒闆嗘垚**锛歚DynamicCompiler` 鏀寔 Windows MinGW + Linux GCC锛岃嚜鍔ㄨ皟鐢?CMake 缂栬瘧鐢熸垚鐨勪唬鐮侊紝鏀寔鑷畾涔夌紪璇戝櫒璺緞锛堢幆澧冨彉閲?`CODEGEN_COMPILER_PATH`锛?
-- **鎻掍欢绠＄悊绯荤粺**锛歚PluginManager` 鏀寔鍔犺浇/鍗歌浇/鍒楄〃/璋冪敤澶氫釜鎻掍欢锛屾瘡涓彃浠剁嫭绔?DLL锛屾敮鎸佺儹鏇存柊
-- **鍩熷悕 / HTTPS 璁块棶鏀寔**锛歚config.json` 鏂板 `_listeners_https_example` 绀轰緥閰嶇疆锛岃鏄庢湰鍦?鍏綉 HTTP/HTTPS 涓夌鐩戝惉妯″紡锛涜吘璁簯绛変簯鏈嶅姟鍟嗘墜鍔ㄨ瘉涔︼紙`.crt`+`.key`锛夌洿鎺ユ寕杞藉埌 listeners锛岄浂棰濆渚濊禆
-- **InnerLink 鑿滃崟 URL 鑷姩鏇挎崲**锛坄menu.api_base_url`锛夛細閮ㄧ讲鍒板叕缃戝悗绋嬪簭鍚姩鏃惰嚜鍔ㄥ皢鏁版嵁搴撲腑鎵€鏈?InnerLink 鑿滃崟鐨?`localhost` 鍦板潃鎵归噺鏇挎崲涓洪厤缃殑鍏綉鍩熷悕锛屾棤闇€鎵嬪姩閫愪竴淇敼鑿滃崟
-- **ACME 鑷姩璇佷功璇存槑**锛氭柊澧?`acme` 閰嶇疆鍧楀畬鏁存敞閲婏紝鏄庣‘ 80 绔彛蹇呴』 `https=false`锛圚TTP-01 楠岃瘉锛夛紝443/鑷畾涔夌鍙ｅ紑 HTTPS锛岄槻璇厤宕╂簝
-- **閮ㄧ讲璇存槑鏂囨。**锛坄build-nginx/閮ㄧ讲璇存槑.md`锛夛細瀹屾暣瑕嗙洊鏈湴/鍏綉 HTTP/HTTPS 涓夌妯″紡銆丼SL 璇佷功鏍煎紡閫夋嫨銆佸墠绔墦鍖呴儴缃层€佸父鐢ㄧ鍙ｈ鏄?
-- **淇纾佺洏鍗锋爣涔辩爜 + 鍫嗗穿婧?*锛坄ServerCtrl.h`锛夛細`GetVolumeInformationW` + `WideCharToMultiByte` 瀹藉瓧鑺傛纭浆鎹紝鏇挎崲鍘?`GetVolumeInformationA` 绐勫瓧鑺傝皟鐢紝娑堥櫎闈?ASCII 鍗锋爣涓嬬殑鍫嗘崯鍧?
-- **WebSocket 鏂嚎鑷姩閲嶈繛**锛坄App.vue`锛夛細鎸囨暟閫€閬块噸杩炵瓥鐣ワ紙鏈€澶?30s锛夛紝杩炴帴鏂紑鍚庤嚜鍔ㄦ仮澶嶈闃?
-- **Swagger 鎺ュ彛鏂囨。琛ュ叏**锛氭柊澧?IoT 璁惧銆丄I/ONNX 鎺ㄧ悊銆佸浗瀵嗭紙SM2/SM3/SM4锛夈€丱Auth2銆佷唬鐮佺敓鎴愩€佷华琛ㄧ洏绛夋ā鍧楃殑 OpenAPI 鏍囩鍜岃矾寰勬弿杩?
-- **IoT 璁惧鍚姩鍔犺浇**锛坄main.cc`锛夛細鍚姩鏃惰皟鐢?`IotCtrl::loadFromDb()` 浠庢暟鎹簱鎭㈠璁惧鍒楄〃锛屾敮鎸佹寔涔呭寲
-- **鏂板鍗曞厓娴嬭瘯**锛歚test_token_cache`锛坰et/get/remove/update/size锛夈€乣test_rate_limiter`锛堟甯歌姹?瓒呴檺灏佺/鐧藉悕鍗?绂佺敤锛夛紝闆嗘垚鍒?`RUOYI_BUILD_HEAVY_TESTS`
-- **DashboardCtrl 淇**锛歚char today[16]` 鈫?`char today[32]`锛屾秷闄?Linux glibc fortify 缂撳啿鍖鸿鍛?
+- **代码生成模块动态库化**：`src/codegen/` 编译为独立 DLL/SO（`plugins/codegen_plugin.dll`），主程序无需重新编译即可更新代码生成功能；支持运行时动态加载/卸载；`CodeGenCtrl` 改为纯 C++ 静态方法，接收/返回 JSON 字符串
+- **动态编译器集成**：`DynamicCompiler` 支持 Windows MinGW + Linux GCC，自动调用 CMake 编译生成的代码，支持自定义编译器路径（环境变量 `CODEGEN_COMPILER_PATH`）
+- **插件管理系统**：`PluginManager` 支持加载/卸载/列表/调用多个插件，每个插件独立 DLL，支持热更新
+- **域名 / HTTPS 访问支持**：`config.json` 新增 `_listeners_https_example` 示例配置，说明本地/公网 HTTP/HTTPS 三种监听模式；腾讯云等云服务商手动证书（`.crt`+`.key`）直接挂载到 listeners，零额外依赖
+- **InnerLink 菜单 URL 自动替换**（`menu.api_base_url`）：部署到公网后程序启动时自动将数据库中所有 InnerLink 菜单的 `localhost` 地址批量替换为配置的公网域名，无需手动逐一修改菜单
+- **ACME 自动证书说明**：新增 `acme` 配置块完整注释，明确 80 端口必须 `https=false`（HTTP-01 验证），443/自定义端口开 HTTPS，防误配崩溃
+- **部署说明文档**（`build-nginx/部署说明.md`）：完整覆盖本地/公网 HTTP/HTTPS 三种模式、SSL 证书格式选择、前端打包部署、常用端口说明
+- **修复磁盘卷标乱码 + 堆崩溃**（`ServerCtrl.h`）：`GetVolumeInformationW` + `WideCharToMultiByte` 宽字节正确转换，替换原 `GetVolumeInformationA` 窄字节调用，消除非 ASCII 卷标下的堆损坏
+- **WebSocket 断线自动重连**（`App.vue`）：指数退避重连策略（最大 30s），连接断开后自动恢复订阅
+- **Swagger 接口文档补全**：新增 IoT 设备、AI/ONNX 推理、国密（SM2/SM3/SM4）、OAuth2、代码生成、仪表盘等模块的 OpenAPI 标签和路径描述
+- **IoT 设备启动加载**（`main.cc`）：启动时调用 `IotCtrl::loadFromDb()` 从数据库恢复设备列表，支持持久化
+- **新增单元测试**：`test_token_cache`（set/get/remove/update/size）、`test_rate_limiter`（正常请求/超限封禁/白名单/禁用），集成到 `RUOYI_BUILD_HEAVY_TESTS`
+- **DashboardCtrl 修复**：`char today[16]` → `char today[32]`，消除 Linux glibc fortify 缓冲区警告
 
 ### v1.2.1
-- **閲嶅惎鏈嶅姟绠＄悊椤?*锛歚GET /monitor/restart` 绾悗绔覆鏌?HTML 椤甸潰锛岀鐞嗗憳鍙煡璇㈠湪绾夸汉鏁板悗浜屾纭閲嶅惎鍚庣杩涚▼锛泃oken 浠庡悓婧?iframe 鐨?`sessionStorage` 鑷姩璇诲彇锛屾棤闇€ Vue 缁勪欢
-- **淇 HTTP_HIDE 鐢熶骇 404 Bug**锛歚SysRestartCtrl` 鍘?`HTTP_HIDE` 瀹忓湪 Release 鏋勫缓涓嬪皢閲嶅惎鎺ュ彛鍏ㄩ儴杩斿洖 404锛屽凡绉婚櫎
-- **娑堟伅閫氱煡涓績**锛坒15锛夛細閽夐拤 / 椋炰功 / 浼佷笟寰俊 Webhook锛圚MAC-SHA256 绛惧悕锛? 绔欏唴娑堟伅锛宍/system/notify/channel/**` + `/system/message/**`
-- **API Key 绠＄悊**锛坒16锛夛細`/system/apikey/**` CRUD锛?8 浣嶉殢鏈?Key锛宍X-API-Key` 璇锋眰澶存垨 `?apiKey=` 鏌ヨ鍙傛暟閴存潈
-- **鎿嶄綔瀹¤澧炲己**锛坒17锛夛細`sys_oper_log` 鏂板 `before_data`/`after_data` 瀛楁锛宍diffJson()` 鍙褰曞彉鏇村瓧娈碉紝`LOG_AUDIT` / `LOG_AUDIT_TIMED` 瀹?
-- **SQLite 鍙屽眰鍔犲瘑**锛?
-  - **椤电骇鍔犲瘑**锛圼sqlite3mc](https://github.com/utelle/SQLite3MultipleCiphers) 闆嗘垚锛夛細纾佺洏鏂囦欢姣忛〉 AES 鍔犲瘑锛屾棤鏄庢枃绐楀彛锛涢€氳繃 `scripts/download_sqlite3mc.ps1` 鎷夊彇 12 MB amalgamation 鍚庡惎鐢紝CMake 鑷姩妫€娴?
-  - **鏂囦欢绾у姞瀵?*锛圧YENC1 鑷爺灏佽锛変綔涓哄厹搴曪細AES-256-GCM + HMAC-SHA256 + Magic+Version+KDF_iter 澶达紝浠呬緷璧?OpenSSL锛涘惎鍔ㄨВ瀵?`.enc 鈫?.db`銆佸叧闂姞瀵嗗洖鍐欏苟鍒犳槑鏂?
-  - 鍏辩敤 `sqlite.encrypt_key` 鏋佺畝閰嶇疆鎴?`security.sqlite.encryption.*`锛? 绉嶅瘑閽ユ潵婧愶細config/env/hwid/vault/hwid+vault锛?
-  - 璇﹁ [`docs/SQLITE_ENCRYPTION.md`](docs/SQLITE_ENCRYPTION.md)
-- **SQLite 鍔犲瘑 CLI 宸ュ叿** `sqlite_cipher_tool`锛歟ncrypt / decrypt / rekey / check / selftest 瀛愬懡浠わ紱鐢?`VACUUM INTO + sqlite3_rekey` 涓ゆ寮忚法 codec 鎷疯礉锛堣閬?sqlite3mc 榛樿 cipher 涓?backup API 鐨勪笉鍏煎锛?
-- **椤舵爮鏈閫氱煡寰芥爣 API**锛氭柊澧?`sys_notice_read(user_id, notice_id, read_at)` 琛?+ `GET /system/notice/unreadCount` 杩斿洖 `{count}` + `listTop` 澧炲姞 `isRead` 瀛楁
-- **浼橀泤鍋滄満绔偣** `POST /actuator/shutdown`锛堜粎 loopback 鍙Е鍙戯級锛?00 鍝嶅簲鍚庡紓姝?`drogon::app().quit()`锛岄伩鍏?Windows console 淇″彿闅鹃锛岀敤浜庤嚜鍔ㄥ寲娴嬭瘯 / 杩愮淮鑴氭湰
-- **鍙娴嬫€?+ 鍗曞厓娴嬭瘯涓?CI**锛歚tests/test_sqlite_file_cipher.cc` 10 鐢ㄤ緥 / 57 鏂█锛堝惈 HMAC 绡℃敼/闄嶇骇妫€娴嬶級锛汫itHub Actions 涓夊钩鍙拌窇娴嬭瘯 + 鏂?`sqlite3mc-fetch` job 楠岃瘉涓嬭浇鑴氭湰鍙敤鎬э紙鍖呭惈 SHA256 鏍￠獙 + 鐙珛 gcc 缂栬瘧锛?
+- **重启服务管理页**：`GET /monitor/restart` 纯后端渲染 HTML 页面，管理员可查询在线人数后二次确认重启后端进程；token 从同源 iframe 的 `sessionStorage` 自动读取，无需 Vue 组件
+- **修复 HTTP_HIDE 生产 404 Bug**：`SysRestartCtrl` 原 `HTTP_HIDE` 宏在 Release 构建下将重启接口全部返回 404，已移除
+- **消息通知中心**（f15）：钉钉 / 飞书 / 企业微信 Webhook（HMAC-SHA256 签名）+ 站内消息，`/system/notify/channel/**` + `/system/message/**`
+- **API Key 管理**（f16）：`/system/apikey/**` CRUD，48 位随机 Key，`X-API-Key` 请求头或 `?apiKey=` 查询参数鉴权
+- **操作审计增强**（f17）：`sys_oper_log` 新增 `before_data`/`after_data` 字段，`diffJson()` 只记录变更字段，`LOG_AUDIT` / `LOG_AUDIT_TIMED` 宏
+- **SQLite 双层加密**：
+  - **页级加密**（[sqlite3mc](https://github.com/utelle/SQLite3MultipleCiphers) 集成）：磁盘文件每页 AES 加密，无明文窗口；通过 `scripts/download_sqlite3mc.ps1` 拉取 12 MB amalgamation 后启用，CMake 自动检测
+  - **文件级加密**（RYENC1 自研封装）作为兜底：AES-256-GCM + HMAC-SHA256 + Magic+Version+KDF_iter 头，仅依赖 OpenSSL；启动解密 `.enc → .db`、关闭加密回写并删明文
+  - 共用 `sqlite.encrypt_key` 极简配置或 `security.sqlite.encryption.*`（5 种密钥来源：config/env/hwid/vault/hwid+vault）
+  - 详见 [`docs/SQLITE_ENCRYPTION.md`](docs/SQLITE_ENCRYPTION.md)
+- **SQLite 加密 CLI 工具** `sqlite_cipher_tool`：encrypt / decrypt / rekey / check / selftest 子命令；用 `VACUUM INTO + sqlite3_rekey` 两段式跨 codec 拷贝（规避 sqlite3mc 默认 cipher 与 backup API 的不兼容）
+- **顶栏未读通知徽标 API**：新增 `sys_notice_read(user_id, notice_id, read_at)` 表 + `GET /system/notice/unreadCount` 返回 `{count}` + `listTop` 增加 `isRead` 字段
+- **优雅停机端点** `POST /actuator/shutdown`（仅 loopback 可触发）：200 响应后异步 `drogon::app().quit()`，避免 Windows console 信号难题，用于自动化测试 / 运维脚本
+- **可观测性 + 单元测试上 CI**：`tests/test_sqlite_file_cipher.cc` 10 用例 / 57 断言（含 HMAC 篡改/降级检测）；GitHub Actions 三平台跑测试 + 新 `sqlite3mc-fetch` job 验证下载脚本可用性（包含 SHA256 校验 + 独立 gcc 编译）
 
 ### v1.2.0
-- **OAuth2 绗笁鏂圭櫥褰?*锛欸itHub / Google / 浼佷笟寰俊 / 閽夐拤 / 椋炰功 / QQ锛宻tate CSRF 闃叉姢锛岄娆¤嚜鍔ㄥ缓鍙凤紝宸叉湁璐﹀彿鍙粦瀹?瑙ｇ粦锛坄sys_user_oauth` 琛級
-- **TOTP 涓ゆ楠岃瘉**锛欸oogle/Microsoft Authenticator锛孯FC 6238 绾?OpenSSL 瀹炵幇
-- **LDAP/AD 璁よ瘉**锛氫紒涓氬唴缃戠粺涓€鐧诲綍锛屾敮鎸?`fallback_local`
-- **鏂囦欢瀛樺偍鍒嗗眰**锛氭湰鍦扮鐩橀粯璁わ紝`config.json` 鍒囨崲 MinIO/S3锛圓WS SigV4 绛惧悕锛?
-- **閰嶇疆鐑噸杞?*锛歚HotConfig` 5s 杞鏂囦欢鍙樺寲鑷姩鐢熸晥锛屾垨璋?`POST /actuator/reload`
-- **Prometheus 鎸囨爣**锛歚/actuator/metrics`锛圦PS/寤惰繜/DB 鐘舵€侊級锛屽吋瀹?Grafana
-- **鏁版嵁鑴辨晱宸ュ叿**锛氭墜鏈恒€佽韩浠借瘉銆侀摱琛屽崱銆侀偖绠便€佸鍚嶈嚜鍔ㄨ劚鏁?
-- **X-Request-ID 閾捐矾杩借釜**锛氬叏璇锋眰鑷姩鐢熸垚/浼犻€?
-- **绯荤粺鏃ュ織鏌ョ湅鍣?*锛氬墠绔?iframe 鍐呭祵锛屾敮鎸佹煡鐪?`.log`/`.jsonl`锛屽疄鏃跺埛鏂?
-- **DB 杩炴帴姹犵洃鎺?*锛歚/actuator/db` 灞曠ず PG/SQLite 鐘舵€併€佸緟鍚屾闃熷垪
-- **鐑崌绾?TOTP 瀛楁**锛歚ALTER TABLE IF NOT EXISTS` 鏃犳崯杩佺Щ
+- **OAuth2 第三方登录**：GitHub / Google / 企业微信 / 钉钉 / 飞书 / QQ，state CSRF 防护，首次自动建号，已有账号可绑定/解绑（`sys_user_oauth` 表）
+- **TOTP 两步验证**：Google/Microsoft Authenticator，RFC 6238 纯 OpenSSL 实现
+- **LDAP/AD 认证**：企业内网统一登录，支持 `fallback_local`
+- **文件存储分层**：本地磁盘默认，`config.json` 切换 MinIO/S3（AWS SigV4 签名）
+- **配置热重载**：`HotConfig` 5s 轮询文件变化自动生效，或调 `POST /actuator/reload`
+- **Prometheus 指标**：`/actuator/metrics`（QPS/延迟/DB 状态），兼容 Grafana
+- **数据脱敏工具**：手机、身份证、银行卡、邮箱、姓名自动脱敏
+- **X-Request-ID 链路追踪**：全请求自动生成/传递
+- **系统日志查看器**：前端 iframe 内嵌，支持查看 `.log`/`.jsonl`，实时刷新
+- **DB 连接池监控**：`/actuator/db` 展示 PG/SQLite 状态、待同步队列
+- **热升级 TOTP 字段**：`ALTER TABLE IF NOT EXISTS` 无损迁移
 
 ### v1.1.0
-- **Drogon 鍐呯疆鍓嶇鎵樼**锛歚/prod-api` 鍓嶇紑鑷姩鍓ョ锛孲PA history 妯″紡鍥為€€锛屾棤闇€ Nginx
-- **绯荤粺鏃ュ織鏌ョ湅鍣ㄥ悗绔〉闈?*锛歚GET /monitor/logfile/page`锛岄€氳繃 iframe 宓屽叆鍓嶇
-- **JSON 缁撴瀯鍖栨棩蹇?*锛歚JsonLogger` 灏?trantor 鏂囨湰鏃ュ織杞负 NDJSON锛坄.jsonl`锛?
-- **SQLite 榛樿鍏煎**锛歚DEFAULT NOW()` 鈫?`CURRENT_TIMESTAMP`
+- **Drogon 内置前端托管**：`/prod-api` 前缀自动剥离，SPA history 模式回退，无需 Nginx
+- **系统日志查看器后端页面**：`GET /monitor/logfile/page`，通过 iframe 嵌入前端
+- **JSON 结构化日志**：`JsonLogger` 将 trantor 文本日志转为 NDJSON（`.jsonl`）
+- **SQLite 默认兼容**：`DEFAULT NOW()` → `CURRENT_TIMESTAMP`
 
 ### v1.0.0
-- 瀹屾暣瀹炵幇 RuoYi-Vue 鎵€鏈夌郴缁熺鐞嗐€佺郴缁熺洃鎺?API
-- PostgreSQL + SQLite 鑷姩闄嶇骇鍙屽啓锛孭G 鎭㈠鍚庤嚜鍔ㄥ悓姝ュ洖鍐?
-- PBKDF2-SHA256 瀵嗙爜鍝堝笇銆丣WT 鑷姩缁湡銆乀oken 榛戝悕鍗?
-- HashiCorp Vault 瀵嗛挜绠＄悊锛堣嚜鍔ㄥ惎鍔?瑙ｅ皝/娉ㄥ叆锛?
-- 閭欢鍙戜欢绠辩鐞嗭紙OpenSSL Implicit-TLS SMTP锛屽鍙戜欢浜鸿疆杞級
-- 蹇樿瀵嗙爜 / 娉ㄥ唽閭楠岃瘉鐮?
-- WebSocket 瀹炴椂閫氱煡锛堜竴娆℃€?ticket 閴存潈锛?
-- IP 闄愭祦銆丅ot UA 鎷︽埅銆乆SS/SQL 娉ㄥ叆杩囨护銆丆ORS 閰嶇疆
-- 璇锋眰绛惧悕楠岃瘉锛坄SignUtils`锛?
-- 璁惧缁戝畾锛堢‖浠舵寚绾?+ Vault 瀵嗛挜锛?
-- 璁稿彲璇佺鐞嗭紙鏂囦欢绛惧悕 + 鍔熻兘寮€鍏筹級
-- GPU VRAM 缂撳瓨锛堝彲閫?CUDA锛?
-- Cron 瀹氭椂浠诲姟璋冨害寮曟搸锛堢绾э紝DB 鎸佷箙鍖栵級
-- 闆嗙兢妯″紡锛堜富/浠庤鑹诧紝鑷姩鐢熸垚 Nginx upstream.conf锛?
-- 宕╂簝鎹曡幏锛圫EH/VEH + Minidump锛學indows锛?
-- 瑙掕壊鏉冮檺淇敼瀹炴椂鐢熸晥锛屾棤闇€閲嶆柊鐧诲綍
+- 完整实现 RuoYi-Vue 所有系统管理、系统监控 API
+- PostgreSQL + SQLite 自动降级双写，PG 恢复后自动同步回写
+- PBKDF2-SHA256 密码哈希、JWT 自动续期、Token 黑名单
+- HashiCorp Vault 密钥管理（自动启动/解封/注入）
+- 邮件发件箱管理（OpenSSL Implicit-TLS SMTP，多发件人轮转）
+- 忘记密码 / 注册邮箱验证码
+- WebSocket 实时通知（一次性 ticket 鉴权）
+- IP 限流、Bot UA 拦截、XSS/SQL 注入过滤、CORS 配置
+- 请求签名验证（`SignUtils`）
+- 设备绑定（硬件指纹 + Vault 密钥）
+- 许可证管理（文件签名 + 功能开关）
+- GPU VRAM 缓存（可选 CUDA）
+- Cron 定时任务调度引擎（秒级，DB 持久化）
+- 集群模式（主/从角色，自动生成 Nginx upstream.conf）
+- 崩溃捕获（SEH/VEH + Minidump，Windows）
+- 角色权限修改实时生效，无需重新登录
 
 ---
 
-## 浜ゆ祦缇?
+## 交流群
 
-QQ 浜ゆ祦缇わ細**782798239**
+QQ 交流群：**7827982393**
 
-骞垮窞甯傚叓鑲℃枃绉戞妧瀹樼綉锛?http://www.gzbgw.com>
+广州市八股文科技官网：<http://www.gzbgw.com>
 
-鍏偂鏂囬搴撳钩鍙帮細<http://question.gzbgw.com>
+八股文题库平台：<http://question.gzbgw.com>
 
 ---
 
-## 寮€婧愬崗璁?
+## 开源协议
 
-鏈」鐩熀浜?[MIT License](LICENSE) 寮€婧愩€?
+本项目基于 [MIT License](LICENSE) 开源。
 
-RuoYi-Vue 鍘熼」鐩増鏉冨綊 [鑻ヤ緷鍥㈤槦](https://gitee.com/y_project/RuoYi-Vue) 鎵€鏈夛紝閬靛惊 MIT 鍗忚銆?
+RuoYi-Vue 原项目版权归 [若依团队](https://gitee.com/y_project/RuoYi-Vue) 所有，遵循 MIT 协议。

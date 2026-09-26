@@ -1,10 +1,10 @@
-﻿<div align="center">
+<div align="center">
 
-English | [涓枃](README.md)
+English | [中文](README.md)
 
 # RuoYi-Cpp
 
-**A High-Performance C++ Version of the RuoYi Management Framework** 路 `v1.3.3`
+**A High-Performance C++ Version of the RuoYi Management Framework** · `v1.3.3`
 
 Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% compatible with the RuoYi-Vue frontend
 
@@ -31,7 +31,7 @@ Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% 
 
 ## Live Demo
 
-馃寪 **Demo**: [https://www.nulk.cn/](https://www.nulk.cn/)
+🌐 **Demo**: [https://www.nulk.cn/](https://www.nulk.cn/)
 
 > Default credentials: `admin` / `admin123`
 
@@ -41,14 +41,14 @@ Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% 
 
 RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com/y_project/RuoYi-Vue) management framework. The backend is built on the Drogon asynchronous HTTP framework with PostgreSQL as the primary database, maintaining full API compatibility with the original RuoYi-Vue frontend.
 
-> 鉁?**Platform**: Fully compiled and verified on **Windows (MSYS2 MinGW64)** and **Linux (GCC)**. Supports **embedded SQLite mode** (no PostgreSQL required to run), with PostgreSQL as an optional primary database.
+> ✅ **Platform**: Fully compiled and verified on **Windows (MSYS2 MinGW64)** and **Linux (GCC)**. Supports **embedded SQLite mode** (no PostgreSQL required to run), with PostgreSQL as an optional primary database.
 
 **Advantages over the Java version:**
 
 | Metric | Java (Spring Boot) | RuoYi-Cpp |
 |--------|-------------------|-----------|
-| Memory usage | ~300鈥?00 MB | **~3.2鈥?0 MB** |
-| Startup time | 5鈥?5 s | **< 1 s** |
+| Memory usage | ~300–500 MB | **~3.2–10 MB** |
+| Startup time | 5–15 s | **< 1 s** |
 | Runtime dependency | JDK 17+ | None (statically linked) |
 | Deployment | JAR + JVM | **Single executable** |
 | Target environment | Cloud servers | Cloud / NAS / Embedded |
@@ -59,34 +59,34 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 
 ## Core Features
 
-- 鉁?**100% API Compatible** - Use official RuoYi-Vue frontend directly, no modifications needed
-- 鉁?**Extreme Performance** - Single-core C++17 async framework, QPS up to 10000+
-- 鉁?**Zero-Dependency Deployment** - Statically linked, single executable, no JVM/Runtime required
-- 鉁?**Built-in Frontend Hosting** - No Nginx needed, Drogon hosts Vue frontend directly
-- 鉁?**Dual Database Support** - PostgreSQL primary + SQLite auto-fallback, auto-sync on PG recovery
-- 鉁?**Enterprise Features** - RBAC permissions, audit logs, data masking, request signatures, device binding
-- 鉁?**Third-Party Login** - GitHub / Google / WeCom / DingTalk / Feishu / QQ OAuth2
-- 鉁?**Two-Factor Auth** - Google Authenticator TOTP RFC 6238
-- 鉁?**Secret Management** - HashiCorp Vault integration, auto start/unseal/injection
-- 鉁?**Observability** - Prometheus metrics, X-Request-ID tracing, JSON structured logs
-- 鉁?**WAF Firewall** - Built-in SQLi / XSS / path-traversal / command-injection regex rule engine, IP allow/deny lists (CIDR), optional nftables kernel-level banning on Linux
-- 鉁?**Dynamic Library Modules** - Code generation module independently compiled, hot-update without restart
-- 鉁?**Cluster Deployment** - Multi-Worker process support, auto-generates Nginx upstream.conf
+- ✅ **100% API Compatible** - Use official RuoYi-Vue frontend directly, no modifications needed
+- ✅ **Extreme Performance** - Single-core C++17 async framework, QPS up to 10000+
+- ✅ **Zero-Dependency Deployment** - Statically linked, single executable, no JVM/Runtime required
+- ✅ **Built-in Frontend Hosting** - No Nginx needed, Drogon hosts Vue frontend directly
+- ✅ **Dual Database Support** - PostgreSQL primary + SQLite auto-fallback, auto-sync on PG recovery
+- ✅ **Enterprise Features** - RBAC permissions, audit logs, data masking, request signatures, device binding
+- ✅ **Third-Party Login** - GitHub / Google / WeCom / DingTalk / Feishu / QQ OAuth2
+- ✅ **Two-Factor Auth** - Google Authenticator TOTP RFC 6238
+- ✅ **Secret Management** - HashiCorp Vault integration, auto start/unseal/injection
+- ✅ **Observability** - Prometheus metrics, X-Request-ID tracing, JSON structured logs
+- ✅ **WAF Firewall** - Built-in SQLi / XSS / path-traversal / command-injection regex rule engine, IP allow/deny lists (CIDR), optional nftables kernel-level banning on Linux
+- ✅ **Dynamic Library Modules** - Code generation module independently compiled, hot-update without restart
+- ✅ **Cluster Deployment** - Multi-Worker process support, auto-generates Nginx upstream.conf
 
 ---
 
 ## Modules
 
-> 馃摉 API docs are not maintained in this repo 鈥?after startup, visit **`/swagger-ui/`** (Swagger UI) or `GET /v3/api-docs` (OpenAPI 3.0 JSON) for live endpoint definitions.
+> 📖 API docs are not maintained in this repo — after startup, visit **`/swagger-ui/`** (Swagger UI) or `GET /v3/api-docs` (OpenAPI 3.0 JSON) for live endpoint definitions.
 
-- **System Management** 鈥?users / roles / menus / departments / posts / parameters / dictionaries / notices / email config / TOTP 2FA / OAuth2 login (GitHub, Google, WeCom, DingTalk, Feishu, QQ)
-- **System Monitor** 鈥?operation logs / login logs / online users / scheduled jobs (second-level Cron) / system log viewer / server monitoring (CPU, memory, disk, GPU) / cache monitor / data source monitor / restart admin page
-- **Account Self-Service** 鈥?login (LDAP supported) / registration (email code) / forgot password / reset password
-- **Code Generation & Tools** 鈥?code generation (standalone dynamic-library plugin, hot-updatable) / project build / website info / video processing
-- **AI & Intelligence** 鈥?LLM chat (streaming) / AI code generation / speech recognition (Whisper) / ONNX embedding
-- **IoT & Device Management** 鈥?device management / Modbus read-write / batch polling
-- **Operations & Observability** 鈥?`/actuator/health`, `/actuator/metrics` (Prometheus), `/actuator/db`, `/actuator/reload` (config hot-reload)
-- **WAF Firewall** 鈥?rule engine (built-in SQLi / XSS / path-traversal / command-injection + custom regex), IP allow/deny lists (CIDR), URI / UA lists, ban management (`/monitor/waf/**`), NDJSON block logs, nftables kernel-level banning (Linux only)
+- **System Management** — users / roles / menus / departments / posts / parameters / dictionaries / notices / email config / TOTP 2FA / OAuth2 login (GitHub, Google, WeCom, DingTalk, Feishu, QQ)
+- **System Monitor** — operation logs / login logs / online users / scheduled jobs (second-level Cron) / system log viewer / server monitoring (CPU, memory, disk, GPU) / cache monitor / data source monitor / restart admin page
+- **Account Self-Service** — login (LDAP supported) / registration (email code) / forgot password / reset password
+- **Code Generation & Tools** — code generation (standalone dynamic-library plugin, hot-updatable) / project build / website info / video processing
+- **AI & Intelligence** — LLM chat (streaming) / AI code generation / speech recognition (Whisper) / ONNX embedding
+- **IoT & Device Management** — device management / Modbus read-write / batch polling
+- **Operations & Observability** — `/actuator/health`, `/actuator/metrics` (Prometheus), `/actuator/db`, `/actuator/reload` (config hot-reload)
+- **WAF Firewall** — rule engine (built-in SQLi / XSS / path-traversal / command-injection + custom regex), IP allow/deny lists (CIDR), URI / UA lists, ban management (`/monitor/waf/**`), NDJSON block logs, nftables kernel-level banning (Linux only)
 
 ---
 
@@ -136,7 +136,7 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 
 | Item | Requirement | Description |
 |------|-------------|-------------|
-| **Operating System** | Windows 10+ / Linux / macOS | Verified on Windows 11 (MSYS2 MinGW64) and Linux (GCC).<br/>鈿狅笍 **Linux strictly requires Ubuntu 24.04 LTS** (see [Linux OS Requirement](docs/LINUX_OS_REQUIREMENT_EN.md)) |
+| **Operating System** | Windows 10+ / Linux / macOS | Verified on Windows 11 (MSYS2 MinGW64) and Linux (GCC).<br/>⚠️ **Linux strictly requires Ubuntu 24.04 LTS** (see [Linux OS Requirement](docs/LINUX_OS_REQUIREMENT_EN.md)) |
 | **Processor** | x86-64 or ARM64 | Recommended 4+ cores |
 | **Memory** | Min 512MB, recommended 2GB+ | Includes database and application |
 | **Disk** | Min 500MB | Includes app, logs, uploaded files |
@@ -197,7 +197,7 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
    - API Docs: http://localhost:18080/swagger-ui/
    - Default credentials: `admin` / `admin123`
 
-> 鈿狅笍 **Production**: Change default password and JWT secret immediately!
+> ⚠️ **Production**: Change default password and JWT secret immediately!
 
 ---
 
@@ -326,7 +326,7 @@ Main config file: `config.json` (see `config.bat.template.json` for full referen
   "database": { "host": "127.0.0.1", "port": 5432,
     "dbname": "ruoyi.c", "user": "postgres", "passwd": "" },
   "jwt": {
-    "secret": "at-least-16-random-chars",  // 鈿狅笍 Required in production
+    "secret": "at-least-16-random-chars",  // ⚠️ Required in production
     "expire_minutes": 30, "jwt_expire_days": 7
   }
 }
@@ -365,7 +365,7 @@ Main config file: `config.json` (see `config.bat.template.json` for full referen
 "totp": { "enabled": true, "issuer": "RuoYi-Cpp" }
 ```
 
-> **TOTP flow**: call `POST /system/totp/generate` 鈫?render `qrUri` as QR code 鈫?user scans with Google/Microsoft Authenticator 鈫?call `POST /system/totp/enable` with the 6-digit code to activate.
+> **TOTP flow**: call `POST /system/totp/generate` → render `qrUri` as QR code → user scans with Google/Microsoft Authenticator → call `POST /system/totp/enable` with the 6-digit code to activate.
 
 ### OAuth2 Third-Party Login
 
@@ -412,7 +412,7 @@ Main config file: `config.json` (see `config.bat.template.json` for full referen
 
 ### Email Configuration (in-app)
 
-After logging in, go to **System Management 鈫?Email Senders** to configure SMTP:
+After logging in, go to **System Management → Email Senders** to configure SMTP:
 
 | Key | Description | Example |
 |-----|-------------|---------|
@@ -427,95 +427,95 @@ After logging in, go to **System Management 鈫?Email Senders** to configure SMT
 
 ```
 ruoyi-cpp/
-鈹溾攢鈹€ .github/workflows/               # CI/CD pipelines (multi-platform tests & static analysis)
-鈹溾攢鈹€ build-nginx/                     # Production packaging & Nginx configurations
-鈹?  鈹斺攢鈹€ 閮ㄧ讲璇存槑.md                  # Comprehensive deployment guide
-鈹溾攢鈹€ certmanager-web/                 # SSL certificate management frontend (Alpine + Tailwind)
-鈹溾攢鈹€ drogon/                          # Drogon precompiled static libraries
-鈹溾攢鈹€ k8s/                             # Kubernetes native orchestration (7 core resources)
-鈹溾攢鈹€ monitoring/                      # Observability stack: Prometheus + Grafana
-鈹溾攢鈹€ plugins/                         # Dynamic runtime loaded plugin modules (e.g., hello_plugin)
-鈹溾攢鈹€ scripts/                         # System utility scripts (e.g., SQLite3MC secure downloader)
-鈹溾攢鈹€ tests/                           # Modular test framework (unit/, mocks/, fixtures/, doctest)
-鈹溾攢鈹€ tools/                           # High-performance offline tools (e.g., SQLite encryption tool)
-鈹溾攢鈹€ vue-c++/                         # Modern Vue2 web frontend integrated with C++ backend
-鈹溾攢鈹€ watchdog/                        # Light-weight, high-availability daemon (auto-restart & heartbeats)
-鈹溾攢鈹€ logs/                            # Text and JSONL structured runtime log outputs
-鈹溾攢鈹€ upload/                          # Local file uploads and storage path
-鈹溾攢鈹€ src/                             # C++ backend main engine source
-鈹?  鈹溾攢鈹€ alert/                       # NEW: Real-time alerting, threshold aggregation & notification
-鈹?  鈹溾攢鈹€ analytics/                   # NEW: Real-time statistical analytics
-鈹?  鈹溾攢鈹€ cache/                       # NEW: Policy-driven multi-level high-performance cache
-鈹?  鈹溾攢鈹€ log/                         # NEW: Structured log adapters
-鈹?  鈹溾攢鈹€ monitor/                     # Metric collection and thread tracing modules
-鈹?  鈹溾攢鈹€ taskqueue/                   # NEW: Ultra-fast asynchronous task execution queue
-鈹?  鈹溾攢鈹€ main.cc                      # Legacy single-file entry (kept for reference, not compiled)
-鈹?  鈹溾攢鈹€ main/                        # Startup modules (split from old main.cc)
-鈹?  鈹?  鈹溾攢鈹€ main.cc                  # Entry: chains startup phases
-鈹?  鈹?  鈹斺攢鈹€ main/                    # Per-phase implementations (boot::*)
-鈹?  鈹?      鈹溾攢鈹€ AppBootstrap.h       #   AppContext shared context + phase declarations
-鈹?  鈹?      鈹溾攢鈹€ EarlyInit.cc         #   Early init: watchdog handoff / singleton lock / orchestrator
-鈹?  鈹?      鈹溾攢鈹€ ConfigInit.cc        #   Config loading, license, DB conn string
-鈹?  鈹?      鈹溾攢鈹€ HttpSetup.cc         #   Drogon listeners / middleware / filters
-鈹?  鈹?      鈹溾攢鈹€ RoutesSetup.cc       #   Built-in route registration
-鈹?  鈹?      鈹溾攢鈹€ CertRoutes.cc        #   Certificate / ACME routes
-鈹?  鈹?      鈹溾攢鈹€ StartupAdvice.cc     #   beginningAdvice: DB init, external services
-鈹?  鈹?      鈹溾攢鈹€ RuntimeSetup.cc      #   Runtime services (NginxEmbedded, heartbeat) + cleanup
-鈹?  鈹?      鈹斺攢鈹€ DbConnStr.cc         #   libpq connection string builder
-鈹?  鈹溾攢鈹€ AppIncludes.h                # Centralized global includes
-鈹?  鈹溾攢鈹€ codegen/                     # Code generation module (compiled as dynamic library)
-鈹?  鈹?  鈹溾攢鈹€ CMakeLists.txt           # Dynamic library build config
-鈹?  鈹?  鈹溾攢鈹€ CodeGenerator.h/cc       # Code generation engine
-鈹?  鈹?  鈹溾攢鈹€ DynamicCompiler.h/cc     # Dynamic compiler (CMake + MinGW/GCC)
-鈹?  鈹?  鈹溾攢鈹€ PluginManager.h/cc       # Plugin management (load/unload/invoke)
-鈹?  鈹?  鈹斺攢鈹€ controllers/
-鈹?  鈹?      鈹斺攢鈹€ CodeGenCtrl.h/cc     # Code generation static methods (exported by DLL)
-鈹?  鈹溾攢鈹€ common/
-鈹?  鈹?  鈹溾攢鈹€ AjaxResult.h             # Unified JSON response body
-鈹?  鈹?  鈹溾攢鈹€ DatabaseInit.cc          # Auto table creation + initial data + migration
-鈹?  鈹?  鈹溾攢鈹€ JwtUtils.h               # JWT generation/parsing
-鈹?  鈹?  鈹溾攢鈹€ JsonLogger.h             # JSON structured logging (overrides Drogon output)
-鈹?  鈹?  鈹溾攢鈹€ RequestTracing.h         # X-Request-ID tracing middleware
-鈹?  鈹?  鈹溾攢鈹€ DataMaskUtils.h          # Phone/ID/bank card/email masking
-鈹?  鈹?  鈹溾攢鈹€ MetricsCollector.h       # Prometheus metrics + ActuatorCtrl
-鈹?  鈹?  鈹溾攢鈹€ TotpUtils.h              # TOTP RFC 6238 (Google Authenticator)
-鈹?  鈹?  鈹溾攢鈹€ OAuth2Manager.h          # OAuth2: GitHub/Google/WeCom/DingTalk/Feishu/QQ
-鈹?  鈹?  鈹溾攢鈹€ HotConfig.h              # Config hot-reload (5s polling)
-鈹?  鈹?  鈹溾攢鈹€ LdapAuth.h               # LDAP/AD authentication
-鈹?  鈹?  鈹溾攢鈹€ FrontendHost.h           # Built-in frontend hosting + SPA fallback
-鈹?  鈹?  鈹溾攢鈹€ RateLimiter.h            # IP rate limiting
-鈹?  鈹?  鈹溾攢鈹€ XssUtils.h               # XSS filter + SQL injection detection
-鈹?  鈹?  鈹溾攢鈹€ SignUtils.h              # API request signature verification
-鈹?  鈹?  鈹溾攢鈹€ LicenseManager.h         # Software license management
-鈹?  鈹?  鈹溾攢鈹€ DeviceBinding.h          # Device binding (hardware fingerprint)
-鈹?  鈹?  鈹溾攢鈹€ SmtpUtils.h              # SMTP email (OpenSSL Implicit-TLS)
-鈹?  鈹?  鈹斺攢鈹€ CrashHandler.h           # Crash capture (SEH/VEH/terminate, Windows)
-鈹?  鈹溾攢鈹€ filters/
-鈹?  鈹?  鈹溾攢鈹€ JwtAuthFilter.h          # JWT auth middleware (HttpMiddleware)
-鈹?  鈹?  鈹斺攢鈹€ PermFilter.h             # Permission check macro CHECK_PERM
-鈹?  鈹溾攢鈹€ services/
-鈹?  鈹?  鈹溾攢鈹€ DatabaseService.h        # PostgreSQL(pool) + SQLite dual-write/auto-fallback
-鈹?  鈹?  鈹溾攢鈹€ StorageService.h         # File storage: local / MinIO / S3 (SigV4)
-鈹?  鈹?  鈹溾攢鈹€ VaultManager.h           # HashiCorp Vault integration
-鈹?  鈹?  鈹斺攢鈹€ NginxManager.h           # Nginx subprocess management
-鈹?  鈹溾攢鈹€ system/
-鈹?  鈹?  鈹溾攢鈹€ services/                # TokenService, SysConfigService, etc.
-鈹?  鈹?  鈹斺攢鈹€ controllers/
-鈹?  鈹?      鈹溾攢鈹€ SysLoginCtrl.h       # Login / register / forgot password / routes
-鈹?  鈹?      鈹溾攢鈹€ SysUserCtrl.h        # User management
-鈹?  鈹?      鈹溾攢鈹€ SysRoleCtrl.h        # Role management (real-time permission refresh)
-鈹?  鈹?      鈹溾攢鈹€ SysTotpCtrl.h        # TOTP two-factor auth API
-鈹?  鈹?      鈹溾攢鈹€ OAuth2Ctrl.h         # OAuth2: authorize/callback/bind/unbind
-鈹?  鈹?      鈹斺攢鈹€ ...                  # Menu / dept / dict / notice, etc.
-鈹?  鈹斺攢鈹€ monitor/
-鈹?      鈹溾攢鈹€ JobScheduler.h           # Cron scheduler (second-level cron expressions)
-鈹?      鈹斺攢鈹€ controllers/
-鈹?          鈹溾攢鈹€ SysLogFileCtrl.h     # System log file viewer
-鈹?          鈹溾攢鈹€ SysJobCtrl.h         # Scheduled job management
-鈹?          鈹溾攢鈹€ ServerCtrl.h         # Server monitor
-鈹?          鈹溾攢鈹€ DruidCtrl.h          # DB connection pool monitor
-鈹?          鈹斺攢鈹€ ...                  # Operation log / login log / online users
-鈹斺攢鈹€ ui/                              # Frontend source (Vue 2 + Element UI)
+├── .github/workflows/               # CI/CD pipelines (multi-platform tests & static analysis)
+├── build-nginx/                     # Production packaging & Nginx configurations
+│   └── 部署说明.md                  # Comprehensive deployment guide
+├── certmanager-web/                 # SSL certificate management frontend (Alpine + Tailwind)
+├── drogon/                          # Drogon precompiled static libraries
+├── k8s/                             # Kubernetes native orchestration (7 core resources)
+├── monitoring/                      # Observability stack: Prometheus + Grafana
+├── plugins/                         # Dynamic runtime loaded plugin modules (e.g., hello_plugin)
+├── scripts/                         # System utility scripts (e.g., SQLite3MC secure downloader)
+├── tests/                           # Modular test framework (unit/, mocks/, fixtures/, doctest)
+├── tools/                           # High-performance offline tools (e.g., SQLite encryption tool)
+├── vue-c++/                         # Modern Vue2 web frontend integrated with C++ backend
+├── watchdog/                        # Light-weight, high-availability daemon (auto-restart & heartbeats)
+├── logs/                            # Text and JSONL structured runtime log outputs
+├── upload/                          # Local file uploads and storage path
+├── src/                             # C++ backend main engine source
+│   ├── alert/                       # NEW: Real-time alerting, threshold aggregation & notification
+│   ├── analytics/                   # NEW: Real-time statistical analytics
+│   ├── cache/                       # NEW: Policy-driven multi-level high-performance cache
+│   ├── log/                         # NEW: Structured log adapters
+│   ├── monitor/                     # Metric collection and thread tracing modules
+│   ├── taskqueue/                   # NEW: Ultra-fast asynchronous task execution queue
+│   ├── main.cc                      # Legacy single-file entry (kept for reference, not compiled)
+│   ├── main/                        # Startup modules (split from old main.cc)
+│   │   ├── main.cc                  # Entry: chains startup phases
+│   │   └── main/                    # Per-phase implementations (boot::*)
+│   │       ├── AppBootstrap.h       #   AppContext shared context + phase declarations
+│   │       ├── EarlyInit.cc         #   Early init: watchdog handoff / singleton lock / orchestrator
+│   │       ├── ConfigInit.cc        #   Config loading, license, DB conn string
+│   │       ├── HttpSetup.cc         #   Drogon listeners / middleware / filters
+│   │       ├── RoutesSetup.cc       #   Built-in route registration
+│   │       ├── CertRoutes.cc        #   Certificate / ACME routes
+│   │       ├── StartupAdvice.cc     #   beginningAdvice: DB init, external services
+│   │       ├── RuntimeSetup.cc      #   Runtime services (NginxEmbedded, heartbeat) + cleanup
+│   │       └── DbConnStr.cc         #   libpq connection string builder
+│   ├── AppIncludes.h                # Centralized global includes
+│   ├── codegen/                     # Code generation module (compiled as dynamic library)
+│   │   ├── CMakeLists.txt           # Dynamic library build config
+│   │   ├── CodeGenerator.h/cc       # Code generation engine
+│   │   ├── DynamicCompiler.h/cc     # Dynamic compiler (CMake + MinGW/GCC)
+│   │   ├── PluginManager.h/cc       # Plugin management (load/unload/invoke)
+│   │   └── controllers/
+│   │       └── CodeGenCtrl.h/cc     # Code generation static methods (exported by DLL)
+│   ├── common/
+│   │   ├── AjaxResult.h             # Unified JSON response body
+│   │   ├── DatabaseInit.cc          # Auto table creation + initial data + migration
+│   │   ├── JwtUtils.h               # JWT generation/parsing
+│   │   ├── JsonLogger.h             # JSON structured logging (overrides Drogon output)
+│   │   ├── RequestTracing.h         # X-Request-ID tracing middleware
+│   │   ├── DataMaskUtils.h          # Phone/ID/bank card/email masking
+│   │   ├── MetricsCollector.h       # Prometheus metrics + ActuatorCtrl
+│   │   ├── TotpUtils.h              # TOTP RFC 6238 (Google Authenticator)
+│   │   ├── OAuth2Manager.h          # OAuth2: GitHub/Google/WeCom/DingTalk/Feishu/QQ
+│   │   ├── HotConfig.h              # Config hot-reload (5s polling)
+│   │   ├── LdapAuth.h               # LDAP/AD authentication
+│   │   ├── FrontendHost.h           # Built-in frontend hosting + SPA fallback
+│   │   ├── RateLimiter.h            # IP rate limiting
+│   │   ├── XssUtils.h               # XSS filter + SQL injection detection
+│   │   ├── SignUtils.h              # API request signature verification
+│   │   ├── LicenseManager.h         # Software license management
+│   │   ├── DeviceBinding.h          # Device binding (hardware fingerprint)
+│   │   ├── SmtpUtils.h              # SMTP email (OpenSSL Implicit-TLS)
+│   │   └── CrashHandler.h           # Crash capture (SEH/VEH/terminate, Windows)
+│   ├── filters/
+│   │   ├── JwtAuthFilter.h          # JWT auth middleware (HttpMiddleware)
+│   │   └── PermFilter.h             # Permission check macro CHECK_PERM
+│   ├── services/
+│   │   ├── DatabaseService.h        # PostgreSQL(pool) + SQLite dual-write/auto-fallback
+│   │   ├── StorageService.h         # File storage: local / MinIO / S3 (SigV4)
+│   │   ├── VaultManager.h           # HashiCorp Vault integration
+│   │   └── NginxManager.h           # Nginx subprocess management
+│   ├── system/
+│   │   ├── services/                # TokenService, SysConfigService, etc.
+│   │   └── controllers/
+│   │       ├── SysLoginCtrl.h       # Login / register / forgot password / routes
+│   │       ├── SysUserCtrl.h        # User management
+│   │       ├── SysRoleCtrl.h        # Role management (real-time permission refresh)
+│   │       ├── SysTotpCtrl.h        # TOTP two-factor auth API
+│   │       ├── OAuth2Ctrl.h         # OAuth2: authorize/callback/bind/unbind
+│   │       └── ...                  # Menu / dept / dict / notice, etc.
+│   └── monitor/
+│       ├── JobScheduler.h           # Cron scheduler (second-level cron expressions)
+│       └── controllers/
+│           ├── SysLogFileCtrl.h     # System log file viewer
+│           ├── SysJobCtrl.h         # Scheduled job management
+│           ├── ServerCtrl.h         # Server monitor
+│           ├── DruidCtrl.h          # DB connection pool monitor
+│           └── ...                  # Operation log / login log / online users
+└── ui/                              # Frontend source (Vue 2 + Element UI)
 ```
 
 ---
@@ -525,7 +525,7 @@ ruoyi-cpp/
 - **Super Admin** (`user_id=1`): All permissions, bypasses RBAC
 - **Regular Users**: Assigned roles via `sys_user_role`, roles linked to menu permissions
 - **Permission strings**: e.g. `system:user:list`, auto-checked by the `CHECK_PERM` macro
-- **Real-time permission updates**: Modifying role menus takes effect immediately 鈥?**online users do not need to re-login**
+- **Real-time permission updates**: Modifying role menus takes effect immediately — **online users do not need to re-login**
 
 ### Default Role for Registered Users
 
@@ -544,7 +544,7 @@ Controlled by system parameter `sys.account.initRoleId`:
 |----------|----------|-------------|
 | `admin` | `admin123` | Super admin, full permissions |
 
-> 鈿狅笍 **Change the default password immediately in production!**
+> ⚠️ **Change the default password immediately in production!**
 
 Passwords are stored using OpenSSL PBKDF2-SHA256 (10,000 rounds).
 
@@ -552,7 +552,7 @@ Passwords are stored using OpenSSL PBKDF2-SHA256 (10,000 rounds).
 
 ## Bulk User Import
 
-Batch import users via CSV (**System Management 鈫?User Management 鈫?Import**):
+Batch import users via CSV (**System Management → User Management → Import**):
 
 1. Click "Download Template" to get the CSV format
 2. Fill in user data (default password: `123456`)
@@ -617,10 +617,10 @@ location /ws/ {
 
 ## Compatibility with RuoYi-Vue
 
-- 鉁?All `/system/**` and `/monitor/**` API routes are identical to the original
-- 鉁?JWT token format, `getInfo`, `getRouters` response structures are fully compatible
-- 鉁?Clone the [official RuoYi frontend](https://gitee.com/y_project/RuoYi-Vue), change only the backend URL, and run
-- 鉃?Added: email sender management, forgot password, registration email verification
+- ✅ All `/system/**` and `/monitor/**` API routes are identical to the original
+- ✅ JWT token format, `getInfo`, `getRouters` response structures are fully compatible
+- ✅ Clone the [official RuoYi frontend](https://gitee.com/y_project/RuoYi-Vue), change only the backend URL, and run
+- ➕ Added: email sender management, forgot password, registration email verification
 
 ---
 
@@ -734,15 +734,15 @@ tail -f logs/ruoyi-cpp.log
 
 # Common errors:
 # 1. "cannot connect to database"
-#    鈫?Check PostgreSQL is running: psql -U postgres
-#    鈫?Verify connection string: host/port/dbname/user/passwd
+#    → Check PostgreSQL is running: psql -U postgres
+#    → Verify connection string: host/port/dbname/user/passwd
 
 # 2. "Address already in use"
-#    鈫?Port is occupied, change listeners[].port in config.json
+#    → Port is occupied, change listeners[].port in config.json
 
 # 3. "Permission denied"
-#    鈫?Check file permissions: chmod +x ruoyi-cpp
-#    鈫?Check log directory: mkdir -p logs && chmod 755 logs
+#    → Check file permissions: chmod +x ruoyi-cpp
+#    → Check log directory: mkdir -p logs && chmod 755 logs
 ```
 
 ### Performance Issues
@@ -792,7 +792,7 @@ POST /actuator/reload
 > In dev mode, check that `devServer.proxy` in `vue.config.js` points to the correct backend port (`18080`). In production, verify the Nginx `/prod-api/` proxy config.
 
 **Q: Can the server start with an empty JWT secret?**
-> Yes, but all tokens will be signed with an empty key 鈥?**a serious security risk**. Always set a strong random secret in production.
+> Yes, but all tokens will be signed with an empty key — **a serious security risk**. Always set a strong random secret in production.
 
 **Q: Role permission changes not taking effect?**
 > The backend automatically refreshes online users' permission cache. If it still doesn't work, check that `MemCache` / Redis is functioning correctly.
@@ -935,70 +935,70 @@ void scheduleMyTask() {
 
 ```
 sys_user (User table)
-鈹溾攢鈹€ user_id (PK)
-鈹溾攢鈹€ username (UK)
-鈹溾攢鈹€ password (PBKDF2-SHA256)
-鈹溾攢鈹€ email (UK)
-鈹溾攢鈹€ phonenumber
-鈹溾攢鈹€ sex
-鈹溾攢鈹€ avatar
-鈹溾攢鈹€ status
-鈹溾攢鈹€ del_flag
-鈹斺攢鈹€ create_time
+├── user_id (PK)
+├── username (UK)
+├── password (PBKDF2-SHA256)
+├── email (UK)
+├── phonenumber
+├── sex
+├── avatar
+├── status
+├── del_flag
+└── create_time
 
 sys_role (Role table)
-鈹溾攢鈹€ role_id (PK)
-鈹溾攢鈹€ role_name (UK)
-鈹溾攢鈹€ role_key (UK)
-鈹溾攢鈹€ role_sort
-鈹溾攢鈹€ status
-鈹斺攢鈹€ create_time
+├── role_id (PK)
+├── role_name (UK)
+├── role_key (UK)
+├── role_sort
+├── status
+└── create_time
 
 sys_menu (Menu table)
-鈹溾攢鈹€ menu_id (PK)
-鈹溾攢鈹€ menu_name
-鈹溾攢鈹€ parent_id (FK)
-鈹溾攢鈹€ order_num
-鈹溾攢鈹€ path
-鈹溾攢鈹€ component
-鈹溾攢鈹€ perms (Permission string)
-鈹溾攢鈹€ icon
-鈹溾攢鈹€ menu_type (C/M/F)
-鈹斺攢鈹€ visible
+├── menu_id (PK)
+├── menu_name
+├── parent_id (FK)
+├── order_num
+├── path
+├── component
+├── perms (Permission string)
+├── icon
+├── menu_type (C/M/F)
+└── visible
 
 sys_user_role (User-Role association)
-鈹溾攢鈹€ user_id (FK)
-鈹斺攢鈹€ role_id (FK)
+├── user_id (FK)
+└── role_id (FK)
 
 sys_role_menu (Role-Menu association)
-鈹溾攢鈹€ role_id (FK)
-鈹斺攢鈹€ menu_id (FK)
+├── role_id (FK)
+└── menu_id (FK)
 
 sys_oper_log (Operation log)
-鈹溾攢鈹€ oper_id (PK)
-鈹溾攢鈹€ user_id (FK)
-鈹溾攢鈹€ oper_module
-鈹溾攢鈹€ oper_type
-鈹溾攢鈹€ oper_url
-鈹溾攢鈹€ oper_method
-鈹溾攢鈹€ request_method
-鈹溾攢鈹€ oper_param
-鈹溾攢鈹€ oper_result
-鈹溾攢鈹€ error_msg
-鈹溾攢鈹€ oper_time
-鈹斺攢鈹€ cost_time
+├── oper_id (PK)
+├── user_id (FK)
+├── oper_module
+├── oper_type
+├── oper_url
+├── oper_method
+├── request_method
+├── oper_param
+├── oper_result
+├── error_msg
+├── oper_time
+└── cost_time
 
 sys_login_log (Login log)
-鈹溾攢鈹€ info_id (PK)
-鈹溾攢鈹€ user_id (FK)
-鈹溾攢鈹€ login_name
-鈹溾攢鈹€ ipaddr
-鈹溾攢鈹€ login_location
-鈹溾攢鈹€ browser
-鈹溾攢鈹€ os
-鈹溾攢鈹€ status
-鈹溾攢鈹€ msg
-鈹斺攢鈹€ login_time
+├── info_id (PK)
+├── user_id (FK)
+├── login_name
+├── ipaddr
+├── login_location
+├── browser
+├── os
+├── status
+├── msg
+└── login_time
 ```
 
 ### Database Connection Management
@@ -1193,7 +1193,7 @@ Issues and Pull Requests are welcome!
 **Code style:**
 - C++ code follows the existing project style (header-only implementation, Drogon async callbacks)
 - New API endpoints must include a permission string (e.g. `system:user:add`)
-- No hardcoded secrets 鈥?use `config.json` or database configuration
+- No hardcoded secrets — use `config.json` or database configuration
 - New features must include unit tests
 - Run `clang-format` before committing
 
@@ -1203,12 +1203,12 @@ Issues and Pull Requests are welcome!
 
 | Item | Note |
 |------|------|
-| JWT Secret | Must be 鈮?6 random chars; use `/dev/urandom` or similar in production |
+| JWT Secret | Must be ≥16 random chars; use `/dev/urandom` or similar in production |
 | Default password | Change `admin`'s `admin123` password immediately after first run |
 | TOTP | Strongly recommend enforcing TOTP for admin accounts |
 | LDAP `bind_pass` | Inject via Vault; do not store in plaintext in `config.json` |
-| MinIO `secret_key` | Same 鈥?inject via Vault |
-| OAuth2 `client_secret` | Same 鈥?inject via Vault; never store in plaintext |
+| MinIO `secret_key` | Same — inject via Vault |
+| OAuth2 `client_secret` | Same — inject via Vault; never store in plaintext |
 | OAuth2 `redirect_uri` | Must exactly match provider console config to prevent open redirect |
 | `/actuator/*` | Restrict to internal network via Nginx/firewall |
 | Data masking | `DataMaskUtils::maskJsonValue()` auto-masks sensitive fields in logs/responses |
@@ -1222,7 +1222,7 @@ Issues and Pull Requests are welcome!
 - **Startup code modularization**: the 3400+ line `src/main.cc` split into `src/main/main.cc` entry + 8 phase modules under `src/main/main/` (`EarlyInit`/`ConfigInit`/`HttpSetup`/`RoutesSetup`/`CertRoutes`/`StartupAdvice`/`RuntimeSetup`/`DbConnStr`), sharing `AppContext` via `AppBootstrap.h`; old `src/main.cc` kept for reference and excluded from the build
 - **Full Linux verification**: GCC build + runtime verified (SQLite fallback, watchdog handoff, singleton lock, multi-process orchestrator all working)
 - **SQL LIKE wildcard escaping**: `StringUtils::escapeLikeParam` promoted to a shared helper; all LIKE queries now use `ESCAPE` to prevent `%`/`_` wildcard injection
-- **Graceful background thread shutdown**: `HotConfig` and `LicenseWatcher` threads made joinable 鈥?`stop()` actually waits, destructor joins as a safety net against `std::terminate`; `LicenseWatcher` poll sleep refined to 1s granularity for sub-second shutdown
+- **Graceful background thread shutdown**: `HotConfig` and `LicenseWatcher` threads made joinable — `stop()` actually waits, destructor joins as a safety net against `std::terminate`; `LicenseWatcher` poll sleep refined to 1s granularity for sub-second shutdown
 - **Default config auto-generation**: missing `config.json` is generated from the embedded `DefaultConfig.h` template (SQLite mode) before license validation
 - **WAF firewall** (`src/waf/`): `WafEngine` regex rule engine (built-in SQLi / XSS / path-traversal / command-injection rules, custom rules via config.json), `CidrMatcher` IP allow/deny lists, `NftBan` Linux nftables kernel-level banning (drops at SYN stage; auto-fallback to app-layer ban without privileges), `WafCtrl` provides `/monitor/waf/**` admin APIs (stats / block logs / bans / rules / CIDR / URI / UA lists)
 
@@ -1245,18 +1245,18 @@ Issues and Pull Requests are welcome!
 - **Dynamic compiler integration**: `DynamicCompiler` supports Windows MinGW + Linux GCC, auto-invokes CMake to compile generated code; custom compiler path via `CODEGEN_COMPILER_PATH` environment variable
 - **Plugin management system**: `PluginManager` supports load/unload/list/invoke multiple plugins; each plugin is independent DLL; supports hot-update
 - **Domain / HTTPS access**: new `_listeners_https_example` in `config.json` covering local / public HTTP / public HTTPS listener modes; manual certificates (`.crt` + `.key`) from cloud providers (Tencent Cloud, etc.) mounted directly in listeners, zero extra dependencies
-- **InnerLink menu URL auto-replacement** (`menu.api_base_url`): on startup, automatically replaces all `localhost` URLs in InnerLink menus with the configured public domain 鈥?no manual menu editing needed
+- **InnerLink menu URL auto-replacement** (`menu.api_base_url`): on startup, automatically replaces all `localhost` URLs in InnerLink menus with the configured public domain — no manual menu editing needed
 - **ACME certificate notes**: full comments in `acme` config block clarifying that port 80 must use `https=false` (HTTP-01 challenge), while 443/custom ports enable HTTPS
-- **Deployment guide** (`build-nginx/閮ㄧ讲璇存槑.md`): covers local / public HTTP / HTTPS modes, SSL certificate format selection, frontend build & deploy, common ports
-- **Fix disk volume label garbled text + heap crash** (`ServerCtrl.h`): `GetVolumeInformationA` 鈫?`GetVolumeInformationW` + `WideCharToMultiByte(CP_UTF8)`, fixing GBK mojibake on Chinese Windows and eliminating jsoncpp heap corruption on non-UTF8 bytes
-- **WebSocket auto-reconnect** (`App.vue`): exponential backoff (2s 鈫?4s 鈫?... 鈫?30s max), auto-resubscribe after disconnect
+- **Deployment guide** (`build-nginx/部署说明.md`): covers local / public HTTP / HTTPS modes, SSL certificate format selection, frontend build & deploy, common ports
+- **Fix disk volume label garbled text + heap crash** (`ServerCtrl.h`): `GetVolumeInformationA` → `GetVolumeInformationW` + `WideCharToMultiByte(CP_UTF8)`, fixing GBK mojibake on Chinese Windows and eliminating jsoncpp heap corruption on non-UTF8 bytes
+- **WebSocket auto-reconnect** (`App.vue`): exponential backoff (2s → 4s → ... → 30s max), auto-resubscribe after disconnect
 - **Swagger API docs expansion**: added OpenAPI tags and paths for IoT devices, AI/ONNX inference, SM2/SM3/SM4 crypto, OAuth2, code generation, dashboard modules
 - **IoT device startup loading** (`main.cc`): calls `IotCtrl::loadFromDb()` on startup to restore device list from database
 - **New unit tests**: `test_token_cache` (set/get/remove/update/size), `test_rate_limiter` (normal/block/whitelist/disable), integrated into `RUOYI_BUILD_HEAVY_TESTS`
-- **DashboardCtrl fix**: `char today[16]` 鈫?`char today[32]`, eliminating Linux glibc fortify buffer overflow warning
+- **DashboardCtrl fix**: `char today[16]` → `char today[32]`, eliminating Linux glibc fortify buffer overflow warning
 
 ### v1.2.1
-- **Restart service management page**: `GET /monitor/restart` 鈥?pure backend-rendered HTML page; admin can check online user count before confirming restart; token auto-read from same-origin iframe `sessionStorage`
+- **Restart service management page**: `GET /monitor/restart` — pure backend-rendered HTML page; admin can check online user count before confirming restart; token auto-read from same-origin iframe `sessionStorage`
 - **Fix HTTP_HIDE production 404 bug**: removed `HTTP_HIDE` macro from `SysRestartCtrl` that caused restart endpoints to return 404 in Release builds
 - **Notification center** (f15): DingTalk / Feishu / WeCom Webhook (HMAC-SHA256 signed) + in-app messages
 - **API Key management** (f16): `/system/apikey/**` CRUD, 48-char random key, `X-API-Key` header or `?apiKey=` query param auth
@@ -1284,7 +1284,7 @@ Issues and Pull Requests are welcome!
 - **Built-in frontend hosting**: `/prod-api` prefix auto-stripped, SPA history fallback, no Nginx needed
 - **System log file viewer backend**: `GET /monitor/logfile/page`, iframe-embedded in frontend
 - **JSON structured logging**: `JsonLogger` converts trantor output to NDJSON (`.jsonl`)
-- **SQLite compatibility fix**: `DEFAULT NOW()` 鈫?`DEFAULT CURRENT_TIMESTAMP`
+- **SQLite compatibility fix**: `DEFAULT NOW()` → `DEFAULT CURRENT_TIMESTAMP`
 
 ### v1.0.0
 - Full implementation of all RuoYi-Vue system management and monitoring APIs
@@ -1299,7 +1299,7 @@ Issues and Pull Requests are welcome!
 - GPU VRAM cache (optional CUDA), Cron scheduler (second-level, DB-persisted)
 - Cluster mode (primary/replica, auto-generates Nginx upstream.conf)
 - Crash capture (SEH/VEH + Minidump, Windows)
-- Role permission changes take effect in real time 鈥?no re-login required
+- Role permission changes take effect in real time — no re-login required
 
 ---
 
