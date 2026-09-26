@@ -7,6 +7,7 @@
 #include "../../common/PageUtils.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
+#include "../../common/StringUtils.h"
 
 // 代码生成工具 /tool/gen  (完整实现：导入/预览/生成/同步)
 class GenCtrl : public drogon::HttpController<GenCtrl> {
@@ -86,7 +87,7 @@ public:
             "AND table_name NOT IN (SELECT table_name FROM gen_table)";
         std::vector<std::string> params;
         int idx = 1;
-        if (!tableName.empty()) { sql += " AND table_name LIKE $" + std::to_string(idx++); params.push_back("%" + tableName + "%"); }
+        if (!tableName.empty()) { sql += " AND table_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(tableName) + "%"); }
         auto page = PageParam::fromRequest(req);
         std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";
         auto cntRes = params.empty() ? db.query(countSql) : db.queryParams(countSql, params);
@@ -540,7 +541,8 @@ private:
         o << "#include \"../../common/AjaxResult.h\"\n";
         o << "#include \"../../common/PageUtils.h\"\n";
         o << "#include \"../../filters/PermFilter.h\"\n";
-        o << "#include \"../../services/DatabaseService.h\"\n\n";
+        o << "#include \"../../services/DatabaseService.h\"\n"
+          << "#include \"../../common/StringUtils.h\"\n\n";
         o << "class " << cls << "Ctrl : public drogon::HttpController<" << cls << "Ctrl> {\npublic:\n";
         o << "    METHOD_LIST_BEGIN\n";
         o << "        ADD_METHOD_TO(" << cls << "Ctrl::list,    \"" << path << "/list\",   drogon::Get,    \"JwtAuthFilter\");\n";
@@ -563,8 +565,8 @@ private:
         for (auto& c : t.columns) {
             if (!c.isQuery) continue;
             o << "        { auto v = req->getParameter(\"" << c.javaField << "\");\n";
-            o << "          if (!v.empty()) { where += \" AND " << c.colName << " LIKE $\" + std::to_string(idx++);\n";
-            o << "                           params.push_back(\"%\" + v + \"%\"); } }\n";
+            o << "          if (!v.empty()) { where += \" AND " << c.colName << " LIKE $\" + std::to_string(idx++) + \" ESCAPE '\\\\'\";\n";
+            o << "                           params.push_back(\"%\" + escapeLikeParam(v) + \"%\"); } }\n";
         }
         o << "        std::string cntSql = \"SELECT COUNT(*) FROM " << t.tableName << "\" + where;\n";
         o << "        auto cntRes = params.empty() ? db.query(cntSql) : db.queryParams(cntSql, params);\n";

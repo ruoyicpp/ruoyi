@@ -6,6 +6,7 @@
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
 #include "../../common/CsvUtils.h"
+#include "../../common/StringUtils.h"
 
 /**
  * @file SysLogCtrl.h
@@ -130,8 +131,8 @@ public:
         auto status    = req->getParameter("status");
         auto beginTime = req->getParameter("params[beginTime]");
         auto endTime   = req->getParameter("params[endTime]");
-        if (!title.empty())     { sql += " AND title LIKE $" + std::to_string(idx++); params.push_back("%" + title + "%"); }
-        if (!operName.empty())  { sql += " AND oper_name LIKE $" + std::to_string(idx++); params.push_back("%" + operName + "%"); }
+        if (!title.empty())     { sql += " AND title LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(title) + "%"); }
+        if (!operName.empty())  { sql += " AND oper_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(operName) + "%"); }
         if (!status.empty())    { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
         if (!beginTime.empty()) { sql += " AND oper_time >= $" + std::to_string(idx++); params.push_back(beginTime); }
         if (!endTime.empty())   { sql += " AND oper_time <= $" + std::to_string(idx++); params.push_back(endTime); }
@@ -182,8 +183,8 @@ public:
         auto title    = req->getParameter("title");
         auto operName = req->getParameter("operName");
         auto status   = req->getParameter("status");
-        if (!title.empty())    { sql += " AND title LIKE $"+std::to_string(idx++);    params.push_back("%"+title+"%"); }
-        if (!operName.empty()) { sql += " AND oper_name LIKE $"+std::to_string(idx++); params.push_back("%"+operName+"%"); }
+        if (!title.empty())    { sql += " AND title LIKE $"+std::to_string(idx++)+" ESCAPE '\\'";    params.push_back("%"+escapeLikeParam(title)+"%"); }
+        if (!operName.empty()) { sql += " AND oper_name LIKE $"+std::to_string(idx++)+" ESCAPE '\\'"; params.push_back("%"+escapeLikeParam(operName)+"%"); }
         if (!status.empty())   { sql += " AND status=$"+std::to_string(idx++);         params.push_back(status); }
         sql += " ORDER BY oper_id DESC LIMIT 10000";
         auto res = params.empty() ? db.query(sql) : db.queryParams(sql, params);
@@ -255,8 +256,8 @@ public:
         auto status    = req->getParameter("status");
         auto beginTime = req->getParameter("params[beginTime]");
         auto endTime   = req->getParameter("params[endTime]");
-        if (!userName.empty())  { sql += " AND user_name LIKE $" + std::to_string(idx++); params.push_back("%" + userName + "%"); }
-        if (!ipaddr.empty())    { sql += " AND ipaddr LIKE $" + std::to_string(idx++); params.push_back("%" + ipaddr + "%"); }
+        if (!userName.empty())  { sql += " AND user_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(userName) + "%"); }
+        if (!ipaddr.empty())    { sql += " AND ipaddr LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(ipaddr) + "%"); }
         if (!status.empty())    { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
         if (!beginTime.empty()) { sql += " AND login_time >= $" + std::to_string(idx++); params.push_back(beginTime); }
         if (!endTime.empty())   { sql += " AND login_time <= $" + std::to_string(idx++); params.push_back(endTime); }
@@ -295,8 +296,8 @@ public:
         auto userName = req->getParameter("userName");
         auto ipaddr   = req->getParameter("ipaddr");
         auto status   = req->getParameter("status");
-        if (!userName.empty()) { sql += " AND user_name LIKE $"+std::to_string(idx++); params.push_back("%"+userName+"%"); }
-        if (!ipaddr.empty())   { sql += " AND ipaddr LIKE $"+std::to_string(idx++);    params.push_back("%"+ipaddr+"%"); }
+        if (!userName.empty()) { sql += " AND user_name LIKE $"+std::to_string(idx++)+" ESCAPE '\\'"; params.push_back("%"+escapeLikeParam(userName)+"%"); }
+        if (!ipaddr.empty())   { sql += " AND ipaddr LIKE $"+std::to_string(idx++)+" ESCAPE '\\'";    params.push_back("%"+escapeLikeParam(ipaddr)+"%"); }
         if (!status.empty())   { sql += " AND status=$"+std::to_string(idx++);          params.push_back(status); }
         sql += " ORDER BY info_id DESC LIMIT 10000";
         auto res = params.empty() ? db.query(sql) : db.queryParams(sql, params);

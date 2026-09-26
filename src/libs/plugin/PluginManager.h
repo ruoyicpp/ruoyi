@@ -35,6 +35,8 @@ public:
     static PluginManager& instance();
 
     const PluginDescriptor& load(const std::string& pluginName);
+    /// 热更新：备份旧 DLL → 卸载 → 加载新版；失败自动回滚旧版
+    const PluginDescriptor& reload(const std::string& pluginName);
     std::vector<std::string> autoLoadFromConfig(const Json::Value& root);
     void unload(const std::string& pluginName);
 
@@ -62,6 +64,9 @@ private:
     PluginManager& operator=(const PluginManager&) = delete;
 
     std::string findDllPath(const std::string& pluginName) const;
+    /// 加载前预检：plugin.json 的 abi_version + permissions 白名单
+    void preFlightCheck(const std::string& pluginName,
+                        const nlohmann::json& cfg) const;
     std::string dlError() const;
     void registerManagedRoutes(const std::string& pluginName, const std::shared_ptr<LoadedPlugin>& loaded);
     static nlohmann::json menuToJson(const MenuItem& menu);

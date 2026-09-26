@@ -40,6 +40,7 @@
 #include "../../common/PageUtils.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
+#include "../../common/StringUtils.h"
 
 /**
  * @class SysPostCtrl
@@ -69,8 +70,8 @@ public:
         auto postCode = req->getParameter("postCode");
         auto postName = req->getParameter("postName");
         auto status   = req->getParameter("status");
-        if (!postCode.empty()) { sql += " AND post_code LIKE $" + std::to_string(idx++); params.push_back("%" + postCode + "%"); }
-        if (!postName.empty()) { sql += " AND post_name LIKE $" + std::to_string(idx++); params.push_back("%" + postName + "%"); }
+        if (!postCode.empty()) { sql += " AND post_code LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(postCode) + "%"); }
+        if (!postName.empty()) { sql += " AND post_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(postName) + "%"); }
         if (!status.empty())   { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
 
         std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";

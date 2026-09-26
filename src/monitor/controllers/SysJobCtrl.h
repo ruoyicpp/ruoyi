@@ -10,6 +10,7 @@
 #include "../../services/DatabaseService.h"
 #include "../../common/LicenseManager.h"
 #include "../../common/CsvUtils.h"
+#include "../../common/StringUtils.h"
 
 /**
  * @file SysJobCtrl.h
@@ -118,7 +119,7 @@ public:
         auto jobName  = req->getParameter("jobName");
         auto jobGroup = req->getParameter("jobGroup");
         auto status   = req->getParameter("status");
-        if (!jobName.empty())  { sql += " AND job_name LIKE $" + std::to_string(idx++); params.push_back("%" + jobName + "%"); }
+        if (!jobName.empty())  { sql += " AND job_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(jobName) + "%"); }
         if (!jobGroup.empty()) { sql += " AND job_group=$" + std::to_string(idx++); params.push_back(jobGroup); }
         if (!status.empty())   { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
 
@@ -246,7 +247,7 @@ public:
         int idx = 1;
         auto jobName = req->getParameter("jobName");
         auto status  = req->getParameter("status");
-        if (!jobName.empty()) { sql += " AND job_name LIKE $" + std::to_string(idx++); params.push_back("%" + jobName + "%"); }
+        if (!jobName.empty()) { sql += " AND job_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(jobName) + "%"); }
         if (!status.empty())  { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
 
         std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";
@@ -290,7 +291,7 @@ public:
         int idx = 1;
         auto jobName = req->getParameter("jobName");
         auto status  = req->getParameter("status");
-        if (!jobName.empty()) { sql += " AND job_name LIKE $" + std::to_string(idx++); params.push_back("%" + jobName + "%"); }
+        if (!jobName.empty()) { sql += " AND job_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(jobName) + "%"); }
         if (!status.empty())  { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
         sql += " ORDER BY job_log_id DESC LIMIT 10000";
         auto res = params.empty() ? db.query(sql) : db.queryParams(sql, params);

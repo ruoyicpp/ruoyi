@@ -77,7 +77,9 @@ int main(int argc, char* argv[]) {
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT,  &sa, nullptr);
     sigaction(SIGTERM, &sa, nullptr);
-    signal(SIGCHLD, SIG_IGN);
+    // 不要忽略 SIGCHLD：waitpid() 需要它来阻塞等待子进程退出
+    // 忽略后 waitpid 会立即返回 ECHILD，daemon 误判子进程已退出从而疯狂重启
+    // signal(SIGCHLD, SIG_IGN);
 #endif
 
     int restartCount = 0;

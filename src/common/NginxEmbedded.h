@@ -31,6 +31,13 @@
 #include <trantor/utils/Logger.h>
 #include <json/json.h>
 
+#ifdef _WIN32
+#  include <windows.h>
+#else
+#  include <unistd.h>
+#  include <limits.h>
+#endif
+
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -198,19 +205,35 @@ private:
     // 内部启动：调用前需持 mu_
     bool startNginxThreadLocked() {
         std::error_code ec;
-        if (!std::filesystem::exists(cfg_.prefix, ec)) {
+        // prefix 相对路径解析：先试 CWD，不存在再试可执行文件所在目录
+        //（服务可能从任意目录启动，不能只依赖 ./ 相对 CWD）
+        std::filesystem::path prefixPath = cfg_.prefix;
+        if (prefixPath.is_relative() &&
+            !std::filesystem::exists(prefixPath, ec)) {
+            auto exeDir = exeDirectory();
+            if (!exeDir.empty()) {
+                auto alt = exeDir / prefixPath;
+                if (std::filesystem::exists(alt, ec)) {
+                    LOG_INFO << "[Nginx] prefix 按可执行文件目录解析: "
+                             << alt.string();
+                    prefixPath = alt;
+                }
+            }
+        }
+        if (!std::filesystem::exists(prefixPath, ec)) {
             LOG_WARN << "[Nginx] prefix 目录不存在，跳过: " << cfg_.prefix;
             return false;
         }
-        std::filesystem::path confPath = std::filesystem::path(cfg_.prefix) / cfg_.confFile;
+        std::filesystem::path confPath = prefixPath / cfg_.confFile;
         if (!std::filesystem::exists(confPath, ec)) {
             LOG_WARN << "[Nginx] 配置文件不存在，跳过: " << confPath.string();
             return false;
         }
+        prefixPath_ = prefixPath;   // 记下实际路径，watchdog 的 conf 监听用它
 
-        LOG_INFO << "[Nginx] 启动 prefix=" << cfg_.prefix
+        LOG_INFO << "[Nginx] 启动 prefix=" << prefixPath.string()
                  << " conf=" << cfg_.confFile;
-        std::cout << "[Nginx] 启动 prefix=" << cfg_.prefix
+        std::cout << "[Nginx] 启动 prefix=" << prefixPath.string()
                   << " conf=" << cfg_.confFile << std::endl;
 
         // 重置全局控制变量（防止上次 stop 残留）
@@ -223,7 +246,7 @@ private:
         argvStorage_.clear();
         argvStorage_.push_back("nginx");
         argvStorage_.push_back("-p");
-        argvStorage_.push_back(cfg_.prefix);
+        argvStorage_.push_back(prefixPath.string());  // 传解析后的绝对路径
         argvStorage_.push_back("-c");
         argvStorage_.push_back(cfg_.confFile);
 
@@ -242,11 +265,26 @@ private:
         return true;
     }
 
+    /// 可执行文件所在目录（prefix 相对路径的备用解析基准）
+    static std::filesystem::path exeDirectory() {
+#ifdef _WIN32
+        char buf[MAX_PATH] = {0};
+        if (GetModuleFileNameA(nullptr, buf, MAX_PATH) == 0) return {};
+        return std::filesystem::path(buf).parent_path();
+#else
+        char buf[PATH_MAX] = {0};
+        ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (n <= 0) return {};
+        buf[n] = '\0';
+        return std::filesystem::path(buf).parent_path();
+#endif
+    }
+
     // 扫描 conf 目录下所有文件 mtime，作为基准快照
     void snapshotConfMtimes() {
         confMtimes_.clear();
         std::error_code ec;
-        auto confDir = std::filesystem::path(cfg_.prefix) / "conf";
+        auto confDir = resolvedPrefix() / "conf";
         if (!std::filesystem::exists(confDir, ec)) return;
         for (auto& entry : std::filesystem::recursive_directory_iterator(confDir, ec)) {
             if (ec) break;
@@ -260,7 +298,7 @@ private:
     // 检查 conf 目录是否有文件 mtime 变化；若有，返回 true 并更新快照
     bool checkConfChanged() {
         std::error_code ec;
-        auto confDir = std::filesystem::path(cfg_.prefix) / "conf";
+        auto confDir = resolvedPrefix() / "conf";
         if (!std::filesystem::exists(confDir, ec)) return false;
 
         bool changed = false;
@@ -341,7 +379,11 @@ private:
         LOG_INFO << "[Nginx][watchdog] stopped";
     }
 
+    /// resolvedPrefix：startNginxThreadLocked 里解析后的实际工作目录
+    std::filesystem::path resolvedPrefix() const { return prefixPath_; }
+
     Config cfg_;
+    std::filesystem::path prefixPath_;   // 启动时解析后的 prefix（CWD 或 exe 目录）
     std::atomic<bool> running_;
     std::mutex mu_;
     std::thread worker_;

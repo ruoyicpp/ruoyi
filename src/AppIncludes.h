@@ -233,6 +233,7 @@
 #include "services/WhisperService.h"    ///< Whisper 语音识别服务
 #include "services/VaultManager.h"      ///< HashiCorp Vault 密钥管理
 #include "services/StorageService.h"    ///< 文件存储服务（S3/本地）
+#include "services/ExternalServiceManager.h"  ///< 外部服务管理器（进程监控 + 代理路由）
 
 /// @}
 
@@ -337,6 +338,150 @@
 // ── 任务队列 ──────────────────────────────────────────────────────
 #include "taskqueue/TaskQueue.h"        ///< 异步任务队列核心
 #include "taskqueue/TaskQueueCtrl.h"    ///< 任务队列管理 API
+#include "taskqueue/TaskQueueExample.h" ///< 任务处理器实现（email/export/process/notification）
+
+/// @}
+
+/**
+ * @defgroup WafModule WAF 安全模块
+ * @brief Web 应用防火墙（规则匹配、风控存储、内核封禁）
+ * @{
+ */
+
+// ── WAF 安全模块 ──────────────────────────────────────────────────
+// 【WAF】— 请求拦截、IP封禁、CIDR匹配、风控持久化
+// Windows 下仅编译应用层部分（nftables/RocksDB 自动跳过）
+#include "waf/CidrMatcher.h"           ///< CIDR 网段匹配（IPv4/IPv6）
+#include "waf/RiskStore.h"            ///< 风控状态存储（SQLite/RocksDB）
+#include "waf/NftBan.h"               ///< nftables 内核层封禁（Linux）
+#include "waf/WafEngine.h"            ///< WAF 规则匹配引擎
+#include "waf/WafCtrl.h"              ///< WAF 管理 API 控制器
+
+/// @}
+
+/**
+ * @defgroup AuditModule 安全审计模块
+ * @brief Manticore 审计日志上报与检索
+ * @{
+ */
+
+// ── 安全审计 ──────────────────────────────────────────────────────
+// 【审计】— Manticore HTTP JSON API，异步批量上报，仅 Linux
+#include "audit/ManticoreClient.h"    ///< Manticore HTTP JSON 客户端
+#include "audit/AuditQueue.h"         ///< 审计事件异步批量队列
+#include "audit/AuditCtrl.h"          ///< 审计检索/聚合 API 控制器
+
+/// @}
+
+/**
+ * @defgroup SsoModule SSO 单点登录模块
+ * @brief OAuth2.0/OIDC 服务端（授权码流程 + 票据存储 + 接入方管理）
+ * @{
+ */
+
+// ── SSO 单点登录 ──────────────────────────────────────────────────
+// 【SSO】— OAuth2.0 授权码流程，票据双模（local/redis），仅 Linux
+#include "sso/SsoTicketStore.h"       ///< SSO 票据存储（授权码/刷新令牌）
+#include "sso/SsoServer.h"            ///< SSO 服务端核心逻辑
+#include "sso/SsoCtrl.h"              ///< SSO 端点控制器
+
+/// @}
+
+/**
+ * @defgroup RiskModule AI 风控与日志留存
+ * @brief AI 网关风控 + 日志标准化清理
+ * @{
+ */
+
+// ── AI 风控 / 日志留存 ────────────────────────────────────────────
+// 【AI风控】— 请求特征异步评分，高风险 IP 自动封禁，仅 Linux
+#include "risk/AiRiskEngine.h"        ///< AI 风控引擎（采样+批量评分+自动封禁）
+// 【日志留存】— PG日志表/本地文件/审计日志统一清理策略
+#include "log/LogRetention.h"         ///< 日志留存清理（每日定时任务）
+#include "log/LogIndexer.h"           ///< 日志文件→Manticore 全文索引器
+
+/// @}
+
+/**
+ * @defgroup EnterpriseModule 企业通用增强
+ * @brief 多数据源 / 工作流 / 短信通道 / WS消息推送
+ * @{
+ */
+
+// ── 多数据源管理 ──────────────────────────────────────────────────
+// 【多数据源】— 动态注册 PG/SQLite 数据源、连通性测试、只读查询路由
+#include "ds/DataSourceManager.h"     ///< 数据源注册表 + queryOn 路由
+#include "ds/DataSourceCtrl.h"        ///< 数据源管理 API
+
+// ── 工作流引擎 ────────────────────────────────────────────────────
+// 【工作流】— 顺序审批流 + 或签/会签 + 流程变量，wf_* 三表
+#include "flow/FlowEngine.h"          ///< 流程引擎（定义/实例/任务推进）
+#include "flow/FlowCtrl.h"            ///< 流程管理 + 审批 API
+
+// ── 短信通道 ──────────────────────────────────────────────────────
+// 【短信】— 阿里云/腾讯云签名发送 + 验证码 + 模板/日志
+#include "sms/SmsService.h"           ///< 短信服务（双厂商签名）
+#include "sms/SmsCtrl.h"              ///< 短信 API（验证码/模板/日志）
+
+// ── WS 消息管理 ───────────────────────────────────────────────────
+// 【WS消息】— 在线用户/全员广播/定向推送（站内信走 NotifyService::sendInbox）
+#include "monitor/controllers/WsMsgCtrl.h"  ///< WS 消息管理 API
+
+/// @}
+
+/**
+ * @defgroup OpsModule 运维&可靠性
+ * @brief 分布式锁 / 集群会话 / 慢SQL审计 / 备份管理
+ * @{
+ */
+
+// ── 分布式锁 ──────────────────────────────────────────────────────
+// 【分布式锁】— Redis SET NX EX + Lua 原子释放/续期 + 本地降级 + RAII
+#include "common/DistLock.h"          ///< DistLock / DistLockGuard
+
+// ── 集群会话同步 ──────────────────────────────────────────────────
+// 【集群会话】— 跨节点在线用户注册表（Redis SET + 心跳续期）
+#include "common/ClusterSession.h"    ///< 在线用户跨节点同步
+
+// ── 缓存一致性 ────────────────────────────────────────────────────
+// 【缓存同步】— Redis pub/sub 失效广播（多节点本地缓存同步）
+#include "common/CacheSync.h"         ///< MemCache 失效跨节点广播
+
+// ── 配置热更新 ────────────────────────────────────────────────────
+// 【热重载】— config.json mtime 监听 + /actuator/reload 手动触发
+#include "common/ConfigReloader.h"    ///< 配置热更新（无需重启）
+
+// ── 行为验证码（go-captcha gRPC，Linux only）──────────────────────
+// 【滑块/旋转验证码】— captcha-server 侧车，/captcha/get + /captcha/check
+#include "captcha/CaptchaClient.h"    ///< gRPC 客户端封装（stub 安全降级）
+#include "captcha/CaptchaCtrl.h"      ///< 行为验证码 API
+
+// ── SQL 慢查询审计 ────────────────────────────────────────────────
+// 【慢查询】— DbMetricsHook::slowHook → 异步队列 → sys_slow_log + 告警
+#include "log/SlowLogQueue.h"         ///< 慢查询异步落库队列
+#include "log/SlowLogCtrl.h"          ///< 慢查询列表/统计/清理 API
+
+// ── 备份管理 ──────────────────────────────────────────────────────
+// 【备份】— pg_dump 定时备份 + 文件管理 + pg_restore 一键恢复
+#include "backup/BackupService.h"     ///< 备份服务（定时/滚动清理/恢复）
+#include "backup/BackupCtrl.h"        ///< 备份管理 API
+
+/// @}
+
+/**
+ * @defgroup IntegrationModule 配套扩展
+ * @brief MQTT 设备接入 / 大屏可视化 / API 开放平台
+ * @{
+ */
+
+// ── MQTT 客户端 ───────────────────────────────────────────────────
+// 【MQTT】— 精简 MQTT 3.1.1 客户端：设备接入/订阅转发/在线管理
+#include "iot/MqttClient.h"           ///< MQTT 客户端（自动重连+消息分发）
+#include "iot/MqttCtrl.h"             ///< MQTT 设备管理 API
+
+// ── 大屏可视化 ────────────────────────────────────────────────────
+// 【大屏】— 统计指标统一输出（MetricsCollector + DB + WS + 慢查询聚合）
+#include "screen/ScreenCtrl.h"        ///< /screen/overview + /screen/realtime
 
 /// @}
 

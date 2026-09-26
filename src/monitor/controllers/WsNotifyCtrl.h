@@ -12,6 +12,7 @@
 #include "../../common/TokenCache.h"
 #include "../../common/SecurityUtils.h"
 #include "../../common/WsBus.h"
+#include "../../common/ClusterSession.h"   // 集群在线注册
 #include "../../system/controllers/WsTicketCtrl.h"
 
 /**
@@ -135,6 +136,7 @@ public:
         conn->setContext(std::make_shared<ConnCtx>(uuid, userId));
         addConn(userId, conn);
         WsBus::instance().subscribe("user:" + std::to_string(userId), conn);
+        ClusterSession::instance().online(userId);   // 集群在线注册
         LOG_INFO << "[WsNotify] userId=" << userId << " 已连接 + 订阅 user:" << userId;
     }
 
@@ -145,6 +147,7 @@ public:
         auto ctx = conn->getContext<ConnCtx>();
         if (ctx) {
             removeConn(ctx->userId, conn);
+            ClusterSession::instance().offline(ctx->userId);   // 集群下线
             LOG_INFO << "[WsNotify] userId=" << ctx->userId << " 已断开";
         }
     }
@@ -173,6 +176,52 @@ public:
         }
         conns().erase(it);
         LOG_INFO << "[WsNotify] 已推送踢人消息 userId=" << userId;
+    }
+
+    // ── 在线用户列表（管理端点用）──────────────────────────────────────────
+    static std::vector<long> onlineUsers() {
+        std::lock_guard<std::mutex> lk(mu());
+        std::vector<long> out;
+        for (auto& [uid, vec] : conns()) {
+            // 清理已断开的 weak_ptr，统计仍在线的连接
+            vec.erase(std::remove_if(vec.begin(), vec.end(),
+                [](const std::weak_ptr<drogon::WebSocketConnection>& wp){
+                    auto sp = wp.lock();
+                    return !sp || !sp->connected();
+                }), vec.end());
+            if (!vec.empty()) out.push_back(uid);
+        }
+        return out;
+    }
+
+    // ── 全员广播（在线用户实时推送，不持久化）──────────────────────────────
+    static void broadcastAll(const Json::Value& msg) {
+        Json::StreamWriterBuilder wb; wb["indentation"] = "";
+        std::string body = Json::writeString(wb, msg);
+        std::lock_guard<std::mutex> lk(mu());
+        int sent = 0;
+        for (auto& [uid, vec] : conns()) {
+            for (auto& wp : vec) {
+                auto sp = wp.lock();
+                if (sp && sp->connected()) { sp->send(body); ++sent; }
+            }
+        }
+        LOG_INFO << "[WsNotify] broadcast sent to " << sent << " connections";
+    }
+
+    // ── 指定用户实时推送（不持久化，持久化走 NotifyService::sendInbox）─────
+    static int pushToUser(long userId, const Json::Value& msg) {
+        Json::StreamWriterBuilder wb; wb["indentation"] = "";
+        std::string body = Json::writeString(wb, msg);
+        std::lock_guard<std::mutex> lk(mu());
+        auto it = conns().find(userId);
+        if (it == conns().end()) return 0;
+        int sent = 0;
+        for (auto& wp : it->second) {
+            auto sp = wp.lock();
+            if (sp && sp->connected()) { sp->send(body); ++sent; }
+        }
+        return sent;
     }
 
 private:

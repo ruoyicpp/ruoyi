@@ -15,16 +15,22 @@ public:
     static HotConfig &instance() { static HotConfig h; return h; }
 
     void start(const std::string &path, std::function<void()> onReload, int intervalSec = 5) {
+        if (running_.load()) return;   // 已在运行：忽略重复启动（thread_ 已 joinable，不可再赋值）
         path_      = path;
         onReload_  = std::move(onReload);
         interval_  = intervalSec;
         lastMtime_ = mtime();
         running_   = true;
-        thread_    = std::thread([this]{ run(); });
-        thread_.detach();
+        thread_    = std::thread([this]{ run(); });   // joinable：stop() 时回收
     }
 
-    void stop() { running_ = false; }
+    void stop() {
+        running_ = false;
+        if (thread_.joinable()) thread_.join();
+    }
+
+    // 兜底：单例析构时若忘了 stop()，join 比 terminate/泄漏干净
+    ~HotConfig() { stop(); }
 
     // 手动触发重载（供 POST /actuator/reload 调用）
     bool reload() {

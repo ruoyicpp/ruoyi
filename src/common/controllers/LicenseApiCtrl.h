@@ -315,6 +315,15 @@ else load();
         std::string machineId  = (*json).get("machine_id", "").asString();
         std::string macAddr    = (*json).get("mac", "").asString();
         std::string cpuInfo    = (*json).get("cpu", "").asString();
+        std::string serverUrl  = (*json).get("server", "").asString();
+        if (serverUrl.empty()) {
+            // 缺省按请求推导签发端地址（反代场景优先 X-Forwarded-*）
+            std::string scheme = req->getHeader("X-Forwarded-Proto");
+            std::string host   = req->getHeader("X-Forwarded-Host");
+            if (host.empty())  host = req->getHeader("Host");
+            if (scheme.empty()) scheme = "http";
+            if (!host.empty())  serverUrl = scheme + "://" + host;
+        }
         if (licensee.empty()) { RESP_ERR(cb, "被授权方不能为空"); return; }
 
         std::string key = "RUOYI-" + _genKeySegment() + "-" + _genKeySegment() + "-" + _genKeySegment();
@@ -328,9 +337,10 @@ else load();
              machineId, macAddr, cpuInfo});
         if (!ok) { RESP_ERR(cb, "签发失败"); return; }
 
-        // 生成完整 license.lic 内容（用本地 LicenseManager::generate 7-arg 签名版本）
+        // 生成完整 license.lic 内容（license_key + server 写进 lic 尾行，客户端据此远程验证）
         std::string licContent = LicenseManager::generate(
-            licensee, fpHash, fpPrimary, expireDate, maxUsers, features, graceDays);
+            licensee, fpHash, fpPrimary, expireDate, maxUsers, features, graceDays,
+            key, serverUrl);
 
         LOG_OPER_PARAM(req, "签发 License: " + licensee, BusinessType::INSERT,
                        "key=" + key + " expire=" + expireDate);
@@ -338,6 +348,7 @@ else load();
         Json::Value data;
         data["license_key"]     = key;
         data["license_content"] = licContent;
+        data["server"]          = serverUrl;
         data["filename"]        = "license.lic";
         Json::Value r = AjaxResult::success(std::string("签发成功"));
         r["data"] = data;
@@ -365,7 +376,7 @@ else load();
         if (id.empty()) { RESP_ERR(cb, "id 不能为空"); return; }
         auto res = DatabaseService::instance().queryParams(
             "SELECT licensee, fp_hash, fp_primary, expire_date, max_users, features, "
-            "grace_days FROM sys_license WHERE id=$1 LIMIT 1", {id});
+            "grace_days, license_key FROM sys_license WHERE id=$1 LIMIT 1", {id});
         if (!res.ok() || res.rows() == 0) { RESP_ERR(cb, "记录不存在"); return; }
 
         std::string licensee   = res.str(0, 0);
@@ -375,14 +386,23 @@ else load();
         int         maxUsers   = res.intVal(0, 4);
         std::string features   = res.str(0, 5).empty() ? "FULL" : res.str(0, 5);
         int         graceDays  = res.intVal(0, 6);
+        std::string licKey     = res.str(0, 7);
 
         if (fpHash.empty() || fpPrimary.empty()) {
             RESP_ERR(cb, "该记录缺少硬件指纹（客户端首次 verify 时绑定），无法生成 license.lic");
             return;
         }
 
+        // server 地址同样按请求推导
+        std::string scheme = req->getHeader("X-Forwarded-Proto");
+        std::string host   = req->getHeader("X-Forwarded-Host");
+        if (host.empty())   host   = req->getHeader("Host");
+        if (scheme.empty()) scheme = "http";
+        std::string serverUrl = host.empty() ? "" : scheme + "://" + host;
+
         std::string licContent = LicenseManager::generate(
-            licensee, fpHash, fpPrimary, expireDate, maxUsers, features, graceDays);
+            licensee, fpHash, fpPrimary, expireDate, maxUsers, features, graceDays,
+            licKey, serverUrl);
 
         Json::Value data;
         data["license_content"] = licContent;

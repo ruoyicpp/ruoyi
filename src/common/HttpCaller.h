@@ -128,6 +128,14 @@ public:
     static void asyncPost(const std::string &url, const std::string &body,
                           const std::string &contentType = "application/json",
                           Cb cb = nullptr) {
+        asyncPost(url, body, contentType, {}, std::move(cb));
+    }
+
+    // 异步 POST，body + Content-Type + 自定义 headers（腾讯云 TC3 签名等场景）
+    static void asyncPost(const std::string &url, const std::string &body,
+                          const std::string &contentType,
+                          const std::vector<std::pair<std::string, std::string>> &headers,
+                          Cb cb) {
         std::string base, path;
         if (!splitUrl(url, base, path)) {
             if (cb) cb(false, 0, "invalid url");
@@ -140,6 +148,7 @@ public:
         req->setPath(path);
         req->setBody(body);
         req->addHeader("Content-Type", contentType);
+        for (auto& [k, v] : headers) req->addHeader(k, v);
         client->sendRequest(req,
             [cb](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
                 if (cb) {

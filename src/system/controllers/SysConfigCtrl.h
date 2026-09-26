@@ -42,6 +42,8 @@
 #include "../../services/KoboldCppService.h"
 #include "../../services/NginxManager.h"
 #include "../../services/DdnsGoManager.h"
+#include "../../common/ConfigReloader.h"
+#include "../../common/StringUtils.h"
 #include <fstream>
 #include <json/json.h>
 
@@ -74,8 +76,8 @@ public:
         auto configName = req->getParameter("configName");
         auto configKey  = req->getParameter("configKey");
         auto configType = req->getParameter("configType");
-        if (!configName.empty()) { sql += " AND config_name LIKE $" + std::to_string(idx++); params.push_back("%" + configName + "%"); }
-        if (!configKey.empty())  { sql += " AND config_key LIKE $" + std::to_string(idx++); params.push_back("%" + configKey + "%"); }
+        if (!configName.empty()) { sql += " AND config_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(configName) + "%"); }
+        if (!configKey.empty())  { sql += " AND config_key LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(configKey) + "%"); }
         if (!configType.empty()) { sql += " AND config_type=$" + std::to_string(idx++); params.push_back(configType); }
 
         std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";
@@ -133,6 +135,7 @@ public:
             {(*body)["configName"].asString(), configKey, (*body)["configValue"].asString(),
              (*body).get("configType","N").asString(), (*body).get("remark","").asString(), GET_USER_NAME(req)});
         MemCache::instance().setString(Constants::SYS_CONFIG_KEY + configKey, (*body)["configValue"].asString());
+        reloadIfCfgOverride(configKey);
         LOG_OPER(req, "参数设置", BusinessType::INSERT);
         RESP_MSG(cb, "操作成功");
     }
@@ -152,6 +155,7 @@ public:
              (*body).get("configType","N").asString(), (*body).get("remark","").asString(),
              GET_USER_NAME(req), std::to_string(configId)});
         MemCache::instance().setString(Constants::SYS_CONFIG_KEY + configKey, newValue);
+        reloadIfCfgOverride(configKey);
         // 子进程动态启停
         if (configKey.rfind("sys.subprocess.", 0) == 0) {
             std::string procName = configKey.substr(15);
@@ -166,14 +170,17 @@ public:
     void remove(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb, const std::string &ids) {
         CHECK_PERM(req, cb, "system:config:remove");
         auto& db = DatabaseService::instance();
+        bool touchedOverride = false;
         for (auto &idStr : splitIds(ids)) {
             auto r = db.queryParams("SELECT config_key,config_type FROM sys_config WHERE config_id=$1", {idStr});
             if (r.ok() && r.rows() > 0) {
                 if (r.str(0, 1) == "Y") { RESP_ERR(cb, "系统参数不能删除"); return; }
+                if (r.str(0, 0).rfind("sys.cfg.", 0) == 0) touchedOverride = true;
                 MemCache::instance().remove(Constants::SYS_CONFIG_KEY + r.str(0, 0));
             }
             db.execParams("DELETE FROM sys_config WHERE config_id=$1", {idStr});
         }
+        if (touchedOverride) ConfigReloader::instance().reload();
         LOG_OPER_PARAM(req, "参数设置", BusinessType::REMOVE, ids);
         RESP_MSG(cb, "操作成功");
     }
@@ -181,11 +188,18 @@ public:
     void refreshCache(const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
         CHECK_PERM(req, cb, "system:config:remove");
         SysConfigService::instance().resetConfigCache();
+        ConfigReloader::instance().reload();   // sys.cfg.* 覆盖可能随缓存重建变化
         LOG_OPER(req, "参数设置", BusinessType::CLEAN);
         RESP_MSG(cb, "操作成功");
     }
 
 private:
+    // sys.cfg.* 键变更 → 触发配置重载（覆盖层生效到各子系统）
+    static void reloadIfCfgOverride(const std::string& key) {
+        if (key.rfind("sys.cfg.", 0) == 0)
+            ConfigReloader::instance().reload();
+    }
+
     // 读 config.json，按子进程名称启动或停止对应管理器
     // 返回空字符串表示成功，非空表示错误消息
     std::string applySubprocess(const std::string& name, bool enable) {

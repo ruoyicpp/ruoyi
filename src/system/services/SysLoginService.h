@@ -179,6 +179,14 @@ private:
         if (code.empty() || uuid.empty())
             throw std::runtime_error("验证码不能为空");
 
+        // 行为验证码票据：uuid="bhc" 时 code 是 /captcha/check 签发的一次性票据
+        if (uuid == "bhc") {
+            auto tk = MemCache::instance().getString("bhc:" + code);
+            MemCache::instance().remove("bhc:" + code);   // 一次性核销
+            if (!tk) throw std::runtime_error("行为验证票据无效或已过期，请重新验证");
+            return;
+        }
+
         auto cacheKey = Constants::CAPTCHA_CODE_KEY + uuid;
         auto cached = MemCache::instance().getString(cacheKey);
         MemCache::instance().remove(cacheKey);

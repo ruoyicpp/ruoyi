@@ -326,52 +326,59 @@ WHERE r.role_name = 'admin' AND p.perm_code LIKE 'monitor:taskqueue:%';
 
 ## 🔗 Redis 集成
 
-当前实现使用注释代码作为占位符。要使用真实 Redis，需要：
+**当前状态：已完成 ✅** — `TaskQueue` 现在使用 `hiredis`（与项目其余部分共享，配置在 `config.json` 的 `redis` 块）作为后端。无需新增依赖或 CMake 变更。
 
-### 1. 添加 Redis 客户端库
+### 关键设计点
 
-在 `CMakeLists.txt` 中添加：
+- **连接模型**：每个 worker 线程持有自己的 `redisContext`（`thread_local`）。hiredis 上下文不是线程安全的；为每个 worker 一个连接避免了共享池的锁争用。TCP 连接成本对典型 worker 数（1..32）可忽略。
+- **崩溃安全投递**：消费者使用 `RPOPLPUSH queue:<type> queue:<type>:processing` —— 即使 worker 在 pop 后崩溃，任务 id 也会留在 `processing` 列表里，由 janitor 线程回收。
+- **自动重试**：失败任务进入 `queue:<type>:retry`（ZSET，score=毫秒级就绪时间），指数退避 `retryBackoff * 2^retries` ± 20% 抖动。
+- **死信队列**：超过 `maxRetries` 后任务进入 `queue:<type>:dead`（LIST）。
+- **Janitor 线程**：每 `taskTimeout/3` 扫描 `processing` 列表，回收 `startedAt` 早于超时的卡死任务（重新入队 + 计数）。
+- **进程内回退**：当 `redis.enabled=false` 或 Redis 不可达且 `fallbackToMemory=true` 时，队列退化为进程内的 `std::queue` + 互斥锁，开发/测试无需 Redis 即可工作。
+- **可观察性**：每个 type 的 success/failed/dead 累计计数存在 `queue:stats:counters` HASH 中，`/monitor/taskqueue/stats` 端点直接读取。
 
-```cmake
-find_package(redis++ REQUIRED)
-target_link_libraries(ruoyi-cpp PRIVATE redis++)
-```
+### Redis 键空间
 
-### 2. 更新 TaskQueue.cc
+| 键 | 类型 | 用途 |
+|---|---|---|
+| `queue:<type>` | LIST | 待处理任务 id 队列 |
+| `queue:<type>:processing` | LIST | 已 claim 但未 ack 的任务（崩溃恢复源） |
+| `queue:<type>:retry` | ZSET | 重试任务，score=ms-epoch 就绪时间 |
+| `queue:<type>:dead` | LIST | 死信 |
+| `task:<id>` | HASH | 任务数据（field `data` = JSON） |
+| `task:<id>:log` | LIST | 执行日志（LPUSH 顺序，保留 1000 行） |
+| `queue:stats:counters` | HASH | 按 type 命名的累计 success / failed / dead |
 
-替换注释代码为真实 Redis 操作：
+### 配置示例
 
-```cpp
-#include <sw/redis++/redis.h>
+`config.json` 中 `redis` 块（已存在，与 `MemCache` / `DruidCtrl` 共享）：
 
-using namespace sw::redis;
-
-void TaskQueue::enqueue(const Task& task) {
-    auto redis = Redis("tcp://127.0.0.1:6379");
-    
-    Task t = task;
-    if (t.id.empty()) {
-        t.id = generateTaskId(t.type);
-    }
-    if (t.createdAt == 0) {
-        t.createdAt = std::time(nullptr);
-    }
-    t.status = TaskStatus::PENDING;
-
-    // 存储任务详情
-    auto taskKey = getTaskKey(t.id);
-    Json::StreamWriterBuilder wb;
-    std::string taskJson = Json::writeString(wb, t.toJson());
-    redis.hset(taskKey, "data", taskJson);
-    redis.expire(taskKey, 86400);  // 24 hours TTL
-
-    // 添加到队列
-    auto queueKey = getQueueKey(t.type);
-    redis.lpush(queueKey, t.id);
-
-    LOG_INFO << "[TaskQueue] Task enqueued: " << t.id;
+```json
+{
+  "redis": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 6379,
+    "password": "",
+    "db": 0,
+    "key_prefix": ""
+  },
+  "taskQueue": {
+    "enabled": true,
+    "workers": 4,
+    "pollInterval": 200,
+    "maxRetries": 3,
+    "retryBackoff": 60,
+    "taskTimeout": 300000,
+    "taskTtl": 86400,
+    "queueTypes": ["email", "export", "process", "notification"],
+    "fallbackToMemory": true
+  }
 }
 ```
+
+`main.cc` 已自动调用 `init()` / `registerBuiltinHandlers()` / `start()`（见 `registerBeginningAdvice` 内 [TaskQueue] 段），业务代码无需手工接线。
 
 ## 📈 性能调优
 

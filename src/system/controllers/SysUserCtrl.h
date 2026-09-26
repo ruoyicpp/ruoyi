@@ -60,6 +60,7 @@
 #include "../../common/OperLogUtils.h"
 #include "../../common/DataScopeUtils.h"
 #include "../../common/CsvUtils.h"
+#include "../../common/StringUtils.h"
 #include "../services/SysPasswordService.h"
 #include "../services/SysConfigService.h"
 #include "../../services/StorageService.h"
@@ -108,9 +109,9 @@ public:
         auto userName = req->getParameter("userName");
         auto status   = req->getParameter("status");
         auto deptId   = req->getParameter("deptId");
-        if (!userName.empty()) { sql += " AND u.user_name LIKE $" + std::to_string(idx++); params.push_back("%" + userName + "%"); }
+        if (!userName.empty()) { sql += " AND u.user_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(userName) + "%"); }
         if (!status.empty())   { sql += " AND u.status=$" + std::to_string(idx++); params.push_back(status); }
-        if (!deptId.empty())   { sql += " AND (u.dept_id=$" + std::to_string(idx++) + " OR u.dept_id IN (SELECT dept_id FROM sys_dept WHERE ancestors LIKE '%'||$" + std::to_string(idx++) + "||'%'))"; params.push_back(deptId); params.push_back(deptId); }
+        if (!deptId.empty())   { sql += " AND (u.dept_id=$" + std::to_string(idx++) + " OR u.dept_id IN (SELECT dept_id FROM sys_dept WHERE ancestors LIKE '%'||$" + std::to_string(idx++) + "||'%'))"; params.push_back(deptId); params.push_back(escapeLikeParam(deptId)); }
         // 数据权限过滤（对应java [DataScope]）
         sql += DATA_SCOPE_FILTER(req, "u", "u");
 

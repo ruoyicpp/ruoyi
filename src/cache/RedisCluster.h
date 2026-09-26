@@ -218,6 +218,23 @@ public:
      */
     std::string executeRaw(const std::string& command);
 
+    /**
+     * @brief SET NX PX（原子加锁）
+     * @param key 锁键
+     * @param token 锁持有者标识（通常是 uuid）
+     * @param ttlMs 锁自动过期时间（毫秒）
+     * @return true 获得锁成功，false 锁已被他人持有
+     */
+    bool setNxPx(const std::string& key, const std::string& token, int ttlMs);
+
+    /**
+     * @brief Lua 脚本原子释放锁（只删除自己持有的 token）
+     * @param key 锁键
+     * @param token 锁持有者标识
+     * @return true 释放成功，false token 不匹配（锁已过期或被他人持有）
+     */
+    bool evalReleaseLock(const std::string& key, const std::string& token);
+
 private:
     RedisCluster() = default;
     ~RedisCluster() = default;

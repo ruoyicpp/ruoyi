@@ -40,6 +40,7 @@
 #include "../../common/TokenCache.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
+#include "../../common/StringUtils.h"
 #include "../services/TokenService.h"
 
 /**
@@ -69,7 +70,7 @@ public:
         int idx = 1;
         auto deptName = req->getParameter("deptName");
         auto status   = req->getParameter("status");
-        if (!deptName.empty()) { sql += " AND dept_name LIKE $" + std::to_string(idx++); params.push_back("%" + deptName + "%"); }
+        if (!deptName.empty()) { sql += " AND dept_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(deptName) + "%"); }
         if (!status.empty())   { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
         // 数据权限过滤：限制当前用户能看到的部门（按 dept_id 维度）
         sql += DATA_SCOPE_FILTER(req, "", "");
@@ -85,7 +86,7 @@ public:
         std::string sid = std::to_string(id);
         auto res = DatabaseService::instance().queryParams(
             "SELECT dept_id,parent_id,ancestors,dept_name,order_num,status FROM sys_dept "
-            "WHERE del_flag='0' AND dept_id!=$1 AND ancestors NOT LIKE '%'||$2||'%' "
+            "WHERE del_flag='0' AND dept_id!=$1 AND ancestors NOT LIKE '%'||$2||'%' ESCAPE '\\' "
             "ORDER BY parent_id,order_num", {sid, sid});
         Json::Value arr(Json::arrayValue);
         if (res.ok()) for (int i = 0; i < res.rows(); ++i) arr.append(deptRowToJson(res, i));

@@ -52,8 +52,15 @@
 #include <mutex>
 #include <unordered_map>
 #include <string>
+#include <functional>
 #include "AjaxResult.h"
 #include "../services/DatabaseService.h"
+
+/// 配置热重载钩子（/actuator/reload 调用；由 ConfigReloader 在启动时绑定，
+/// 声明在此避免 MetricsCollector → ConfigReloader 循环 include）
+namespace ConfigReloadHook {
+    inline std::function<Json::Value()> fn;
+}
 
 /**
  * @struct MetricsCollector
@@ -265,6 +272,7 @@ struct MetricsCollector {
             }, {drogon::Get});
 
         // POST /actuator/reload — 仅 127.0.0.1 / ::1 可触发，避免外网误调
+        // 实际重载逻辑由 ConfigReloader 通过 ConfigReloadHook::fn 绑定
         drogon::app().registerHandler("/actuator/reload",
             [](const drogon::HttpRequestPtr& req,
                std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
@@ -277,7 +285,17 @@ struct MetricsCollector {
                     cb(resp);
                     return;
                 }
-                Json::Value r = AjaxResult::success();
+                Json::Value r;
+                if (ConfigReloadHook::fn) {
+                    try { r = ConfigReloadHook::fn(); }
+                    catch (const std::exception& e) {
+                        r["code"] = 500;
+                        r["msg"]  = std::string("reload failed: ") + e.what();
+                    }
+                } else {
+                    r = AjaxResult::success();
+                    r["msg"] = "reloader not bound";
+                }
                 cb(drogon::HttpResponse::newHttpJsonResponse(r));
             }, {drogon::Post});
 

@@ -58,7 +58,7 @@
  *     "msg": "success",
  *     "data": {
  *       "appName": "RuoYi-C++",
- *       "version": "1.3.2",
+ *       "version": "1.3.3",
  *       "uptime": 86400,
  *       "startTime": "2026-06-10 10:00:00",
  *       "status": "running",

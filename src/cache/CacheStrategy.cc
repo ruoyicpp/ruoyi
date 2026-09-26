@@ -10,9 +10,12 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <iomanip>
 #include <json/json.h>
 #include <random>
+#include <sstream>
 #include <thread>
+#include <trantor/utils/Logger.h>
 
 namespace Cache {
 namespace {
@@ -97,12 +100,28 @@ bool matchesPattern(const std::string& value, const std::string& pattern) {
     return value.rfind(suffix) == value.size() - suffix.size();
 }
 
-} // namespace
+} // anonymous namespace
+
+// ── UUID 生成器（用于锁 token）───────────────────────────────────────────────
+static std::string generateUuid() {
+    static std::mt19937_64 rng{static_cast<uint64_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count())};
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0') << std::uppercase;
+    oss << std::setw(8) << rng() << "-"
+        << std::setw(4) << (rng() & 0xFFFF) << "-"
+        << std::setw(4) << ((rng() & 0x0FFF) | 0x4000) << "-"  // version 4
+        << std::setw(4) << ((rng() & 0x3FFF) | 0x8000) << "-"  // variant
+        << std::setw(12) << rng();
+    return oss.str();
+}
 
 // ── DistributedLock ────────────────────────────────────────────────────────
 
 DistributedLock::DistributedLock(const std::string& key, int timeoutMs)
-    : key_("lock:" + key), timeoutMs_(timeoutMs) {
+    : key_("lock:" + key)
+    , token_(generateUuid())   // 全局唯一持有者标识
+    , timeoutMs_(timeoutMs) {
 }
 
 DistributedLock::~DistributedLock() {
@@ -112,15 +131,38 @@ DistributedLock::~DistributedLock() {
 }
 
 bool DistributedLock::tryAcquire() {
-    // TODO: 使用 Redis SET NX PX 实现分布式锁
-    acquired_ = true;
-    return true;
+    // Redis SET NX PX（原子加锁）：SET lock:<key> <uuid> NX PX <timeoutMs>
+    std::ostringstream cmd;
+    cmd << "SETNX " << key_ << " " << token_ << " " << timeoutMs_;
+    std::string result = RedisCluster::instance().executeRaw(cmd.str());
+
+    if (result == "1") {
+        acquired_ = true;
+        LOG_DEBUG << "[DistLock] Acquired lock: " << key_ << " token=" << token_;
+        return true;
+    }
+
+    LOG_DEBUG << "[DistLock] Failed to acquire lock (already held): " << key_;
+    return false;
 }
 
 void DistributedLock::release() {
-    if (acquired_) {
-        // TODO: 使用 Lua 脚本释放锁 (只释放自己的 token)
-        acquired_ = false;
+    if (!acquired_) {
+        return;
+    }
+
+    // Lua 等效脚本：只删除自己持有的 token，防止误删他人锁
+    // EVAL "release-lock" 1 <key> <token>
+    std::ostringstream cmd;
+    cmd << "EVAL release-lock 1 " << key_ << " " << token_;
+    std::string result = RedisCluster::instance().executeRaw(cmd.str());
+
+    acquired_ = false;
+    if (result == "1") {
+        LOG_DEBUG << "[DistLock] Released lock: " << key_;
+    } else {
+        LOG_WARN << "[DistLock] Failed to release lock (token mismatch or expired): "
+                 << key_ << " token=" << token_ << " result=" << result;
     }
 }
 

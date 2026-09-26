@@ -4,14 +4,14 @@
 
 # RuoYi-Cpp
 
-**RuoYi 管理框架的 C++ 高性能版本** · `v1.3.2`
+**RuoYi 管理框架的 C++ 高性能版本** · `v1.3.3`
 
 基于 [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL，与 RuoYi-Vue 前端 100% 兼容
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![C++](https://img.shields.io/badge/C++-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
 [![Drogon](https://img.shields.io/badge/Drogon-latest-green.svg)](https://github.com/drogonframework/drogon)
-[![Platform](https://img.shields.io/badge/platform-Windows%20(MSYS2%20MinGW64)-brightgreen.svg)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-brightgreen.svg)]()
 
 [![RuoYi-Vue](https://img.shields.io/badge/RuoYi--Vue-3.8-red.svg)](https://gitee.com/y_project/RuoYi-Vue)
 [![Vue](https://img.shields.io/badge/Vue-2.x-4FC08D.svg?logo=vue.js)](https://v2.vuejs.org)
@@ -31,9 +31,7 @@
 
 ## 在线演示
 
-🌐 **v1.3.0 演示地址**：[https://ruoyi1.mymq.site:20443](https://ruoyi1.mymq.site:20443)
-
-🌐 **v1.2.x 演示地址**：[https://ruoyi.mymq.site](https://ruoyi.mymq.site)
+🌐 **演示地址**：[https://www.nulk.cn/](https://www.nulk.cn/)
 
 > 默认账号：`admin` / `admin123`
 
@@ -43,7 +41,7 @@
 
 RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管理框架的 C++ 高性能版本，后端基于 Drogon 异步 HTTP 框架，数据库使用 PostgreSQL，与原版 RuoYi-Vue 前端保持完全 API 兼容。
 
-> ✅ **平台支持**：已在 **Windows（MSYS2 MinGW64）** 上完整编译验证通过。数据库使用 **SQLite 内嵌模式**（无需安装 PostgreSQL 即可运行），PostgreSQL 作为可选主数据库。
+> ✅ **平台支持**：已在 **Windows（MSYS2 MinGW64）** 和 **Linux（GCC）** 上完整编译验证通过。数据库使用 **SQLite 内嵌模式**（无需安装 PostgreSQL 即可运行），PostgreSQL 作为可选主数据库。
 
 **相比 Java 版本的优势：**
 
@@ -71,6 +69,7 @@ RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管
 - ✅ **两步验证** - Google Authenticator TOTP RFC 6238
 - ✅ **密钥管理** - HashiCorp Vault 集成，自动启动/解封/注入
 - ✅ **可观测性** - Prometheus 指标、X-Request-ID 链路追踪、JSON 结构化日志
+- ✅ **WAF 防火墙** - 内置 SQL 注入 / XSS / 路径穿越 / 命令注入正则规则引擎，IP 黑白名单（CIDR），Linux 下可联动 nftables 内核层封禁
 - ✅ **动态库模块** - 代码生成模块独立编译，支持热更新无需重启主程序
 - ✅ **集群部署** - 支持多 Worker 进程，自动生成 Nginx upstream.conf
 
@@ -78,91 +77,16 @@ RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管
 
 ## 功能模块
 
-### 系统管理
+> 📖 接口文档不在仓库中维护——启动后访问 **`/swagger-ui/`**（Swagger UI）或 `GET /v3/api-docs`（OpenAPI 3.0 JSON）获取实时接口定义。
 
-| 模块 | API 路由 | 功能说明 |
-|------|---------|---------|
-| 用户管理 | `GET/POST/PUT/DELETE /system/user` | 增删改查、重置密码、CSV 导入导出、角色/岗位分配 |
-| 角色管理 | `GET/POST/PUT/DELETE /system/role` | 增删改查、菜单权限分配、数据权限、用户授权 |
-| 菜单管理 | `GET/POST/PUT/DELETE /system/menu` | 增删改查、动态路由树构建 |
-| 部门管理 | `GET/POST/PUT/DELETE /system/dept` | 树形结构增删改查 |
-| 岗位管理 | `GET/POST/PUT/DELETE /system/post` | 增删改查 |
-| 参数配置 | `GET/POST/PUT/DELETE /system/config` | 系统参数 CRUD + 缓存刷新 |
-| 字典管理 | `GET/POST/PUT/DELETE /system/dict` | 字典类型 + 字典数据 CRUD |
-| 通知公告 | `GET/POST/PUT/DELETE /system/notice` | 公告 CRUD + 已读状态 |
-| 邮件配置 | `GET/POST /system/emailConfig` | SMTP 发件箱配置 + 测试发送 |
-| 两步验证 | `POST /system/totp/*` | Google Authenticator TOTP 绑定/解绑 |
-| 第三方登录 | `GET /oauth2/authorize/{p}` | GitHub / Google / 企业微信 / 钉钉 / 飞书 / QQ OAuth2 |
-| 第三方回调 | `GET /oauth2/callback/{p}` | code → JWT，首次自动建号 |
-| 第三方绑定 | `POST/DELETE /oauth2/bind/{p}` | 已登录账号绑定/解绑第三方 |
-
-### 系统监控
-
-| 模块 | API 路由 | 功能说明 |
-|------|---------|---------|
-| 操作日志 | `GET/DELETE /monitor/operlog` | 查询 / 删除 / 清空 / 导出 |
-| 登录日志 | `GET/DELETE /monitor/logininfor` | 查询 / 删除 / 解锁账户 |
-| 在线用户 | `GET/DELETE /monitor/online` | 查看在线会话 / 强制下线 |
-| 定时任务 | `GET/POST/PUT/DELETE /monitor/job` | CRUD + 立即执行 + 暂停/恢复 + 执行日志 |
-| 系统日志 | `GET /monitor/logfile` | 实时查看 `.log`/`.jsonl` 日志文件，支持删除 |
-| 服务监控 | `GET /monitor/server` | CPU、内存、磁盘、系统信息、GPU VRAM |
-| 缓存监控 | `GET /monitor/cache` | 查看缓存分类和键值 |
-| 数据源监控 | `GET /monitor/druid` | DB 连接池状态、查询统计 |
-| 重启服务 | `POST /monitor/restart/confirm` | 管理员确认重启后端进程（内置 HTML 管理页，无需 Vue 组件）|
-
-### 账号自助
-
-| 功能 | API 路由 | 说明 |
-|------|---------|-----|
-| 登录 | `POST /login` | 用户名 + 密码 + 验证码，返回 JWT |
-| LDAP 登录 | `POST /login` | 配置 `ldap.enabled=true` 后自动走 AD/LDAP 认证 |
-| 注册 | `POST /register` | 自助注册，支持邮箱验证码 |
-| 忘记密码 | `POST /forgotPassword` | 通过邮箱发送重置验证码 |
-| 重置密码 | `POST /resetPassword` | 凭重置令牌更新密码 |
-| 发送验证码 | `POST /sendRegCode` | 注册前验证邮箱有效性 |
-
-### 代码生成与工具
-
-| 模块 | API 路由 | 功能说明 |
-|------|---------|---------|
-| 代码生成 | `GET/POST/PUT/DELETE /tool/gen/**` | 导入表、预览代码、生成代码、同步数据库 |
-| 项目构建 | `GET/POST /tool/build/**` | 项目编译、构建管理 |
-| 代码生成动态库 | `POST /api/codegen/**` | 动态编译、插件加载/卸载、代码生成 |
-| 网站信息 | `GET /tool/website/**` | 网站配置、SEO 管理 |
-| 视频处理 | `POST /tool/video/**` | 视频转码、缩略图生成 |
-
-> **代码生成模块架构**：编译为独立 DLL/SO（`plugins/codegen_plugin.dll`），支持运行时动态加载，主程序无需重新编译即可更新代码生成功能。
-
-### AI 与智能
-
-| 模块 | API 路由 | 功能说明 |
-|------|---------|---------|
-| AI 对话 | `POST /ai/chat` | 大模型对话、流式响应 |
-| 代码生成 | `POST /ai/generate` | AI 辅助代码生成 |
-| 语音识别 | `POST /ai/transcribe` | 语音转文字（Whisper） |
-| ONNX 推理 | `GET/POST /ai/onnx/**` | 向量模型、文本 Embedding |
-| AI 健康检查 | `GET /ai/health` | 模型服务状态 |
-
-### IoT 与设备管理
-
-| 模块 | API 路由 | 功能说明 |
-|------|---------|---------|
-| 设备管理 | `GET/POST/DELETE /iot/devices/**` | 设备注册、删除、连通性测试 |
-| Modbus 读取 | `POST /iot/modbus/read` | 读寄存器/线圈 |
-| Modbus 写入 | `POST /iot/modbus/write` | 写寄存器/线圈 |
-| Modbus 轮询 | `POST /iot/modbus/poll` | 批量读多个地址 |
-
-### 运维与可观测性
-
-| 端点 | 方法 | 说明 |
-|------|------|-----|
-| `/actuator/health` | GET | 健康检查，JSON 格式 |
-| `/actuator/metrics` | GET | Prometheus 文本格式指标（直接接 Grafana）|
-| `/actuator/db` | GET | 数据库状态：后端类型、连接状态、待同步队列 |
-| `/actuator/info` | GET | 应用信息 |
-| `/actuator/reload` | POST | 热重载 `config.json`（无需重启）|
-| `/swagger-ui/` | GET | Swagger UI API 文档 |
-| `/v3/api-docs` | GET | OpenAPI 3.0 JSON 描述 |
+- **系统管理** — 用户 / 角色 / 菜单 / 部门 / 岗位 / 参数配置 / 字典 / 通知公告 / 邮件配置 / TOTP 两步验证 / OAuth2 第三方登录（GitHub、Google、企业微信、钉钉、飞书、QQ）
+- **系统监控** — 操作日志 / 登录日志 / 在线用户 / 定时任务（秒级 Cron）/ 系统日志查看器 / 服务监控（CPU、内存、磁盘、GPU）/ 缓存监控 / 数据源监控 / 重启管理页
+- **账号自助** — 登录（支持 LDAP）/ 注册（邮箱验证码）/ 忘记密码 / 重置密码
+- **代码生成与工具** — 代码生成（独立动态库插件，支持热更新）/ 项目构建 / 网站信息 / 视频处理
+- **AI 与智能** — 大模型对话（流式）/ AI 代码生成 / 语音识别（Whisper）/ ONNX Embedding
+- **IoT 与设备管理** — 设备管理 / Modbus 读写 / 批量轮询
+- **运维与可观测性** — `/actuator/health`、`/actuator/metrics`（Prometheus）、`/actuator/db`、`/actuator/reload`（配置热重载）
+- **WAF 防火墙** — 规则引擎（内置 SQLi / XSS / 路径穿越 / 命令注入 + 自定义正则）、IP 黑白名单（CIDR）、URI / UA 名单、封禁管理（`/monitor/waf/**`）、NDJSON 拦截日志、nftables 内核层封禁（仅 Linux）
 
 ---
 
@@ -185,7 +109,7 @@ RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管
 | 反向代理 | Nginx（可选，项目内置启动管理，自动生成 upstream.conf）|
 | 日志 | JSON 结构化日志（`.jsonl`，每行一个 JSON 对象，可接 ELK）|
 | 可观测 | Prometheus 指标端点、X-Request-ID 全链路追踪 |
-| 安全 | 请求签名验证、IP 限流、XSS 过滤、设备绑定、许可证管理 |
+| 安全 | 请求签名验证、IP 限流、XSS 过滤、WAF 规则引擎 + nftables 封禁、设备绑定、许可证管理 |
 
 ### 技术栈版本详情
 
@@ -214,7 +138,7 @@ RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管
 
 | 项目 | 要求 | 说明 |
 |------|------|-----|
-| **操作系统** | Windows 10+ / Linux / macOS | 已在 Windows 11 + MSYS2 MinGW64 验证。<br/>⚠️ **Linux 系统严格仅支持 Ubuntu 24.04 LTS** (见 [Linux 运行环境说明](docs/LINUX_OS_REQUIREMENT.md)) |
+| **操作系统** | Windows 10+ / Linux / macOS | 已在 Windows 11（MSYS2 MinGW64）与 Linux（GCC）验证 |
 | **处理器** | x86-64 或 ARM64 | 推荐 4 核以上 |
 | **内存** | 最小 512MB，推荐 2GB+ | 包含数据库和应用 |
 | **磁盘** | 最小 500MB | 包含应用、日志、上传文件 |
@@ -252,8 +176,8 @@ RuoYi-Cpp 是 [若依（RuoYi-Vue）](https://gitee.com/y_project/RuoYi-Vue) 管
 
 1. **下载预编译版本**
    ```bash
-   # 从 Release 页面下载 ruoyi-cpp-v1.3.2-windows.zip
-   unzip ruoyi-cpp-v1.3.2-windows.zip
+   # 从 Release 页面下载 ruoyi-cpp-v1.3.3-windows.zip
+   unzip ruoyi-cpp-v1.3.3-windows.zip
    cd ruoyi-cpp
    ```
 
@@ -353,6 +277,42 @@ ninja
 # 首次运行自动建表 + 插入初始数据
 ./ruoyi-cpp.exe
 ```
+
+---
+
+### Linux（GCC）
+
+**1. 安装依赖**
+
+```bash
+sudo apt install -y gcc g++ cmake make \
+    libssl-dev libjsoncpp-dev libpq-dev zlib1g-dev \
+    libbrotli-dev libc-ares-dev uuid-dev libhiredis-dev \
+    libsqlite3-dev librocksdb-dev
+```
+
+**2. 编译安装 Drogon**（同 Windows 步骤，略去 `-G Ninja` 可用默认 Makefiles）
+
+```bash
+git clone https://github.com/drogonframework/drogon
+cd drogon && git submodule update --init
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_REDIS=ON -DBUILD_MYSQL=OFF -DBUILD_SQLITE=OFF -DBUILD_POSTGRESQL=ON
+make -j$(nproc) && sudo make install
+```
+
+**3. 编译项目**
+
+```bash
+git clone https://gitee.com/ruoyicpp/ruoyi ruoyi-cpp
+cd ruoyi-cpp && mkdir build-Linux && cd build-Linux
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+./ruoyi-cpp
+```
+
+> 可选：`-DRUOYI_USE_NGINX=ON` 启用嵌入式 Nginx（需先按 `nginx-1.29.8-linux/` 说明编译 `libnginx.a`）；`-DRUOYI_BUILD_TESTS=ON` 编译单元测试。
 
 ---
 
@@ -524,29 +484,27 @@ ninja
 
 ```
 ruoyi-cpp/
-├── .github/workflows/               # CI/CD 自动化流水线（跨平台测试与静态检查）
-├── build-nginx/                     # 生产环境部署包与 Nginx 反向代理最佳实践
-│   └── 部署说明.md                  # 系统全面部署文档
-├── certmanager-web/                 # SSL 证书管理前端单页面（基于 Alpine + Tailwind）
-├── drogon/                          # Drogon 预编译静态库与模块目录
-├── k8s/                             # Kubernetes 资源编排配置（含 7 大核心资源编排）
-├── monitoring/                      # Observability 性能监控：Prometheus + Grafana
-├── plugins/                         # 系统运行时加载的动态加载插件模块（如 hello_plugin）
-├── scripts/                         # 系统维护 PowerShell 脚本（如 SQLite3MC 安全下载器）
-├── tests/                           # 模块化测试框架（支持 unit/、mocks/、fixtures/ 等）
-├── tools/                           # 高性能离线工具集（如 SQLite 两层多算法加密升级工具）
-├── vue-c++/                         # 现代前端 Web 源码项目（适配 C++ 后端代理与长连接）
-├── watchdog/                        # 跨平台轻量高可用守护进程（支持自动拉起与心跳健康状态监控）
-├── logs/                            # 运行时产生的文本/JSONL 结构化日志输出目录
-├── upload/                          # 本地默认上传文件与存储目录
-├── src/                             # C++ 后端主引擎源码
-│   ├── alert/                       # 新增：高性能实时告警监测与阈值合并转发引擎
-│   ├── analytics/                   # 新增：实时业务数据分析统计模块
-│   ├── cache/                       # 新增：基于策略的多级高速缓存管理机制
-│   ├── log/                         # 新增：高可靠结构化日志适配系统
-│   ├── monitor/                     # 指标采集与主线程全链路追踪探测模块
-│   ├── taskqueue/                   # 新增：超高性能异步流式后台任务执行队列
-│   ├── main.cc                      # 入口：中间件注册、服务初始化
+├── build-nginx/
+│   ├── config.json                      # 主配置文件（不随 git 提交，敏感信息）
+│   ├── config.template.json             # 配置模板（git 提交，敏感值用占位符）
+│   └── ruoyi-cpp.exe                    # 编译产物
+├── web/                             # 前端 dist 目录（放这里即可，无需 Nginx）
+├── logs/                            # 日志目录（.log 文本 + .jsonl 结构化）
+├── upload/                          # 本地上传文件目录
+├── src/
+│   ├── main.cc                      # 旧单文件入口（保留对照，不参与编译）
+│   ├── main/                        # 启动模块（拆分自原 main.cc）
+│   │   ├── main.cc                  # 入口：按阶段串联启动流程
+│   │   └── main/                    # 各启动阶段实现（boot::*）
+│   │       ├── AppBootstrap.h       #   AppContext 共享上下文 + 阶段函数声明
+│   │       ├── EarlyInit.cc         #   早期初始化：watchdog 移交 / 单实例锁 / 编排器
+│   │       ├── ConfigInit.cc        #   配置加载、license、DB 连接串
+│   │       ├── HttpSetup.cc         #   Drogon 监听器 / 中间件 / 过滤器
+│   │       ├── RoutesSetup.cc       #   内置路由注册
+│   │       ├── CertRoutes.cc        #   证书 / ACME 相关路由
+│   │       ├── StartupAdvice.cc     #   beginningAdvice：DB 初始化、外部服务
+│   │       ├── RuntimeSetup.cc      #   运行时服务（NginxEmbedded、心跳）+ 清理
+│   │       └── DbConnStr.cc         #   libpq 连接串构造
 │   ├── AppIncludes.h                # 全局集中 include
 │   ├── codegen/                     # 代码生成模块（编译为动态库）
 │   │   ├── CMakeLists.txt           # 动态库编译配置
@@ -715,98 +673,6 @@ location /ws/ {
 - ✅ JWT Token 格式、`getInfo`、`getRouters` 响应结构完全兼容
 - ✅ 直接克隆[若依官方前端](https://gitee.com/y_project/RuoYi-Vue)，只改后端地址即可运行
 - ➕ 新增：邮件发件箱管理、忘记密码、注册邮箱验证码、消息通知中心、API Key 管理、操作审计增强等功能
-
----
-
-## API 快速参考
-
-### 认证与授权
-
-```bash
-# 登录获取 Token
-curl -X POST http://localhost:18080/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123","code":"1234"}'
-
-# 响应示例
-{
-  "code": 200,
-  "msg": "操作成功",
-  "data": {
-    "access_token": "eyJhbGc...",
-    "token_type": "Bearer",
-    "expires_in": 1800
-  }
-}
-
-# 使用 Token 调用受保护的 API
-curl -X GET http://localhost:18080/system/user/list \
-  -H "Authorization: Bearer eyJhbGc..."
-```
-
-### 常用 API 示例
-
-```bash
-# 获取用户列表（分页）
-GET /system/user/list?pageNum=1&pageSize=10
-
-# 创建用户
-POST /system/user
-Content-Type: application/json
-{
-  "username": "newuser",
-  "nickName": "New User",
-  "email": "user@example.com",
-  "phonenumber": "13800138000",
-  "sex": "0",
-  "password": "NewPass@123",
-  "deptId": 103,
-  "postIds": [1]
-}
-
-# 获取服务器信息
-GET /monitor/server
-
-# 获取 Prometheus 指标
-GET /actuator/metrics
-
-# 获取应用健康状态
-GET /actuator/health
-
-# 热重载配置
-POST /actuator/reload
-
-# AI 对话
-POST /ai/chat
-Content-Type: application/json
-{
-  "message": "你好，请帮我生成一个 C++ 类",
-  "model": "gpt-4"
-}
-
-# IoT 设备列表
-GET /iot/devices
-
-# Modbus 读取
-POST /iot/modbus/read
-Content-Type: application/json
-{
-  "deviceId": 1,
-  "functionCode": 3,
-  "startAddress": 0,
-  "quantity": 10
-}
-
-# 代码生成 - 导入表
-POST /tool/gen/importTable
-Content-Type: application/json
-{
-  "tableNames": ["sys_user", "sys_role"]
-}
-
-# 代码生成 - 生成代码
-GET /tool/gen/genCode/sys_user
-```
 
 ---
 
@@ -1296,7 +1162,7 @@ hey -n 10000 -c 100 http://localhost:18080/system/user/list
 
 ## 版本升级指南
 
-### 从 v1.2.x 升级到 v1.3.2
+### 从 v1.2.x 升级到 v1.3.3
 
 **1. 备份数据库**
 
@@ -1314,8 +1180,8 @@ pkill -f ruoyi-cpp
 
 ```bash
 # 下载新版本
-wget https://gitee.com/ruoyicpp/ruoyi/releases/download/v1.3.2/ruoyi-cpp-v1.3.2-windows.zip
-unzip ruoyi-cpp-v1.3.2-windows.zip
+wget https://gitee.com/ruoyicpp/ruoyi/releases/download/v1.3.3/ruoyi-cpp-v1.3.3-windows.zip
+unzip ruoyi-cpp-v1.3.3-windows.zip
 ```
 
 **4. 更新配置文件**
@@ -1403,7 +1269,16 @@ cp ruoyi-cpp.v1.2.x ./ruoyi-cpp
 
 ## 更新日志
 
-### v1.3.2（当前）
+### v1.3.3（开发中）
+
+- **启动代码模块化拆分**：原 3400+ 行 `src/main.cc` 拆分为 `src/main/main.cc` 入口 + `src/main/main/` 下 8 个阶段模块（`EarlyInit`/`ConfigInit`/`HttpSetup`/`RoutesSetup`/`CertRoutes`/`StartupAdvice`/`RuntimeSetup`/`DbConnStr`），共享 `AppBootstrap.h` 中的 `AppContext` 上下文；旧 `src/main.cc` 保留为对照，不参与编译
+- **Linux 平台完整验证**：GCC 编译 + 运行验证通过（SQLite 降级、watchdog 守护移交、单实例锁、多进程编排器均正常）
+- **SQL LIKE 通配符转义**：`StringUtils::escapeLikeParam` 提升为公共实现，全部 LIKE 查询统一 `ESCAPE` 转义，防止 `%`/`_` 通配符注入
+- **后台线程优雅退出**：`HotConfig`、`LicenseWatcher` 线程改 joinable，`stop()` 真正等待退出，析构兜底防 `std::terminate`；`LicenseWatcher` 轮询睡眠改 1s 粒度，停服秒级返回
+- **首启自动生成默认配置**：`config.json` 缺失时按 `DefaultConfig.h` 内嵌模板生成（SQLite 模式），再进入许可证校验
+- **WAF 防火墙**（`src/waf/`）：`WafEngine` 正则规则引擎（内置 SQLi / XSS / 路径穿越 / 命令注入规则，支持 config.json 追加自定义），`CidrMatcher` IP 黑白名单，`NftBan` Linux nftables 内核层封禁（SYN 阶段 DROP，无权限自动降级为应用层封禁），`WafCtrl` 提供 `/monitor/waf/**` 管理接口（统计 / 拦截日志 / 封禁 / 规则 / CIDR / URI / UA 名单）
+
+### v1.3.2
 
 - **文档全面完善** - 添加快速体验、API 快速参考、部署最佳实践、性能优化、故障排查、开发者指南等完整文档
 - **技术栈版本更新** - C++ 标准升级到 C++20，更新所有依赖库版本信息

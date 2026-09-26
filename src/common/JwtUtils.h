@@ -55,6 +55,13 @@
 #include <chrono>
 #include <stdexcept>
 #include <fstream>
+#include <cstdlib>
+#include <random>
+#include <iostream>
+#include <filesystem>
+#ifndef _WIN32
+#  include <sys/stat.h>
+#endif
 #include <jwt-cpp/traits/open-source-parsers-jsoncpp/defaults.h>
 #include <drogon/drogon.h>
 #include "Constants.h"
@@ -114,6 +121,30 @@ public:
         return {std::istreambuf_iterator<char>(f), {}};
     }
 
+    /// 生成 64 字符随机 hex 密钥（256 位）
+    static std::string genRandomSecret() {
+        static const char hex[] = "0123456789abcdef";
+        std::random_device rd;
+        std::mt19937_64 gen(rd() ^ (uint64_t)std::chrono::steady_clock::now().time_since_epoch().count());
+        std::string s(64, '0');
+        for (auto &ch : s) ch = hex[gen() & 0xF];
+        return s;
+    }
+
+    /// 密钥写盘：trim 后单行存储，Linux 下 chmod 600
+    static bool writeSecretFile(const std::string &path, std::string secret) {
+        while (!secret.empty() && (secret.back() == '\n' || secret.back() == '\r' || secret.back() == ' '))
+            secret.pop_back();
+        std::ofstream f(path, std::ios::trunc);
+        if (!f) return false;
+        f << secret << "\n";
+        f.close();
+#ifndef _WIN32
+        chmod(path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+        return true;
+    }
+
     /**
      * @brief 从 config.json 加载 JWT 配置
      * 
@@ -133,8 +164,43 @@ public:
         c.expireMinutes = jwtCfg.get("expire_minutes",   30).asInt();
         c.jwtExpireDays = jwtCfg.get("jwt_expire_days",  7).asInt();
         // RS256 密钥文件（可选，有则优先使用 RS256）
-        std::string privFile = jwtCfg.get("private_key_file", "").asString();
-        std::string pubFile  = jwtCfg.get("public_key_file",  "").asString();
+        std::string privFile   = jwtCfg.get("private_key_file", "").asString();
+        std::string pubFile    = jwtCfg.get("public_key_file",  "").asString();
+        std::string secretFile = jwtCfg.get("secret_file",      "").asString();
+        // 环境变量覆盖敏感字段（优先级高于 config.json，供生产部署不下发明文 secret）
+        auto envOr = [](const char* name, std::string& out) {
+            const char* v = std::getenv(name);
+            if (v && *v) out = v;
+        };
+        envOr("RUOYI_JWT_SECRET",           c.secret);
+        envOr("RUOYI_JWT_PRIVATE_KEY_FILE", privFile);
+        envOr("RUOYI_JWT_PUBLIC_KEY_FILE",  pubFile);
+        envOr("RUOYI_JWT_SECRET_FILE",      secretFile);
+        // secret_file：独立密钥文件，优先级高于 config.json 内联 secret。
+        // 文件不存在时自动生成 64 字符随机 hex 密钥并写盘（0600），
+        // 此后 config.json 即使外泄也不含有效密钥。
+        if (!secretFile.empty()) {
+            std::string fs = readPem(secretFile);
+            // 密钥文件单行存储，读回后去掉尾部换行/空白，否则与生成值不一致
+            while (!fs.empty() && (fs.back() == '\n' || fs.back() == '\r' ||
+                                   fs.back() == ' ' || fs.back() == '\t'))
+                fs.pop_back();
+            size_t b = fs.find_first_not_of(" \t");
+            if (b != std::string::npos && b > 0) fs = fs.substr(b);
+            if (fs.empty()) {
+                // 无感迁移：config.json 内联 secret 有效时直接落盘为密钥文件，
+                // 已签发 token 不失效；默认/过短密钥才随机生成
+                if (!c.secret.empty() && c.secret.size() >= 16 &&
+                    c.secret != "ruoyi-cpp-secret") {
+                    fs = c.secret;
+                } else {
+                    fs = genRandomSecret();
+                }
+                if (writeSecretFile(secretFile, fs))
+                    std::cout << "[JwtUtils] 已生成密钥文件 " << secretFile << std::endl;
+            }
+            if (!fs.empty()) c.secret = fs;
+        }
         if (!privFile.empty()) c.privateKey = readPem(privFile);
         if (!pubFile.empty())  c.publicKey  = readPem(pubFile);
     }

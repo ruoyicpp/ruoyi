@@ -44,6 +44,7 @@
 #include "../../common/PageUtils.h"
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
+#include "../../common/StringUtils.h"
 
 /**
  * @class SysNoticeCtrl
@@ -78,9 +79,9 @@ public:
         auto title    = req->getParameter("noticeTitle");
         auto type     = req->getParameter("noticeType");
         auto createBy = req->getParameter("createBy");
-        if (!title.empty())    { sql += " AND notice_title LIKE $" + std::to_string(idx++); params.push_back("%" + title + "%"); }
+        if (!title.empty())    { sql += " AND notice_title LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(title) + "%"); }
         if (!type.empty())     { sql += " AND notice_type=$" + std::to_string(idx++); params.push_back(type); }
-        if (!createBy.empty()) { sql += " AND create_by LIKE $" + std::to_string(idx++); params.push_back("%" + createBy + "%"); }
+        if (!createBy.empty()) { sql += " AND create_by LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(createBy) + "%"); }
 
         std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";
         auto cntRes = params.empty() ? db.query(countSql) : db.queryParams(countSql, params);

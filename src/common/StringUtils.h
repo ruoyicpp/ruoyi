@@ -23,6 +23,25 @@
 #include <regex>
 
 /**
+ * @brief 转义 SQL LIKE 参数中的通配符（%、_、\）
+ * @details 用户输入直接拼进 LIKE 模式时，% 和 _ 会被当通配符、\ 被当转义符，
+ *          导致 "搜 admin 匹配到 administrator" 之外的意外命中。
+ *          统一约定：SQL 里写 `LIKE $N ESCAPE '\\'`，参数用 escapeLikeParam(v) 包装。
+ *          兼容 PostgreSQL / MySQL / SQLite（SQLite 无默认转义符，ESCAPE 子句必须显式声明）。
+ * @param keyword 用户原始输入
+ * @return 已转义字符串，调用方自行加前后 %："%" + escapeLikeParam(v) + "%"
+ */
+inline std::string escapeLikeParam(const std::string& keyword) {
+    std::string out;
+    out.reserve(keyword.size() + 8);
+    for (char c : keyword) {
+        if (c == '%' || c == '_' || c == '\\') out.push_back('\\');
+        out.push_back(c);
+    }
+    return out;
+}
+
+/**
  * @class StringUtils
  * @brief 字符串工具类
  * 

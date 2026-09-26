@@ -333,31 +333,77 @@ std::string RedisCluster::executeRaw(const std::string& command) {
     std::string op;
     iss >> op;
 
+    // 收集所有剩余 token（保留原始顺序，供 eval 等命令使用）
+    std::vector<std::string> rawArgs_;
+    std::string tok;
+    while (iss >> tok) {
+        rawArgs_.push_back(tok);
+    }
+
     if (op == "GET" || op == "get") {
-        std::string key;
-        iss >> key;
-        return get(key);
+        if (rawArgs_.empty()) return "(wrong number of args)";
+        return get(rawArgs_[0]);
     }
     if (op == "SET" || op == "set") {
-        std::string key;
-        std::string value;
-        iss >> key >> value;
-        return set(key, value) ? "OK" : "ERR";
+        if (rawArgs_.size() < 2) return "(wrong number of args)";
+        return set(rawArgs_[0], rawArgs_[1]) ? "OK" : "ERR";
+    }
+    if (op == "SETNX" || op == "setnx") {
+        if (rawArgs_.size() < 3) return "(wrong number of args)";
+        return setNxPx(rawArgs_[0], rawArgs_[1],
+                       std::stoi(rawArgs_[2])) ? "1" : "0";
+    }
+    if (op == "EVAL" || op == "eval") {
+        // EVAL script numkeys key [key ...] arg [arg ...]
+        // 本地 fallback 仅支持 release-lock: EVAL "release-lock" 1 key token
+        if (rawArgs_.size() >= 3 && rawArgs_[0] == "release-lock") {
+            return evalReleaseLock(rawArgs_[1], rawArgs_[2]) ? "1" : "0";
+        }
+        return "(eval not supported for this script)";
     }
     if (op == "DEL" || op == "del") {
-        std::string key;
-        iss >> key;
-        return del(key) ? "1" : "0";
+        if (rawArgs_.empty()) return "(wrong number of args)";
+        return del(rawArgs_[0]) ? "1" : "0";
     }
     if (op == "EXISTS" || op == "exists") {
-        std::string key;
-        iss >> key;
-        return exists(key) ? "1" : "0";
+        if (rawArgs_.empty()) return "(wrong number of args)";
+        return exists(rawArgs_[0]) ? "1" : "0";
     }
     if (op == "PING" || op == "ping") {
         return ping();
     }
-    return "(unknown command)";
+    return "(unknown command: " + op + ")";
+}
+
+bool RedisCluster::setNxPx(const std::string& key, const std::string& token, int ttlMs) {
+    std::lock_guard<std::mutex> lock(storeMutex_);
+    if (localStore_.find(key) != localStore_.end()) {
+        return false; // 已存在，获取失败
+    }
+    // 存 "token|ttlMs|abs_expire" 三元组，后续 Lua 等效脚本验证 token
+    long long expireAt = static_cast<long long>(
+        std::chrono::steady_clock::now().time_since_epoch().count())
+        + ttlMs * 1000000LL; // 微秒
+    localStore_[key] = token + "\x1F" + std::to_string(ttlMs) + "\x1F"
+                     + std::to_string(expireAt);
+    return true;
+}
+
+bool RedisCluster::evalReleaseLock(const std::string& key, const std::string& token) {
+    std::lock_guard<std::mutex> lock(storeMutex_);
+    auto it = localStore_.find(key);
+    if (it == localStore_.end()) {
+        return true; // 锁已自动过期（被 Redis 清除），算释放成功
+    }
+    // 格式: token\x1FttlMs\x1FexpireAt
+    auto pos0 = it->second.find('\x1F');
+    if (pos0 == std::string::npos) return false;
+    auto storedToken = it->second.substr(0, pos0);
+    if (storedToken != token) {
+        return false; // token 不匹配，不是自己的锁
+    }
+    localStore_.erase(it);
+    return true;
 }
 
 std::string RedisCluster::routeToNode(const std::string& key) {

@@ -208,7 +208,10 @@ public:
                 if (lk == "host" || lk == "connection" || lk == "keep-alive" ||
                     lk == "proxy-authenticate" || lk == "proxy-authorization" ||
                     lk == "te" || lk == "trailer" || lk == "transfer-encoding" ||
-                    lk == "upgrade" || lk == "content-length")
+                    lk == "upgrade" || lk == "content-length" ||
+                    // 去掉条件请求头，让上游返回完整内容而非 304 Not Modified
+                    lk == "if-none-match" || lk == "if-modified-since" ||
+                    lk == "if-match" || lk == "if-unmodified-since")
                     continue;
                 fwd->addHeader(k, kv.second);
             }
@@ -235,7 +238,25 @@ public:
                         cb(err);
                         return;
                     }
-                    cb(upstreamResp);
+                    // 去掉条件请求头后，上游会返回完整 200；去掉 ETag/Last-Modified
+                    // 防止浏览器下次自动发 If-None-Match/If-Modified-Since 导致 304
+                    auto fixed = drogon::HttpResponse::newHttpResponse();
+                    fixed->setStatusCode(upstreamResp->getStatusCode());
+                    fixed->setContentTypeCode(upstreamResp->contentType());
+                    auto body = upstreamResp->body();
+                    if (!body.empty()) {
+                        fixed->setBody(std::string(body));
+                    }
+                    for (auto& kv : upstreamResp->getHeaders()) {
+                        std::string k = kv.first;
+                        std::string lk; lk.reserve(k.size());
+                        for (auto c : k) lk.push_back((char)std::tolower((unsigned char)c));
+                        if (lk == "etag" || lk == "last-modified" ||
+                            lk == "transfer-encoding" || lk == "content-length")
+                            continue;
+                        fixed->addHeader(k, kv.second);
+                    }
+                    cb(fixed);
                 },
                 15.0);
             return true;

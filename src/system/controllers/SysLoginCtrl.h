@@ -75,6 +75,7 @@
 #include "../../common/MetricsCollector.h"
 #include "../../common/SmtpUtils.h"
 #include "SysEmailConfigCtrl.h"
+#include "../../captcha/CaptchaClient.h"
 
 /**
  * @class SysLoginCtrl
@@ -101,6 +102,7 @@ public:
     METHOD_LIST_BEGIN
         ADD_METHOD_TO(SysLoginCtrl::login,           "/login",          drogon::Post);
         ADD_METHOD_TO(SysLoginCtrl::logout,          "/logout",         drogon::Post);
+        ADD_METHOD_TO(SysLoginCtrl::refreshToken,    "/refreshToken",   drogon::Post, "JwtAuthFilter");
         ADD_METHOD_TO(SysLoginCtrl::getInfo,         "/getInfo",        drogon::Get,  "JwtAuthFilter");
         ADD_METHOD_TO(SysLoginCtrl::getRouters,      "/getRouters",     drogon::Get,  "JwtAuthFilter");
         ADD_METHOD_TO(SysLoginCtrl::doRegister,      "/register",       drogon::Post);
@@ -298,6 +300,33 @@ public:
         
         // 返回成功响应
         RESP_MSG(cb, "操作成功");
+    }
+
+    /**
+     * @brief 刷新令牌（续期）
+     *
+     * POST /refreshToken - 用当前有效 JWT 换新 token，旧 token 立即失效
+     *
+     * 机制：createToken 生成新 uuid 的 JWT 并重置过期时间；
+     *       delLoginUser 删除旧 token 的 TokenCache 条目 →
+     *       JwtAuthFilter 下次校验旧 token 时 cache miss → 401。
+     *       等效于"旧 token 拉黑"（有状态 JWT 天然支持）。
+     *
+     * 响应：{"code":200, "token":"<new_jwt>"}
+     */
+    void refreshToken(const drogon::HttpRequestPtr &req,
+                      std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        auto userOpt = TokenService::instance().getLoginUser(req);
+        if (!userOpt) {
+            RESP_401(cb); return;
+        }
+        LoginUser u = *userOpt;
+        std::string oldUuid = u.token;              // user.token 存的是 uuid
+        std::string newJwt  = TokenService::instance().createToken(u, req);
+        TokenService::instance().delLoginUser(oldUuid);   // 旧 token 立即失效
+        auto result = AjaxResult::successMap();
+        result["token"] = newJwt;
+        RESP_JSON(cb, result);
     }
 
     /**
@@ -1012,6 +1041,11 @@ public:
         result["captchaEnabled"]    = SysConfigService::instance().isCaptchaEnabled();
         result["registerEnabled"]   = SysConfigService::instance().isRegisterEnabled();
         result["forgotPwdEnabled"]  = SysConfigService::instance().isForgotPwdEnabled();
+        // 行为验证码（滑块/旋转）：开启后前端应改用 /captcha/get + /captcha/check
+        CaptchaClient::instance().syncFromDb();
+        auto bcfg = CaptchaClient::instance().config();
+        result["behavioralEnabled"] = bcfg.enabled;
+        if (bcfg.enabled) result["behavioralType"] = bcfg.type;
         RESP_JSON(cb, result);
     }
 

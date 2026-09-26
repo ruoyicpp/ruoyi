@@ -29,6 +29,7 @@
 #include "../../common/Constants.h"
 #include "../../common/SecurityUtils.h"
 #include "../../services/DatabaseService.h"
+#include "../../common/StringUtils.h"
 #include "../../libs/plugin/PluginManager.h"
 
 /**
@@ -141,8 +142,8 @@ public:
         std::vector<std::string> params;
         int idx = 1;
         if (!menuName.empty()) {
-            sql += " AND menu_name LIKE $" + std::to_string(idx++);
-            params.push_back("%" + menuName + "%");
+            sql += " AND menu_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'";
+            params.push_back("%" + escapeLikeParam(menuName) + "%");
         }
         if (!status.empty()) {
             sql += " AND status=$" + std::to_string(idx++);
@@ -452,12 +453,6 @@ private:
 
     std::string getComponent(const Json::Value &menu) {
         std::string comp = menu["component"].asString();
-        if (comp.find("oa/") == 0) {
-            // OA 页面尚未开发，fallback 到 ParentView 避免前端 import 404 崩溃
-            if (menu["parentId"].asInt64() != 0 && menu["menuType"].asString() == "M")
-                return Constants::PARENT_VIEW;
-            return Constants::LAYOUT;
-        }
         if (!comp.empty() && !isMenuFrame(menu) && !isInnerLinkMenu(menu)) return comp;
         if (menu["parentId"].asInt64() != 0 && menu["menuType"].asString() == "M")
             return Constants::PARENT_VIEW;

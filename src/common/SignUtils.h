@@ -217,7 +217,9 @@ private:
         return toHex(digest, digestLen);
     }
 
+public:
     // SHA-256 → hex 字符串（body hash，比 MD5 更安全）
+    // public：腾讯云 TC3 签名等外部模块也需要（SmsService）
     static std::string sha256Hex(const std::string& data) {
         unsigned char digest[EVP_MAX_MD_SIZE];
         unsigned int  digestLen = 0;
@@ -236,6 +238,7 @@ private:
         return oss.str();
     }
 
+private:
     // 常数时间字符串比较（防时序攻击）
     static bool constTimeEqual(const std::string& a, const std::string& b) {
         if (a.size() != b.size()) return false;

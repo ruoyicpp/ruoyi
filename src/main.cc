@@ -68,6 +68,7 @@
  */
 
 #include "AppIncludes.h"
+#include "config/DefaultConfig.h"
 #include "common/ColorLogger.h"
 #ifdef RUOYI_USE_EMBEDDED_FRONTEND
 #  include "common/EmbeddedFrontend.h"
@@ -80,6 +81,8 @@
 #include "log/LogCollector.h"
 #include "log/LogAnalyzer.h"
 #include "log/LogSearchEngine.h"
+#include "taskqueue/TaskQueue.h"
+#include "taskqueue/TaskQueueExample.h"
 #include "services/WorkerOrchestrator.h"
 #include "services/AcmeManager.h"
 #include "services/CertManagerDriver.h"
@@ -387,7 +390,37 @@ int main(int argc, char* argv[]) {
                 if (std::string(argv[i]) == "--launched-by-watchdog")
                     { fromWatchdog = true; break; }
 
-            if (!fromWatchdog) {
+            // Orchestrator fork 的 worker 不应再移交 watchdog，否则每个 worker
+            // 都会启动一个 watchdog → 新 ruoyi-cpp → 进入 orchestrator → 再 fork
+            // worker → 无限递归，指数级进程爆炸。
+            bool isOrchestratorWorker = (std::getenv("RUOYI_WORKER_INDEX") != nullptr);
+            // --no-watchdog：显式跳过 watchdog 移交，直接运行服务器
+            bool noWatchdog = false;
+            for (int i = 1; i < argc; ++i)
+                if (std::string(argv[i]) == "--no-watchdog")
+                    { noWatchdog = true; break; }
+
+            // 诊断日志：打印进程启动参数，便于排查 Linux 进程爆炸问题
+            {
+                std::string allArgs;
+                for (int i = 0; i < argc; ++i) allArgs += std::string(argv[i]) + " ";
+                const char* wIdx = std::getenv("RUOYI_WORKER_INDEX");
+#ifdef _WIN32
+                std::cerr << "[DIAG] pid=" << GetCurrentProcessId()
+                          << " ppid=0"
+#else
+                std::cerr << "[DIAG] pid=" << getpid()
+                          << " ppid=" << getppid()
+#endif
+                          << " args=[" << allArgs << "]"
+                          << " fromWatchdog=" << fromWatchdog
+                          << " isOrchestratorWorker=" << isOrchestratorWorker
+                          << " noWatchdog=" << noWatchdog
+                          << " workerIndex=" << (wIdx ? wIdx : "null")
+                          << std::endl;
+            }
+
+            if (!fromWatchdog && !isOrchestratorWorker && !noWatchdog) {
 #ifdef _WIN32
                 const char* wdExe = "watchdog.exe";
 #else
@@ -413,9 +446,7 @@ int main(int argc, char* argv[]) {
                 }
             }
 
-            // ── 单实例锁（只在由 watchdog 启动时检查，防止多实例堆损坏）────────
-            // 移到 watchdog 检测之后：直接双击时先移交给 watchdog 再退出，
-            // 不因单实例锁而跳过移交逻辑。
+            // ── 单实例锁（防止多实例堆损坏）────────
 #ifdef _WIN32
             if (fromWatchdog && std::getenv("RUOYI_WORKER_INDEX") == nullptr) {
                 static HANDLE s_singleInstance =
@@ -425,6 +456,28 @@ int main(int argc, char* argv[]) {
                     if (std::getenv("RUOYI_NO_PAUSE") == nullptr && _isatty(_fileno(stdin)))
                         std::cin.get();
                     return 2;
+                }
+            }
+#else
+            // Linux：用 PID 文件 + flock 防止多实例
+            {
+                std::string pidFile = ".ruoyi-cpp.pid";
+                std::ifstream checkPid(pidFile);
+                if (checkPid.is_open()) {
+                    long existingPid = 0;
+                    checkPid >> existingPid;
+                    checkPid.close();
+                    if (existingPid > 0 && kill(existingPid, 0) == 0) {
+                        std::cerr << "[FATAL] 已有 ruoyi-cpp 主进程在运行 (pid="
+                                  << existingPid << ")，请先关闭旧实例" << std::endl;
+                        return 2;
+                    }
+                }
+                std::ofstream ofs(pidFile);
+                if (ofs.is_open()) {
+                    ofs << getpid();
+                    ofs.close();
+                    std::atexit([]{ std::filesystem::remove(".ruoyi-cpp.pid"); });
                 }
             }
 #endif
@@ -450,6 +503,13 @@ int main(int argc, char* argv[]) {
                         workerCount = pre["app"].get("worker_processes", 1).asInt();
                     }
                 }
+#ifdef _WIN32
+                std::cerr << "[DIAG] pid=" << GetCurrentProcessId()
+#else
+                std::cerr << "[DIAG] pid=" << getpid()
+#endif
+                          << " worker_processes=" << workerCount
+                          << " config=" << preCfg << std::endl;
                 if (workerCount > 1) {
                     WorkerOrchestrator::Config oc;
                     oc.enabled     = true;
@@ -474,11 +534,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // ── 许可证校验（必须在加载配置前完成，工作目录已切换到 exe 目录）──────
-        LicenseManager::checkAndPrint();
-        LicenseWatcher::instance().start(LicenseManager::_licPath());
-
-        // ── 解析命令行参数 --config <file> ─────────────────────────────────────
+        // ── 解析命令行参数 --config <file>（提前：许可证远程验证需要 config 路径）──
         std::string configFile = "config.json";
         for (int i = 1; i < argc - 1; ++i) {
             if (std::string(argv[i]) == "--config") {
@@ -487,13 +543,20 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (!std::filesystem::exists(configFile)) {
-            std::cerr << "[错误] 找不到 " << configFile << "，请将其放到 exe 同目录下" << std::endl;
+        // ── 首次启动：配置文件缺失则自动生成默认配置（SQLite 零依赖）──────
+        if (!DefaultConfig::ensure(configFile)) {
+            std::cerr << "[错误] 配置文件 " << configFile
+                      << " 不存在且自动生成失败，请手动创建" << std::endl;
             std::cerr << "当前目录: " << std::filesystem::current_path() << std::endl;
             std::cout << "按回车键退出..." << std::endl;
             std::cin.get();
             return 1;
         }
+
+        // ── 许可证校验（必须在加载配置前完成，工作目录已切换到 exe 目录）──────
+        LicenseManager::loadRemoteConfig(configFile);   // license.remote 段
+        LicenseManager::checkAndPrint();
+        LicenseWatcher::instance().start(LicenseManager::_licPath());
 
         // ── 预读集群配置（决定实例角色）─────────────────────────────────────────
         std::string instanceRole = "primary"; // primary | worker
@@ -987,6 +1050,53 @@ int main(int argc, char* argv[]) {
                             LOG_INFO << "[Sign] " << apps.size() << " app(s) registered";
                         }
                     }
+                    // ── 可信代理名单：只有这些直连对端的 XFF/X-Real-IP 才被采信 ──
+                    // 部署在 nginx/网关后时把代理 IP 填进来；默认空=不信任何转发头
+                    {
+                        std::vector<std::string> proxies;
+                        for (auto& p : sec["trusted_proxies"])
+                            proxies.push_back(p.asString());
+                        IpUtils::setTrustedProxies(proxies);
+                        if (!proxies.empty())
+                            LOG_INFO << "[IpUtils] trusted_proxies=" << proxies.size();
+                    }
+                    // ── WAF 引擎 + 风控存储 + nftables 内核封禁（仅 Linux）──
+#ifdef __linux__
+                    if (sec.isMember("waf")) {
+                        auto& waf = sec["waf"];
+                        // 风控存储（封禁名单/票据/计数器持久化）
+                        RiskStore::Config rsCfg;
+                        if (waf.isMember("risk_store")) {
+                            auto& rs = waf["risk_store"];
+                            rsCfg.backend     = rs.get("backend", "sqlite").asString();
+                            rsCfg.dbPath      = rs.get("db_path", "data/waf_risk.db").asString();
+                            rsCfg.rocksdbPath = rs.get("rocksdb_path", "data/waf_risk_rocks").asString();
+                        }
+                        RiskStore::instance().init(rsCfg);
+                        // nftables 内核层封禁（Linux，无权限自动降级）
+                        bool nftOn = waf.isMember("nftables") &&
+                                     waf["nftables"].get("enabled", false).asBool();
+                        NftBan::instance().init(nftOn);
+                        // WAF 规则引擎
+                        WafEngine::instance().init(waf);
+                    }
+                    // ── 安全审计：Manticore 异步批量上报 ──────────────────
+                    if (sec.isMember("audit")) {
+                        auto& au = sec["audit"];
+                        AuditQueue::Config aCfg;
+                        aCfg.enabled         = au.get("enabled", false).asBool();
+                        aCfg.endpoint        = au.get("endpoint", "http://127.0.0.1:7700").asString();
+                        aCfg.index           = au.get("index", "waf_logs").asString();
+                        aCfg.batchSize       = au.get("batch_size", 100).asInt();
+                        aCfg.flushIntervalMs = au.get("flush_interval_ms", 3000).asInt();
+                        aCfg.retentionDays   = au.get("retention_days", 30).asInt();
+                        aCfg.queueCapacity   = au.get("queue_capacity", 10000).asInt();
+                        AuditQueue::instance().init(aCfg);
+                    }
+                    // ── SSO 单点登录服务端（OAuth2.0/OIDC）─────────────────
+                    if (sec.isMember("sso"))
+                        SsoServer::instance().init(sec["sso"]);
+#endif // __linux__
                 }
             }
         }
@@ -1242,6 +1352,10 @@ int main(int argc, char* argv[]) {
             DbMetricsHook::hook = [](long ms, bool ok, bool isWrite) {
                 MetricsCollector::instance().onDbQuery(ms, ok, isWrite);
             };
+            // 慢 SQL 审计钩子：logSlow 触发 → 入队（O(1)，不写库防死锁）
+            DbMetricsHook::slowHook = [](const char* op, const std::string& sql, long ms) {
+                SlowLogQueue::instance().push(op, sql, ms);
+            };
             LOG_INFO << "[Metrics] /actuator/* endpoints registered, "
                         "HTTP duration histogram + DB hook attached";
             std::cout << "[Metrics] /actuator/metrics 已启用 (含 DB 慢查询计数)" << std::endl;
@@ -1266,6 +1380,46 @@ int main(int argc, char* argv[]) {
         } catch (const std::exception& e) {
             LOG_WARN << "[NginxLike] 加载失败: " << e.what();
         }
+
+        // ── WAF 请求拦截（仅 Linux；在限流之前执行，最先挡掉恶意请求）─────────
+#ifdef __linux__
+        drogon::app().registerPreRoutingAdvice(
+            [](const drogon::HttpRequestPtr &req,
+               drogon::AdviceCallback &&acb,
+               drogon::AdviceChainCallback &&accb) {
+                if (!WafEngine::instance().isEnabled()) { accb(); return; }
+                auto verdict = WafEngine::instance().inspect(req);
+                if (verdict.action == WafAction::Block ||
+                    verdict.action == WafAction::Ban) {
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(drogon::k403Forbidden);
+                    resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                    resp->setBody("{\"code\":403,\"msg\":\"请求被安全策略拦截\"}");
+                    acb(resp);
+                    return;
+                }
+                // 跳转验证码：配置了 captcha_url 则 302，否则返回 449 让前端弹验证
+                if (verdict.action == WafAction::Captcha) {
+                    auto& url = WafEngine::instance().captchaUrl();
+                    if (!url.empty()) {
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode(drogon::k302Found);
+                        resp->addHeader("Location", url);
+                        acb(resp);
+                    } else {
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode((drogon::HttpStatusCode)449);
+                        resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                        resp->setBody("{\"code\":449,\"msg\":\"需要完成安全验证\"}");
+                        acb(resp);
+                    }
+                    return;
+                }
+                // AI 风控：通过 WAF 的请求异步采样送检（不阻塞，纳秒级入队）
+                AiRiskEngine::instance().inspect(req);
+                accb();
+            });
+#endif // __linux__
 
         // ── IP 限流 (DDoS 防御) ─────────────────────────────────────────────────
         // 当合并部署托管前端时，跳过静态资源（带扩展名且非 API 前缀），
@@ -1340,26 +1494,25 @@ int main(int argc, char* argv[]) {
                                   code == drogon::k405MethodNotAllowed);
                 if (isSpaCode && feHosted && feSpaMode) {
                     std::string p = req->path();
-                    // API 路径判断：有 feApiPrefix 则按前缀判断；无前缀时，
-                    // 若路径有 ≥2 段（/xxx/yyy）视为 API，不走 SPA fallback
-                    bool isApi = false;
-                    if (!feApiPrefix.empty() && feApiPrefix != "/" &&
-                        p.rfind(feApiPrefix, 0) == 0) {
-                        isApi = true;
-                    } else {
-                        // 统计路径段数：>= 2 段的视为 API（不含 feApiPrefix 的情况）
-                        int cnt = 0;
-                        for (size_t i = 0; i < p.size(); ++i)
-                            if (p[i] == '/') ++cnt;
-                        isApi = (cnt >= 2);
-                    }
+                    // API 判断：只有路径以 feApiPrefix 开头才视为 API
+                    // 去掉 segment-counting 启发式规则（2+ 段会误判 /system/user 等 SPA 嵌套路由）
+                    bool isApi = !feApiPrefix.empty() && feApiPrefix != "/" &&
+                                 p.rfind(feApiPrefix, 0) == 0;
                     auto slash = p.find_last_of('/');
                     auto seg   = (slash == std::string::npos) ? p : p.substr(slash + 1);
                     bool hasExt = seg.find('.') != std::string::npos;
                     // 非 API + 无扩展名 → 视作 vue-router 前端路径，回退 index.html
                     if (!isApi && !hasExt) {
                         if (!feEmbedded && !feIndexPath.empty()) {
-                            return drogon::HttpResponse::newFileResponse(feIndexPath);
+                            auto resp = drogon::HttpResponse::newHttpResponse();
+                            resp->setStatusCode(drogon::k200OK);
+                            resp->setContentTypeCode(drogon::CT_TEXT_HTML);
+                            std::ifstream f(feIndexPath, std::ios::binary);
+                            if (f) {
+                                std::stringstream ss; ss << f.rdbuf();
+                                resp->setBody(ss.str());
+                            }
+                            return resp;
                         }
                         // 嵌入式：EmbeddedFrontend 的 advice 已处理，几乎不会到这里；
                         // 兜底返回简单 200 让前端继续加载（极少触发）
@@ -1544,6 +1697,165 @@ int main(int argc, char* argv[]) {
         drogon::app().getLoop()->runEvery(120.0, []{
             ::RateLimiter::instance().cleanup();
         });
+
+#ifdef __linux__
+        // ── 审计队列：每3秒批量刷新到 Manticore ──────────────────────────
+        drogon::app().getLoop()->runEvery(3.0, []{
+            AuditQueue::instance().flush();
+        });
+        // ── AI 风控：每2秒批量送检评分 ────────────────────────────────────
+        drogon::app().getLoop()->runEvery(2.0, []{
+            AiRiskEngine::instance().flush();
+        });
+        // ── 风控存储：每5分钟清理过期封禁/票据/计数器 ──────────────────────
+        drogon::app().getLoop()->runEvery(300.0, []{
+            RiskStore::instance().cleanup();
+        });
+#endif // __linux__
+
+        // ── 日志留存：每日统一清理（PG日志表+本地文件+Manticore审计）──────
+        {
+            auto& root = drogon::app().getCustomConfig();
+            if (root.isMember("log") && root["log"].isMember("retention")) {
+                auto& rt = root["log"]["retention"];
+                LogRetention::Config lc;
+                lc.enabled      = rt.get("enabled", true).asBool();
+                lc.operLogDays  = rt.get("oper_log_days", 90).asInt();
+                lc.loginLogDays = rt.get("login_log_days", 90).asInt();
+                lc.localLogDays = rt.get("local_log_days", 30).asInt();
+                lc.maxFiles     = rt.get("max_files", 5000).asInt();
+                lc.maxTotalMb   = rt.get("max_total_mb", 2048).asInt64();
+                lc.logDir       = rt.get("log_dir", "logs").asString();
+                lc.archiveDir   = rt.get("archive_dir", "").asString();
+                LogRetention::instance().init(lc);
+            } else {
+                LogRetention::instance().init({});   // 默认策略
+            }
+            drogon::app().getLoop()->runEvery(86400.0, []{
+                LogRetention::instance().runOnce();
+            });
+            // 每小时兜底：文件数/总大小超限即按 mtime 从旧到新删（防日志爆量）
+            drogon::app().getLoop()->runEvery(3600.0, []{
+                LogRetention::instance().enforceCaps();
+            });
+        }
+
+        // ── 日志全文索引：./logs → Manticore sys_logs（每3秒增量 tail）──────
+        {
+            auto& root = drogon::app().getCustomConfig();
+            LogIndexer::Config li;
+            if (root.isMember("log") && root["log"].isMember("manticore")) {
+                auto& mc = root["log"]["manticore"];
+                li.enabled         = mc.get("enabled", false).asBool();
+                li.endpoint        = mc.get("endpoint", "").asString();
+                li.index           = mc.get("index", "sys_logs").asString();
+                li.logDir          = mc.get("log_dir", "./logs").asString();
+                li.batchSize       = mc.get("batch_size", 500).asInt();
+                li.maxLinesPerTick = mc.get("max_lines_per_tick", 20000).asInt();
+            }
+            // endpoint 未配置时复用 security.audit.endpoint（同一 Manticore 实例）
+            if (li.endpoint.empty() && root.isMember("security") &&
+                root["security"].isMember("audit"))
+                li.endpoint = root["security"]["audit"]
+                              .get("endpoint", "http://127.0.0.1:7700").asString();
+            if (li.endpoint.empty()) li.endpoint = "http://127.0.0.1:7700";
+            LogIndexer::instance().init(li);
+            drogon::app().getLoop()->runEvery(3.0, []{
+                LogIndexer::instance().tick();
+            });
+        }
+
+        // ── 运维模块：慢SQL审计 + 集群会话 + 备份管理 ─────────────────────
+        {
+            auto& root = drogon::app().getCustomConfig();
+
+            // 慢SQL审计：初始化 + 每10秒批量落库
+            SlowLogQueue::Config sc;
+            if (root.isMember("database") && root["database"].isMember("slow_log")) {
+                auto& sl = root["database"]["slow_log"];
+                sc.enabled       = sl.get("enabled", true).asBool();
+                sc.alertMs       = sl.get("alert_ms", 2000).asInt64();
+                sc.queueCapacity = sl.get("queue_capacity", 2000).asInt();
+            }
+            SlowLogQueue::instance().init(sc);
+            drogon::app().getLoop()->runEvery(10.0, []{
+                SlowLogQueue::instance().flush();
+            });
+
+            // 集群会话：节点标识 + 每60秒心跳续期
+            std::string nodeId;
+            if (root.isMember("cluster"))
+                nodeId = root["cluster"].get("node_id", "").asString();
+            ClusterSession::instance().init(nodeId);
+            drogon::app().getLoop()->runEvery(60.0, []{
+                ClusterSession::instance().heartbeat();
+            });
+
+            // 缓存一致性：Redis pub/sub 失效广播（多节点本地缓存同步）
+            CacheSync::instance().start();
+
+            // 配置热更新：绑定 /actuator/reload + config.json mtime 自动监听
+            ConfigReloadHook::fn = []{
+                return ConfigReloader::instance().reload();
+            };
+            ConfigReloader::instance().startWatcher();
+
+            // 行为验证码：go-captcha gRPC 客户端（captcha.behavioral.enabled=true 时启用）
+            {
+                CaptchaClient::Config cc;
+                if (root.isMember("captcha") && root["captcha"].isMember("behavioral")) {
+                    auto& bh = root["captcha"]["behavioral"];
+                    cc.enabled    = bh.get("enabled", false).asBool();
+                    cc.serverAddr = bh.get("server_addr", "127.0.0.1:18090").asString();
+                    cc.timeoutMs  = bh.get("timeout_ms", 3000).asInt();
+                    cc.type       = bh.get("type", "slide").asString();
+                }
+                CaptchaClient::instance().init(cc);
+            }
+
+            // 备份管理：初始化 + 每小时检查是否到备份时间
+            BackupService::Config bc;
+            if (root.isMember("backup")) {
+                auto& bk = root["backup"];
+                bc.enabled      = bk.get("enabled", false).asBool();
+                bc.dir          = bk.get("dir", "backups").asString();
+                bc.keepCount    = bk.get("keep_count", 7).asInt();
+                bc.scheduleHour = bk.get("schedule_hour", 3).asInt();
+            }
+            // 数据库连接复用 database 段
+            if (root.isMember("database")) {
+                auto& d = root["database"];
+                bc.dbHost = d.get("host", "127.0.0.1").asString();
+                bc.dbPort = d.get("port", 5432).asInt();
+                bc.dbName = d.get("dbname", "").asString();
+                bc.dbUser = d.get("user", "").asString();
+                bc.dbPass = d.get("passwd", "").asString();
+            }
+            BackupService::instance().init(bc);
+            drogon::app().getLoop()->runEvery(3600.0, []{
+                BackupService::instance().tickHourly();
+            });
+
+            // MQTT 客户端：设备接入/订阅转发/在线管理
+            if (root.isMember("mqtt")) {
+                auto& mq = root["mqtt"];
+                MqttClient::Config mc;
+                mc.enabled   = mq.get("enabled", false).asBool();
+                mc.host      = mq.get("host", "127.0.0.1").asString();
+                mc.port      = mq.get("port", 1883).asInt();
+                mc.clientId  = mq.get("client_id", "").asString();
+                mc.username  = mq.get("username", "").asString();
+                mc.password  = mq.get("password", "").asString();
+                mc.keepalive = mq.get("keepalive", 60).asInt();
+                mc.forwardWs = mq.get("forward_ws", true).asBool();
+                mc.persist   = mq.get("persist", false).asBool();
+                mc.topics.clear();
+                for (auto& t : mq["topics"]) mc.topics.push_back(t.asString());
+                if (mc.topics.empty())
+                    mc.topics = {"device/+/status", "device/+/data"};
+                MqttClient::instance().init(mc);
+            }
+        }
 
         // 静态文件服务：/profile/{dir}/{file} → uploads/{dir}/{file}
         // 用于头像(/profile/avatar/xxx)、通用上传(/profile/upload/xxx)等
@@ -2352,6 +2664,14 @@ load();
                 LOG_WARN << "[Menu] clear routers cache failed: " << e.what();
             }
 
+            // ── 企业增强：短信通道 + 多数据源注册表（需 DB 就绪）──────────────
+            {
+                auto& rootCfg = drogon::app().getCustomConfig();
+                if (rootCfg.isMember("sms"))
+                    SmsService::instance().init(rootCfg["sms"]);
+                DataSourceManager::instance().loadAll();
+            }
+
             // ── 启动时统一校正所有 InnerLink 菜单 URL ─────────────────────────
             // 优先级：menu.api_base_url（显式，生产环境推荐）
             //       > frontend/embedded_frontend.enabled（合并部署）
@@ -2575,6 +2895,12 @@ load();
             LOG_INFO << "加载配置缓存...";
             SysConfigService::instance().loadConfigCache();
 
+            // sys.cfg.* 覆盖层：DB 就绪后应用一次（参数设置里的值覆盖 config.json）
+            try { ConfigReloader::instance().reload(configFile); }
+            catch (const std::exception& e) {
+                LOG_WARN << "[ConfigReload] boot reload: " << e.what();
+            }
+
             LOG_INFO << "加载字典缓存...";
             SysDictService::instance().loadDictCache();
 
@@ -2705,6 +3031,48 @@ load();
                     }
                 } else {
                     std::cout << "[NGINX] config.json 中已禁用，跳过" << std::endl;
+                }
+            }
+
+            // ── 外部服务管理器（进程监控 + 自动代理路由）──────────────────────
+            if (isPrimary) {
+                std::ifstream esF(configFile);
+                if (esF.is_open()) {
+                    Json::Value esRoot;
+                    Json::CharReaderBuilder esRb;
+                    std::string esErrs;
+                    if (Json::parseFromStream(esRb, esF, &esRoot, &esErrs)
+                        && esRoot.isMember("external_services")) {
+                        auto& es = esRoot["external_services"];
+                        if (es.get("enabled", false).asBool()) {
+                            auto esSw = SysConfigService::instance().selectConfigByKey("sys.external_services");
+                            if (esSw == "false") {
+                                std::cout << "[ExternalService] sys_config 已禁用，跳过" << std::endl;
+                            } else {
+                                std::vector<ruoyi::ExternalServiceConfig> configs;
+                                if (es.isMember("services") && es["services"].isArray()) {
+                                    for (auto& svc : es["services"]) {
+                                        ruoyi::ExternalServiceConfig cfg;
+                                        cfg.name         = svc.get("name", "").asString();
+                                        cfg.displayName  = svc.get("display_name", "").asString();
+                                        cfg.exeName      = svc.get("exe_name", "").asString();
+                                        cfg.port         = svc.get("port", 0).asInt();
+                                        cfg.pathPrefix   = svc.get("path_prefix", "").asString();
+                                        cfg.upstream     = svc.get("upstream", "").asString();
+                                        cfg.stripPrefix  = svc.get("strip_prefix", true).asBool();
+                                        cfg.enabled      = svc.get("enabled", true).asBool();
+                                        if (!cfg.name.empty()) configs.push_back(cfg);
+                                    }
+                                }
+                                if (!configs.empty()) {
+                                    ruoyi::ExternalServiceManager::instance().init(configs);
+                                    ruoyi::ExternalServiceManager::instance().start();
+                                    std::atexit([]{ ruoyi::ExternalServiceManager::instance().stop(); });
+                                    std::cout << "[ExternalService] 已加载 " << configs.size() << " 个外部服务" << std::endl;
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -3007,6 +3375,41 @@ load();
             LOG_WARN << "[ACME] 初始化失败: " << e.what();
         }
 
+        // ── 异步任务队列（taskQueue）────────────────────────────────────
+        // Redis 后端为主；Redis 不可用且 fallbackToMemory=true 时回退到进程内队列
+        try {
+            std::ifstream tqf(configFile);
+            if (tqf.is_open()) {
+                Json::Value troot;
+                Json::CharReaderBuilder trb;
+                std::string terrs;
+                if (Json::parseFromStream(trb, tqf, &troot, &terrs)) {
+                    if (troot.isMember("taskQueue")) {
+                        // 只在主进程或 worker[0] 启动 worker 线程，避免多 worker
+                        // 重复消费导致任务被处理 N 次
+                        int wkIdx = WorkerOrchestrator::currentWorkerIndex();
+                        if (wkIdx == -1 || wkIdx == 0) {
+                            TaskQueue::instance().init(troot["taskQueue"]);
+                            TQ::registerBuiltinHandlers();
+                            TaskQueue::instance().start();
+                            LOG_INFO << "[Main] TaskQueue 初始化完成，backend="
+                                     << TaskQueue::instance().backendInfo();
+                        } else {
+                            // 其他 worker 仍注册 handler（供跨进程 RPC 调用）
+                            TaskQueue::instance().init(troot["taskQueue"]);
+                            TQ::registerBuiltinHandlers();
+                            LOG_INFO << "[Main] TaskQueue 已在 worker[" << wkIdx
+                                     << "] 跳过 worker 线程启动";
+                        }
+                    } else {
+                        LOG_INFO << "[Main] config.json 未配置 taskQueue，任务队列未启用";
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            LOG_WARN << "[TaskQueue] 初始化失败: " << e.what();
+        }
+
         // ── 心跳线程：每 2 秒写 .watchdog_heartbeat，让守护进程检测假死 ─────
         std::atomic<bool> hbStop{false};
         std::thread hbThread([&hbStop]() {
@@ -3032,6 +3435,7 @@ load();
         std::filesystem::remove(".watchdog_heartbeat");
 
         // ── 退出清理：先停反向代理（停止接收新连接，让 drogon 排空）─────
+        try { TaskQueue::instance().stop(); } catch (...) {}
         try { CertManagerAcme::instance().stop(); } catch (...) {}
         try { AcmeManager::instance().stop(); } catch (...) {}
         try { NginxEmbedded::instance().stop(); } catch (...) {}

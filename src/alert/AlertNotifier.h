@@ -50,6 +50,9 @@ private:
     // 格式化告警消息
     std::string formatAlertMessage(const Alert& alert, const AlertRule& rule);
     std::string formatAlertTitle(const Alert& alert, const AlertRule& rule);
+
+    // 告警级别中文标签
+    static std::string severityLabel(AlertSeverity s);
     
     // 数据成员
     std::unordered_map<std::string, NotificationHandler> handlers_;

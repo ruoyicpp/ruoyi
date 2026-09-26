@@ -4,14 +4,14 @@ English | [中文](README.md)
 
 # RuoYi-Cpp
 
-**A High-Performance C++ Version of the RuoYi Management Framework** · `v1.3.2`
+**A High-Performance C++ Version of the RuoYi Management Framework** · `v1.3.3`
 
 Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% compatible with the RuoYi-Vue frontend
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![C++](https://img.shields.io/badge/C++-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
 [![Drogon](https://img.shields.io/badge/Drogon-latest-green.svg)](https://github.com/drogonframework/drogon)
-[![Platform](https://img.shields.io/badge/platform-Windows%20(MSYS2%20MinGW64)-brightgreen.svg)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-brightgreen.svg)]()
 
 [![RuoYi-Vue](https://img.shields.io/badge/RuoYi--Vue-3.8-red.svg)](https://gitee.com/y_project/RuoYi-Vue)
 [![Vue](https://img.shields.io/badge/Vue-2.x-4FC08D.svg?logo=vue.js)](https://v2.vuejs.org)
@@ -31,9 +31,7 @@ Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% 
 
 ## Live Demo
 
-🌐 **v1.3.0 Demo**: [https://ruoyi1.mymq.site:20443](https://ruoyi1.mymq.site:20443)
-
-🌐 **v1.2.x Demo**: [https://ruoyi.mymq.site](https://ruoyi.mymq.site)
+🌐 **Demo**: [https://www.nulk.cn/](https://www.nulk.cn/)
 
 > Default credentials: `admin` / `admin123`
 
@@ -43,7 +41,7 @@ Based on [Drogon](https://github.com/drogonframework/drogon) + PostgreSQL, 100% 
 
 RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com/y_project/RuoYi-Vue) management framework. The backend is built on the Drogon asynchronous HTTP framework with PostgreSQL as the primary database, maintaining full API compatibility with the original RuoYi-Vue frontend.
 
-> ✅ **Platform**: Fully compiled and verified on **Windows (MSYS2 MinGW64)**. Supports **embedded SQLite mode** (no PostgreSQL required to run), with PostgreSQL as an optional primary database.
+> ✅ **Platform**: Fully compiled and verified on **Windows (MSYS2 MinGW64)** and **Linux (GCC)**. Supports **embedded SQLite mode** (no PostgreSQL required to run), with PostgreSQL as an optional primary database.
 
 **Advantages over the Java version:**
 
@@ -71,6 +69,7 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 - ✅ **Two-Factor Auth** - Google Authenticator TOTP RFC 6238
 - ✅ **Secret Management** - HashiCorp Vault integration, auto start/unseal/injection
 - ✅ **Observability** - Prometheus metrics, X-Request-ID tracing, JSON structured logs
+- ✅ **WAF Firewall** - Built-in SQLi / XSS / path-traversal / command-injection regex rule engine, IP allow/deny lists (CIDR), optional nftables kernel-level banning on Linux
 - ✅ **Dynamic Library Modules** - Code generation module independently compiled, hot-update without restart
 - ✅ **Cluster Deployment** - Multi-Worker process support, auto-generates Nginx upstream.conf
 
@@ -78,90 +77,16 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 
 ## Modules
 
-### System Management
+> 📖 API docs are not maintained in this repo — after startup, visit **`/swagger-ui/`** (Swagger UI) or `GET /v3/api-docs` (OpenAPI 3.0 JSON) for live endpoint definitions.
 
-| Module | API Route | Description |
-|--------|-----------|-------------|
-| User Management | `GET/POST/PUT/DELETE /system/user` | CRUD, password reset, CSV import/export, role/post assignment |
-| Role Management | `GET/POST/PUT/DELETE /system/role` | CRUD, menu permission assignment, data scope, user authorization |
-| Menu Management | `GET/POST/PUT/DELETE /system/menu` | CRUD, dynamic route tree building |
-| Department Management | `GET/POST/PUT/DELETE /system/dept` | Tree-structured CRUD |
-| Post Management | `GET/POST/PUT/DELETE /system/post` | CRUD |
-| Config Management | `GET/POST/PUT/DELETE /system/config` | System parameter CRUD + cache refresh |
-| Dictionary Management | `GET/POST/PUT/DELETE /system/dict` | Dict type + dict data CRUD |
-| Notice Management | `GET/POST/PUT/DELETE /system/notice` | Announcement CRUD + read status |
-| Email Config | `GET/POST /system/emailConfig` | SMTP sender configuration + test send |
-| Two-Factor Auth | `POST /system/totp/*` | Google Authenticator TOTP binding/unbinding |
-| OAuth2 Login | `GET /oauth2/authorize/{p}` | GitHub / Google / WeCom / DingTalk / Feishu / QQ |
-| OAuth2 Callback | `GET /oauth2/callback/{p}` | code → JWT; auto-register on first login |
-| OAuth2 Binding | `POST/DELETE /oauth2/bind/{p}` | Bind/unbind third-party to existing account |
-
-### System Monitor
-
-| Module | API Route | Description |
-|--------|-----------|-------------|
-| Operation Log | `GET/DELETE /monitor/operlog` | Query / delete / clear / export |
-| Login Log | `GET/DELETE /monitor/logininfor` | Query / delete / unlock account |
-| Online Users | `GET/DELETE /monitor/online` | View sessions / force logout |
-| Scheduled Jobs | `GET/POST/PUT/DELETE /monitor/job` | CRUD + run once + pause/resume + execution log |
-| System Log | `GET /monitor/logfile` | Real-time `.log`/`.jsonl` log viewer with delete |
-| Server Monitor | `GET /monitor/server` | CPU, memory, disk, system info, GPU VRAM |
-| Cache Monitor | `GET /monitor/cache` | View cache categories and key-values |
-| Data Source Monitor | `GET /monitor/druid` | DB connection pool status and query stats |
-
-### Account Self-Service
-
-| Feature | API Route | Description |
-|---------|-----------|-------------|
-| Login | `POST /login` | Username + password + captcha, returns JWT |
-| LDAP Login | `POST /login` | Auto AD/LDAP auth when `ldap.enabled=true` |
-| Register | `POST /register` | Self-registration with email verification |
-| Forgot Password | `POST /forgotPassword` | Send reset code via email |
-| Reset Password | `POST /resetPassword` | Update password with reset token |
-| Send Verification Code | `POST /sendRegCode` | Validate email before registration |
-
-### Code Generation & Tools
-
-| Module | API Route | Description |
-|--------|-----------|-------------|
-| Code Generation | `GET/POST/PUT/DELETE /tool/gen/**` | Import tables, preview code, generate code, sync database |
-| Project Build | `GET/POST /tool/build/**` | Project compilation, build management |
-| CodeGen Dynamic Library | `POST /api/codegen/**` | Dynamic compilation, plugin load/unload, code generation |
-| Website Info | `GET /tool/website/**` | Website config, SEO management |
-| Video Processing | `POST /tool/video/**` | Video transcoding, thumbnail generation |
-
-> **Code Generation Architecture**: Compiled as standalone DLL/SO (`plugins/codegen_plugin.dll`), supports runtime dynamic loading. Main program requires no recompilation for code generation updates.
-
-### AI & Intelligence
-
-| Module | API Route | Description |
-|--------|-----------|-------------|
-| AI Chat | `POST /ai/chat` | LLM conversation, streaming response |
-| Code Generation | `POST /ai/generate` | AI-assisted code generation |
-| Speech Recognition | `POST /ai/transcribe` | Speech-to-text (Whisper) |
-| ONNX Inference | `GET/POST /ai/onnx/**` | Vector models, text embedding |
-| AI Health Check | `GET /ai/health` | Model service status |
-
-### IoT & Device Management
-
-| Module | API Route | Description |
-|--------|-----------|-------------|
-| Device Management | `GET/POST/DELETE /iot/devices/**` | Device registration, deletion, connectivity test |
-| Modbus Read | `POST /iot/modbus/read` | Read registers/coils |
-| Modbus Write | `POST /iot/modbus/write` | Write registers/coils |
-| Modbus Poll | `POST /iot/modbus/poll` | Batch read multiple addresses |
-
-### Operations & Observability
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/actuator/health` | GET | Health check, JSON format |
-| `/actuator/metrics` | GET | Prometheus text format (direct Grafana integration) |
-| `/actuator/db` | GET | DB status: backend type, connection state, sync queue |
-| `/actuator/info` | GET | Application version info |
-| `/actuator/reload` | POST | Hot-reload `config.json` (no restart needed) |
-| `/swagger-ui/` | GET | Swagger UI API docs |
-| `/v3/api-docs` | GET | OpenAPI 3.0 JSON description |
+- **System Management** — users / roles / menus / departments / posts / parameters / dictionaries / notices / email config / TOTP 2FA / OAuth2 login (GitHub, Google, WeCom, DingTalk, Feishu, QQ)
+- **System Monitor** — operation logs / login logs / online users / scheduled jobs (second-level Cron) / system log viewer / server monitoring (CPU, memory, disk, GPU) / cache monitor / data source monitor / restart admin page
+- **Account Self-Service** — login (LDAP supported) / registration (email code) / forgot password / reset password
+- **Code Generation & Tools** — code generation (standalone dynamic-library plugin, hot-updatable) / project build / website info / video processing
+- **AI & Intelligence** — LLM chat (streaming) / AI code generation / speech recognition (Whisper) / ONNX embedding
+- **IoT & Device Management** — device management / Modbus read-write / batch polling
+- **Operations & Observability** — `/actuator/health`, `/actuator/metrics` (Prometheus), `/actuator/db`, `/actuator/reload` (config hot-reload)
+- **WAF Firewall** — rule engine (built-in SQLi / XSS / path-traversal / command-injection + custom regex), IP allow/deny lists (CIDR), URI / UA lists, ban management (`/monitor/waf/**`), NDJSON block logs, nftables kernel-level banning (Linux only)
 
 ---
 
@@ -184,7 +109,7 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 | Reverse Proxy | Nginx (optional, built-in process management, auto-generates upstream.conf) |
 | Logging | JSON structured logs (`.jsonl`, one JSON object per line, ELK-compatible) |
 | Observability | Prometheus metrics endpoint, X-Request-ID full-chain tracing |
-| Security | Request signature, IP rate limiting, XSS filter, device binding, license management |
+| Security | Request signature, IP rate limiting, XSS filter, WAF rule engine + nftables banning, device binding, license management |
 
 ### Technology Stack Versions
 
@@ -211,7 +136,7 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 
 | Item | Requirement | Description |
 |------|-------------|-------------|
-| **Operating System** | Windows 10+ / Linux / macOS | Verified on Windows 11 + MSYS2 MinGW64.<br/>⚠️ **Linux strictly requires Ubuntu 24.04 LTS** (see [Linux OS Requirement](docs/LINUX_OS_REQUIREMENT_EN.md)) |
+| **Operating System** | Windows 10+ / Linux / macOS | Verified on Windows 11 (MSYS2 MinGW64) and Linux (GCC).<br/>⚠️ **Linux strictly requires Ubuntu 24.04 LTS** (see [Linux OS Requirement](docs/LINUX_OS_REQUIREMENT_EN.md)) |
 | **Processor** | x86-64 or ARM64 | Recommended 4+ cores |
 | **Memory** | Min 512MB, recommended 2GB+ | Includes database and application |
 | **Disk** | Min 500MB | Includes app, logs, uploaded files |
@@ -249,8 +174,8 @@ RuoYi-Cpp is a high-performance C++ version of the [RuoYi-Vue](https://gitee.com
 
 1. **Download pre-built binary**
    ```bash
-   # Download ruoyi-cpp-v1.3.2-windows.zip from Release page
-   unzip ruoyi-cpp-v1.3.2-windows.zip
+   # Download ruoyi-cpp-v1.3.3-windows.zip from Release page
+   unzip ruoyi-cpp-v1.3.3-windows.zip
    cd ruoyi-cpp
    ```
 
@@ -350,6 +275,42 @@ ninja
 # Tables and initial data are created automatically on first run
 ./ruoyi-cpp.exe
 ```
+
+---
+
+### Linux (GCC)
+
+**1. Install dependencies**
+
+```bash
+sudo apt install -y gcc g++ cmake make \
+    libssl-dev libjsoncpp-dev libpq-dev zlib1g-dev \
+    libbrotli-dev libc-ares-dev uuid-dev libhiredis-dev \
+    libsqlite3-dev librocksdb-dev
+```
+
+**2. Build and install Drogon** (same as Windows, default Makefiles work without `-G Ninja`)
+
+```bash
+git clone https://github.com/drogonframework/drogon
+cd drogon && git submodule update --init
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_REDIS=ON -DBUILD_MYSQL=OFF -DBUILD_SQLITE=OFF -DBUILD_POSTGRESQL=ON
+make -j$(nproc) && sudo make install
+```
+
+**3. Build the project**
+
+```bash
+git clone https://gitee.com/ruoyicpp/ruoyi ruoyi-cpp
+cd ruoyi-cpp && mkdir build-Linux && cd build-Linux
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+./ruoyi-cpp
+```
+
+> Optional: `-DRUOYI_USE_NGINX=ON` enables embedded Nginx (build `libnginx.a` first per `nginx-1.29.8-linux/` docs); `-DRUOYI_BUILD_TESTS=ON` builds unit tests.
 
 ---
 
@@ -488,7 +449,19 @@ ruoyi-cpp/
 │   ├── log/                         # NEW: Structured log adapters
 │   ├── monitor/                     # Metric collection and thread tracing modules
 │   ├── taskqueue/                   # NEW: Ultra-fast asynchronous task execution queue
-│   ├── main.cc                      # Entry: middleware registration, service initialization
+│   ├── main.cc                      # Legacy single-file entry (kept for reference, not compiled)
+│   ├── main/                        # Startup modules (split from old main.cc)
+│   │   ├── main.cc                  # Entry: chains startup phases
+│   │   └── main/                    # Per-phase implementations (boot::*)
+│   │       ├── AppBootstrap.h       #   AppContext shared context + phase declarations
+│   │       ├── EarlyInit.cc         #   Early init: watchdog handoff / singleton lock / orchestrator
+│   │       ├── ConfigInit.cc        #   Config loading, license, DB conn string
+│   │       ├── HttpSetup.cc         #   Drogon listeners / middleware / filters
+│   │       ├── RoutesSetup.cc       #   Built-in route registration
+│   │       ├── CertRoutes.cc        #   Certificate / ACME routes
+│   │       ├── StartupAdvice.cc     #   beginningAdvice: DB init, external services
+│   │       ├── RuntimeSetup.cc      #   Runtime services (NginxEmbedded, heartbeat) + cleanup
+│   │       └── DbConnStr.cc         #   libpq connection string builder
 │   ├── AppIncludes.h                # Centralized global includes
 │   ├── codegen/                     # Code generation module (compiled as dynamic library)
 │   │   ├── CMakeLists.txt           # Dynamic library build config
@@ -638,98 +611,6 @@ location /ws/ {
     proxy_set_header Host       $host;
     proxy_read_timeout 3600s;
 }
-```
-
----
-
-## API Quick Reference
-
-### Authentication & Authorization
-
-```bash
-# Login to get Token
-curl -X POST http://localhost:18080/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123","code":"1234"}'
-
-# Response example
-{
-  "code": 200,
-  "msg": "Success",
-  "data": {
-    "access_token": "eyJhbGc...",
-    "token_type": "Bearer",
-    "expires_in": 1800
-  }
-}
-
-# Call protected API with Token
-curl -X GET http://localhost:18080/system/user/list \
-  -H "Authorization: Bearer eyJhbGc..."
-```
-
-### Common API Examples
-
-```bash
-# Get user list (paginated)
-GET /system/user/list?pageNum=1&pageSize=10
-
-# Create user
-POST /system/user
-Content-Type: application/json
-{
-  "username": "newuser",
-  "nickName": "New User",
-  "email": "user@example.com",
-  "phonenumber": "13800138000",
-  "sex": "0",
-  "password": "NewPass@123",
-  "deptId": 103,
-  "postIds": [1]
-}
-
-# Get server info
-GET /monitor/server
-
-# Get Prometheus metrics
-GET /actuator/metrics
-
-# Get application health
-GET /actuator/health
-
-# Hot-reload config
-POST /actuator/reload
-
-# AI chat
-POST /ai/chat
-Content-Type: application/json
-{
-  "message": "Hello, please generate a C++ class for me",
-  "model": "gpt-4"
-}
-
-# List IoT devices
-GET /iot/devices
-
-# Modbus read
-POST /iot/modbus/read
-Content-Type: application/json
-{
-  "deviceId": 1,
-  "functionCode": 3,
-  "startAddress": 0,
-  "quantity": 10
-}
-
-# Code generation - import tables
-POST /tool/gen/importTable
-Content-Type: application/json
-{
-  "tableNames": ["sys_user", "sys_role"]
-}
-
-# Code generation - generate code
-GET /tool/gen/genCode/sys_user
 ```
 
 ---
@@ -1229,7 +1110,7 @@ hey -n 10000 -c 100 http://localhost:18080/system/user/list
 
 ## Version Upgrade Guide
 
-### Upgrading from v1.2.x to v1.3.2
+### Upgrading from v1.2.x to v1.3.3
 
 **1. Backup Database**
 
@@ -1247,8 +1128,8 @@ pkill -f ruoyi-cpp
 
 ```bash
 # Download new version
-wget https://gitee.com/ruoyicpp/ruoyi/releases/download/v1.3.2/ruoyi-cpp-v1.3.2-windows.zip
-unzip ruoyi-cpp-v1.3.2-windows.zip
+wget https://gitee.com/ruoyicpp/ruoyi/releases/download/v1.3.3/ruoyi-cpp-v1.3.3-windows.zip
+unzip ruoyi-cpp-v1.3.3-windows.zip
 ```
 
 **4. Update Configuration**
@@ -1336,7 +1217,16 @@ Issues and Pull Requests are welcome!
 
 ## Changelog
 
-### v1.3.2 (current)
+### v1.3.3 (in development)
+
+- **Startup code modularization**: the 3400+ line `src/main.cc` split into `src/main/main.cc` entry + 8 phase modules under `src/main/main/` (`EarlyInit`/`ConfigInit`/`HttpSetup`/`RoutesSetup`/`CertRoutes`/`StartupAdvice`/`RuntimeSetup`/`DbConnStr`), sharing `AppContext` via `AppBootstrap.h`; old `src/main.cc` kept for reference and excluded from the build
+- **Full Linux verification**: GCC build + runtime verified (SQLite fallback, watchdog handoff, singleton lock, multi-process orchestrator all working)
+- **SQL LIKE wildcard escaping**: `StringUtils::escapeLikeParam` promoted to a shared helper; all LIKE queries now use `ESCAPE` to prevent `%`/`_` wildcard injection
+- **Graceful background thread shutdown**: `HotConfig` and `LicenseWatcher` threads made joinable — `stop()` actually waits, destructor joins as a safety net against `std::terminate`; `LicenseWatcher` poll sleep refined to 1s granularity for sub-second shutdown
+- **Default config auto-generation**: missing `config.json` is generated from the embedded `DefaultConfig.h` template (SQLite mode) before license validation
+- **WAF firewall** (`src/waf/`): `WafEngine` regex rule engine (built-in SQLi / XSS / path-traversal / command-injection rules, custom rules via config.json), `CidrMatcher` IP allow/deny lists, `NftBan` Linux nftables kernel-level banning (drops at SYN stage; auto-fallback to app-layer ban without privileges), `WafCtrl` provides `/monitor/waf/**` admin APIs (stats / block logs / bans / rules / CIDR / URI / UA lists)
+
+### v1.3.2
 
 - **Comprehensive Documentation** - Added quick start, API reference, deployment best practices, performance optimization, troubleshooting, developer guide, and more
 - **Technology Stack Updates** - C++ standard upgraded to C++20, updated all dependency library versions
@@ -1415,7 +1305,7 @@ Issues and Pull Requests are welcome!
 
 ## Community
 
-QQ Group: **7827982393**
+QQ Group: **782798239**
 
 Official Website: <http://www.gzbgw.com>
 

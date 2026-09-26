@@ -22,6 +22,7 @@
 #include "../../services/KoboldCppManager.h"
 #include "../../services/DdnsGoManager.h"
 #include "../../services/WhisperService.h"
+#include "../../services/ExternalServiceManager.h"
 
 // GET /api/health - backend health checkpoint (matches druid page data)
 class HealthCtrl : public drogon::HttpController<HealthCtrl> {
@@ -32,6 +33,8 @@ public:
         ADD_METHOD_TO(HealthCtrl::health, "/api/%E5%81%A5%E5%BA%B7", drogon::Get);
         // Druid-style monitoring page
         ADD_METHOD_TO(HealthCtrl::druid, "/api/druid", drogon::Get);
+        // 外部服务状态（前端轮询展示）
+        ADD_METHOD_TO(HealthCtrl::servicesStatus, "/api/services/status", drogon::Get);
     METHOD_LIST_END
 
     // 首页欢迎页（匹配 RuoYi HomeController.Index）
@@ -773,6 +776,40 @@ body{font-family:"Helvetica Neue",Helvetica,"PingFang SC","Hiragino Sans GB","Mi
         data["uptimeSec"] = (Json::Int64)upSec;
 
         RESP_OK(cb, data);
+    }
+
+    // 外部服务状态查询（前端轮询展示）
+    void servicesStatus(const drogon::HttpRequestPtr&,
+                        std::function<void(const drogon::HttpResponsePtr&)>&& cb) {
+        auto& mgr = ruoyi::ExternalServiceManager::instance();
+        if (!mgr.isInited()) {
+            Json::Value data;
+            data["code"] = 200;
+            data["msg"] = "ExternalServiceManager not initialized";
+            data["services"] = Json::arrayValue;
+            RESP_JSON(cb, data);
+            return;
+        }
+
+        auto statuses = mgr.getAllStatus();
+        Json::Value arr(Json::arrayValue);
+        for (const auto& s : statuses) {
+            Json::Value j;
+            j["name"] = s.name;
+            j["displayName"] = s.displayName;
+            j["port"] = s.port;
+            j["pathPrefix"] = s.pathPrefix;
+            j["enabled"] = s.enabled;
+            j["running"] = s.running;
+            j["pid"] = s.pid;
+            arr.append(j);
+        }
+
+        Json::Value data;
+        data["code"] = 200;
+        data["msg"] = "success";
+        data["services"] = arr;
+        RESP_JSON(cb, data);
     }
 
 private:

@@ -79,6 +79,15 @@ namespace DbMetricsHook {
             try { hook(ms, ok, isWrite); } catch (...) {}
         }
     }
+    // 慢查询钩子（携带 SQL 文本）：main.cc 绑定到 SlowLogQueue::push
+    // 注意：在 DatabaseService::mutex_ 内执行，回调必须 O(1) 不写库
+    using SlowFn = std::function<void(const char* op, const std::string& sql, long ms)>;
+    inline SlowFn slowHook;
+    inline void notifySlow(const char* op, const std::string& sql, long ms) {
+        if (slowHook) {
+            try { slowHook(op, sql, ms); } catch (...) {}
+        }
+    }
 }
 #ifdef _WIN32
 #  ifndef WIN32_LEAN_AND_MEAN
@@ -591,11 +600,20 @@ private:
         } else {
             std::cout << "[SlowSQL][WARN][" << op << "] " << ms << "ms SQL: " << snippet << std::endl;
         }
+        // 异步落库钩子（回调须 O(1)，SlowLogQueue::push 仅入队）
+        DbMetricsHook::notifySlow(op, sql, ms);
     }
 
-    struct PendingWrite { std::string sql; std::vector<std::string> params; };
+    struct PendingWrite {
+        std::string sql;
+        std::vector<std::string> params;
+        int retries = 0;   ///< 回写失败次数（>=MAX_REPLAY_RETRIES 进死信表）
+    };
     std::vector<PendingWrite> pendingSync_;
     static constexpr size_t MAX_PENDING = 10000;
+    static constexpr int    MAX_REPLAY_RETRIES = 3;
+    std::atomic<uint64_t>   syncDropped_{0};   ///< 队列满丢弃计数
+    std::atomic<uint64_t>   syncDead_{0};      ///< 死信计数
 
     // --------------------------------------------------------
     // SQL 工具
@@ -696,6 +714,11 @@ private:
     void pendingSyncIfRoom(PendingWrite pw) {
         if (isDml(pw.sql) && pendingSync_.size() < MAX_PENDING)
             pendingSync_.push_back(std::move(pw));
+        else if (isDml(pw.sql)) {
+            ++syncDropped_;
+            std::cout << "[DB][Sync] pending queue full, dropped DML: "
+                      << pw.sql.substr(0, 120) << std::endl;
+        }
     }
 
     // --------------------------------------------------------
@@ -770,14 +793,41 @@ private:
         }
     }
 
+    // 回写离线期间的 SQLite 写入到 PG（在 mutex_ 内执行）
+    // 冲突解决：依赖应用层 SQL 的 ON CONFLICT / 主键幂等；
+    //   失败项保留重试，>=MAX_REPLAY_RETRIES 次移入 sys_sync_dead 死信表
     void replaySyncLocked() {
-        int ok = 0, fail = 0;
+        int ok = 0, fail = 0, dead = 0;
+        std::vector<PendingWrite> remain;
+        remain.reserve(pendingSync_.size());
         for (auto& pw : pendingSync_) {
-            bool r = pw.params.empty() ? execPgLocked(pw.sql) : execParamsPgLocked(pw.sql, pw.params);
-            r ? ++ok : ++fail;
+            bool r = pw.params.empty() ? execPgLocked(pw.sql)
+                                       : execParamsPgLocked(pw.sql, pw.params);
+            if (r) { ++ok; continue; }
+            ++fail;
+            if (++pw.retries >= MAX_REPLAY_RETRIES) {
+                ++dead; ++syncDead_;
+                // 死信落库：走裸 PG 路径（已在 mutex_ 内，不能调 execParams）
+                deadLetterLocked(pw);
+            } else {
+                remain.push_back(std::move(pw));   // 留待下轮恢复重试
+            }
         }
-        pendingSync_.clear();
-        std::cout << "[DB] 离线写入回写完成: 成功=" << ok << " 失败=" << fail << std::endl;
+        pendingSync_.swap(remain);
+        std::cout << "[DB] 离线写入回写: 成功=" << ok << " 待重试=" << fail - dead
+                  << " 死信=" << dead << std::endl;
+        if (dead > 0)
+            std::cout << "[DB][Sync][ERR] " << dead
+                      << " 条写入进入死信表 sys_sync_dead，需人工处理" << std::endl;
+    }
+
+    // 死信表写入（调用时已持有 mutex_，走 execParamsPgLocked 兼容池/单连接）
+    void deadLetterLocked(const PendingWrite& pw) {
+        std::string paramsJoined;
+        for (auto& p : pw.params) { paramsJoined += p; paramsJoined += '|'; }
+        execParamsPgLocked(
+            "INSERT INTO sys_sync_dead(sql_text,params,retries) VALUES($1,$2,$3)",
+            {pw.sql, paramsJoined, std::to_string(pw.retries)});
     }
 
     // --------------------------------------------------------

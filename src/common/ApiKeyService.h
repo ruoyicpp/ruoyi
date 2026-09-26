@@ -50,6 +50,7 @@
 #include <optional>
 #include <mutex>
 #include <unordered_map>
+#include <deque>
 #include <chrono>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
@@ -132,7 +133,7 @@ public:
         // DB 查询
         auto& db = DatabaseService::instance();
         auto res = db.queryParams(
-            "SELECT id, user_id, enabled, expire_time FROM sys_apikey WHERE key_hash=$1",
+            "SELECT id, user_id, enabled, expire_time, rate_limit FROM sys_apikey WHERE key_hash=$1",
             {h});
         if (!res.ok() || res.rows() == 0) {
             if (errMsg) *errMsg = "API Key 不存在";
@@ -142,12 +143,18 @@ public:
         long  userId    = res.longVal(0, 1);
         int   enabled   = res.intVal(0, 2);
         std::string exp = res.str(0, 3);
+        int   rateLimit = res.cols() > 4 ? res.intVal(0, 4) : 0;
         if (enabled == 0) {
             if (errMsg) *errMsg = "API Key 已禁用";
             return std::nullopt;
         }
         if (!exp.empty() && exp <= currentTimestamp()) {
             if (errMsg) *errMsg = "API Key 已过期";
+            return std::nullopt;
+        }
+        // 调用限流：rate_limit 次/分钟（0=不限）
+        if (rateLimit > 0 && !checkRate(id, rateLimit)) {
+            if (errMsg) *errMsg = "调用频率超限（" + std::to_string(rateLimit) + "次/分钟）";
             return std::nullopt;
         }
 
@@ -214,6 +221,22 @@ private:
     std::unordered_map<std::string, CachedUser> cache_;   // key_hash → CachedUser
     std::mutex                                  cacheMu_;
 
+    // ── 调用限流（内存滑动窗口，per apiKeyId）─────────────────────────
+    std::unordered_map<long, std::deque<std::chrono::steady_clock::time_point>> rateMap_;
+    std::mutex rateMu_;
+
+    /// 滑动窗口限流：rateLimit 次/分钟，true=放行
+    bool checkRate(long apiKeyId, int rateLimit) {
+        std::lock_guard<std::mutex> lk(rateMu_);
+        auto now = std::chrono::steady_clock::now();
+        auto& rec = rateMap_[apiKeyId];
+        while (!rec.empty() && now - rec.front() > std::chrono::minutes(1))
+            rec.pop_front();
+        if ((int)rec.size() >= rateLimit) return false;
+        rec.push_back(now);
+        return true;
+    }
+
     static long long nowMs() {
         return std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
@@ -225,11 +248,12 @@ private:
         return buf;
     }
 
-    // 异步更新 last_used_at（不阻塞请求）
+    // 异步更新 last_used_at + call_count（不阻塞请求）
     void touchLastUsed(long apiKeyId) {
         try {
             DatabaseService::instance().execParams(
-                "UPDATE sys_apikey SET last_used_at=CURRENT_TIMESTAMP WHERE id=$1",
+                "UPDATE sys_apikey SET last_used_at=CURRENT_TIMESTAMP,"
+                " call_count=COALESCE(call_count,0)+1 WHERE id=$1",
                 {std::to_string(apiKeyId)});
         } catch (...) {}
     }

@@ -43,6 +43,7 @@
 #include "../../filters/PermFilter.h"
 #include "../../services/DatabaseService.h"
 #include "../services/SysDictService.h"
+#include "../../common/StringUtils.h"
 
 /**
  * @class SysDictTypeCtrl
@@ -73,8 +74,8 @@ public:
         auto dictName = req->getParameter("dictName");
         auto dictType = req->getParameter("dictType");
         auto status   = req->getParameter("status");
-        if (!dictName.empty()) { sql += " AND dict_name LIKE $" + std::to_string(idx++); params.push_back("%" + dictName + "%"); }
-        if (!dictType.empty()) { sql += " AND dict_type LIKE $" + std::to_string(idx++); params.push_back("%" + dictType + "%"); }
+        if (!dictName.empty()) { sql += " AND dict_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(dictName) + "%"); }
+        if (!dictType.empty()) { sql += " AND dict_type LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(dictType) + "%"); }
         if (!status.empty())   { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
 
         std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";
@@ -207,7 +208,7 @@ public:
         auto dictLabel = req->getParameter("dictLabel");
         auto status    = req->getParameter("status");
         if (!dictType.empty())  { sql += " AND dict_type=$" + std::to_string(idx++); params.push_back(dictType); }
-        if (!dictLabel.empty()) { sql += " AND dict_label LIKE $" + std::to_string(idx++); params.push_back("%" + dictLabel + "%"); }
+        if (!dictLabel.empty()) { sql += " AND dict_label LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(dictLabel) + "%"); }
         if (!status.empty())    { sql += " AND status=$" + std::to_string(idx++); params.push_back(status); }
 
         std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";

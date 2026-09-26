@@ -1,4 +1,6 @@
 #include "DatabaseInit.h"
+#include <fstream>
+#include <json/json.h>
 
 std::vector<std::string> DatabaseInit::getCreateTableSqls() {
     return {
@@ -266,6 +268,10 @@ std::vector<std::string> DatabaseInit::getCreateTableSqls() {
         ))",
         R"(CREATE INDEX IF NOT EXISTS idx_sys_apikey_hash ON sys_apikey(key_hash))",
         R"(CREATE INDEX IF NOT EXISTS idx_sys_apikey_user_id ON sys_apikey(user_id))",
+        R"(DO $$ BEGIN
+            ALTER TABLE sys_apikey ADD COLUMN IF NOT EXISTS rate_limit INT NOT NULL DEFAULT 0;
+            ALTER TABLE sys_apikey ADD COLUMN IF NOT EXISTS call_count BIGINT NOT NULL DEFAULT 0;
+        EXCEPTION WHEN others THEN NULL; END $$)",
 
         // -------------------------------------------------------
         // sys_license 远程授权服务表（移植自 ruoyi-server LicenseApiCtrl）
@@ -773,11 +779,275 @@ std::vector<std::string> DatabaseInit::getCreateTableSqls() {
             create_time TIMESTAMP,
             UNIQUE(provider, open_id)
         ))",
+
+        // -------------------------------------------------------
+        // sys_sms_template 短信模板表
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_sms_template (
+            id            BIGSERIAL    PRIMARY KEY,
+            name          VARCHAR(64)  NOT NULL DEFAULT '',
+            provider      VARCHAR(16)  NOT NULL DEFAULT 'aliyun',
+            template_code VARCHAR(64)  NOT NULL DEFAULT '',
+            sign_name     VARCHAR(64)  NOT NULL DEFAULT '',
+            content       VARCHAR(500) NOT NULL DEFAULT '',
+            status        CHAR(1)      NOT NULL DEFAULT '0',
+            create_time   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+
+        // -------------------------------------------------------
+        // sys_sms_log 短信发送日志表
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_sms_log (
+            id            BIGSERIAL    PRIMARY KEY,
+            phone         VARCHAR(20)  NOT NULL DEFAULT '',
+            template_code VARCHAR(64)  NOT NULL DEFAULT '',
+            provider      VARCHAR(16)  NOT NULL DEFAULT '',
+            status        VARCHAR(16)  NOT NULL DEFAULT '',
+            response      TEXT         NOT NULL DEFAULT '',
+            create_time   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_sys_sms_log_phone ON sys_sms_log(phone, create_time DESC))",
+
+        // -------------------------------------------------------
+        // sys_datasource 多数据源注册表
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_datasource (
+            id          BIGSERIAL    PRIMARY KEY,
+            name        VARCHAR(64)  NOT NULL UNIQUE,
+            db_type     VARCHAR(16)  NOT NULL DEFAULT 'postgres',
+            host        VARCHAR(128) NOT NULL DEFAULT '127.0.0.1',
+            port        INT          NOT NULL DEFAULT 5432,
+            dbname      VARCHAR(128) NOT NULL DEFAULT '',
+            username    VARCHAR(64)  NOT NULL DEFAULT '',
+            passwd      VARCHAR(128) NOT NULL DEFAULT '',
+            status      CHAR(1)      NOT NULL DEFAULT '0',
+            is_default  CHAR(1)      NOT NULL DEFAULT '0',
+            create_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+
+        // -------------------------------------------------------
+        // wf_definition 工作流定义表（nodes JSON 顺序审批节点）
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS wf_definition (
+            id          BIGSERIAL    PRIMARY KEY,
+            name        VARCHAR(64)  NOT NULL DEFAULT '',
+            def_key     VARCHAR(64)  NOT NULL DEFAULT '',
+            version     INT          NOT NULL DEFAULT 1,
+            nodes       TEXT         NOT NULL DEFAULT '[]',
+            status      CHAR(1)      NOT NULL DEFAULT '0',
+            remark      VARCHAR(500) NOT NULL DEFAULT '',
+            create_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_wf_def_key ON wf_definition(def_key, status, version DESC))",
+
+        // -------------------------------------------------------
+        // wf_instance 工作流实例表
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS wf_instance (
+            id           BIGSERIAL    PRIMARY KEY,
+            def_id       BIGINT       NOT NULL DEFAULT 0,
+            business_key VARCHAR(128) NOT NULL DEFAULT '',
+            title        VARCHAR(200) NOT NULL DEFAULT '',
+            starter_id   BIGINT       NOT NULL DEFAULT 0,
+            starter_name VARCHAR(64)  NOT NULL DEFAULT '',
+            current_node VARCHAR(64)  NOT NULL DEFAULT '',
+            status       VARCHAR(16)  NOT NULL DEFAULT 'running',
+            variables    TEXT         NOT NULL DEFAULT '{}',
+            create_time  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            end_time     TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_wf_inst_starter ON wf_instance(starter_id, create_time DESC))",
+        R"(CREATE INDEX IF NOT EXISTS idx_wf_inst_status ON wf_instance(status))",
+
+        // -------------------------------------------------------
+        // wf_task 工作流审批任务表
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS wf_task (
+            id          BIGSERIAL    PRIMARY KEY,
+            instance_id BIGINT       NOT NULL DEFAULT 0,
+            node_key    VARCHAR(64)  NOT NULL DEFAULT '',
+            node_name   VARCHAR(64)  NOT NULL DEFAULT '',
+            assignee_id BIGINT       NOT NULL DEFAULT 0,
+            status      VARCHAR(16)  NOT NULL DEFAULT 'pending',
+            comment     VARCHAR(500) NOT NULL DEFAULT '',
+            create_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            finish_time TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_wf_task_assignee ON wf_task(assignee_id, status))",
+        R"(CREATE INDEX IF NOT EXISTS idx_wf_task_inst ON wf_task(instance_id, node_key))",
+
+        // -------------------------------------------------------
+        // sys_slow_log SQL 慢查询审计表
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_slow_log (
+            id          BIGSERIAL    PRIMARY KEY,
+            op          VARCHAR(20)  NOT NULL DEFAULT '',
+            sql_text    TEXT         NOT NULL DEFAULT '',
+            cost_ms     BIGINT       NOT NULL DEFAULT 0,
+            create_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_sys_slow_log_time ON sys_slow_log(create_time DESC))",
+        R"(CREATE INDEX IF NOT EXISTS idx_sys_slow_log_cost ON sys_slow_log(cost_ms DESC))",
+
+        // -------------------------------------------------------
+        // sys_backup_log 数据库备份日志表
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_backup_log (
+            id          BIGSERIAL    PRIMARY KEY,
+            filename    VARCHAR(200) NOT NULL DEFAULT '',
+            size_bytes  BIGINT       NOT NULL DEFAULT 0,
+            status      VARCHAR(16)  NOT NULL DEFAULT '',
+            error_msg   TEXT         NOT NULL DEFAULT '',
+            create_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+
+        // -------------------------------------------------------
+        // iot_device 扩展：MQTT 在线状态/最后上线时间
+        // （IotCtrl 懒建基础表，这里补 MQTT 需要的列）
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS iot_device (
+            id          VARCHAR(64)  PRIMARY KEY,
+            name        VARCHAR(128) NOT NULL DEFAULT '',
+            host        VARCHAR(128) NOT NULL DEFAULT '',
+            port        INT          NOT NULL DEFAULT 502,
+            unit_id     INT          NOT NULL DEFAULT 1,
+            timeout_ms  INT          NOT NULL DEFAULT 2000,
+            description VARCHAR(256) NOT NULL DEFAULT '',
+            status      VARCHAR(16)  NOT NULL DEFAULT 'offline',
+            last_seen   TIMESTAMP
+        ))",
+        R"(DO $$ BEGIN
+            ALTER TABLE iot_device ADD COLUMN IF NOT EXISTS status    VARCHAR(16) NOT NULL DEFAULT 'offline';
+            ALTER TABLE iot_device ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP;
+        EXCEPTION WHEN others THEN NULL; END $$)",
+
+        // -------------------------------------------------------
+        // iot_message MQTT 消息持久化表（可选，mqtt.persist=true 时启用）
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS iot_message (
+            id          BIGSERIAL    PRIMARY KEY,
+            topic       VARCHAR(256) NOT NULL DEFAULT '',
+            payload     TEXT         NOT NULL DEFAULT '',
+            create_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
+        R"(CREATE INDEX IF NOT EXISTS idx_iot_message_topic ON iot_message(topic, create_time DESC))",
+
+        // -------------------------------------------------------
+        // sys_sync_dead 双库同步死信表（回写 PG 失败 >=3 次的写入）
+        // -------------------------------------------------------
+        R"(CREATE TABLE IF NOT EXISTS sys_sync_dead (
+            id          BIGSERIAL    PRIMARY KEY,
+            sql_text    TEXT         NOT NULL DEFAULT '',
+            params      TEXT         NOT NULL DEFAULT '',
+            retries     INT          NOT NULL DEFAULT 0,
+            resolved    SMALLINT     NOT NULL DEFAULT 0,
+            create_time TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        ))",
     };
 }
 
+// ── sys.cfg.* 覆盖层播种 ─────────────────────────────────────────
+// 键名 = sys.cfg. + config.json 点号路径；留空=跟随文件，填值即覆盖。
+// 备注动态带当前文件值，管理员一眼知道改的是什么。
+static std::vector<std::string> cfgOverrideSqls() {
+    struct Item { int id; const char* name; const char* path; const char* hint; };
+    static const Item items[] = {
+        {27, "JWT-令牌过期分钟",      "jwt.expire_minutes",               "示例: 30"},
+        {28, "JWT-刷新过期天数",      "jwt.jwt_expire_days",              "示例: 7"},
+        {29, "限流-开关",            "security.rate_limit.enabled",      "填 true 或 false"},
+        {30, "限流-窗口最大请求",     "security.rate_limit.max_requests", "示例: 200"},
+        {31, "限流-窗口秒数",         "security.rate_limit.window_seconds","示例: 60"},
+        {32, "限流-封禁秒数",         "security.rate_limit.ban_seconds",  "示例: 300"},
+        {33, "WAF-开关",             "security.waf.enabled",             "填 true 或 false"},
+        {34, "WAF-模式",             "security.waf.mode",                "填 log（仅记录）或 block（拦截）"},
+        {35, "WAF-命中封禁",         "security.waf.ban_on_hit",          "填 true 或 false"},
+        {36, "WAF-封禁秒数",         "security.waf.ban_seconds",         "示例: 600"},
+        {37, "审计上报-开关",         "security.audit.enabled",           "填 true 或 false"},
+        {38, "审计上报-地址",         "security.audit.endpoint",          "示例: http://127.0.0.1:9308"},
+        {39, "SSO-开关",             "security.sso.enabled",             "填 true 或 false"},
+        {40, "SSO-签发方",           "security.sso.issuer",              "示例: http://127.0.0.1"},
+        {41, "MQTT-开关",            "security.mqtt.enabled",            "填 true 或 false"},
+        {42, "MQTT-主机",            "security.mqtt.host",               "示例: 127.0.0.1"},
+        {43, "MQTT-端口",            "security.mqtt.port",               "示例: 1883"},
+        {44, "短信-开关",            "sms.enabled",                      "填 true 或 false"},
+        {45, "短信-通道",            "sms.provider",                     "填 aliyun 或 tencent"},
+        {46, "备份-开关",            "backup.enabled",                   "填 true 或 false"},
+        {47, "备份-保留份数",         "backup.keep_count",                "示例: 7"},
+        {48, "备份-每日小时",         "backup.schedule_hour",             "示例: 3（-1=禁用定时）"},
+        {49, "日志保留-操作日志天数",  "log.retention.oper_log_days",      "示例: 90"},
+        {50, "日志保留-登录日志天数",  "log.retention.login_log_days",     "示例: 180"},
+        {51, "日志保留-本地日志天数",  "log.retention.local_log_days",     "示例: 30"},
+        {52, "慢查询-WARN阈值ms",    "database.slow_query_warn_ms",      "示例: 200"},
+        {53, "行为验证码-服务地址",   "captcha.behavioral.server_addr",   "示例: 127.0.0.1:18090"},
+        {54, "可信代理-名单",         "security.trusted_proxies",          "JSON数组，示例: [\"127.0.0.1\",\"10.0.0.0/8\"]，部署在nginx后必填"},
+        {55, "嵌入式Nginx-开关",      "nginx_embedded.enabled",            "填 true 或 false；启用需 RUOYI_USE_NGINX=ON 编译且 nginx/ 目录+SSL证书就绪，80/443端口需root"},
+        {56, "日志索引-开关",         "log.manticore.enabled",             "填 true 或 false；需 Manticore searchd 运行中"},
+        {57, "日志索引-地址",         "log.manticore.endpoint",            "示例: http://127.0.0.1:7700；留空复用 security.audit.endpoint"},
+        {58, "日志保留-文件数上限",    "log.retention.max_files",           "示例: 5000，logs目录超限按时间从旧到新删"},
+        {59, "日志保留-总大小MB上限",  "log.retention.max_total_mb",        "示例: 2048"},
+        {60, "许可证远程-开关",        "license.remote.enabled",            "填 true 或 false；lic 内嵌 server 时自动启用"},
+        {61, "许可证远程-服务端",      "license.remote.url",                "留空=本服务自身（自动推导 menu.api_base_url→listeners）；客户lic内嵌server优先"},
+        {62, "许可证远程-心跳间隔秒",   "license.remote.interval_sec",       "示例: 3600（下限60）"},
+        {63, "许可证远程-离线宽限天",   "license.remote.offline_days",       "示例: 7；服务端不可达时最多离线运行天数"},
+        {64, "许可证远程-超时毫秒",     "license.remote.timeout_ms",         "示例: 5000"},
+    };
+
+    // 读 config.json，解析每个路径的当前文件值
+    Json::Value root;
+    {
+        std::ifstream f("config.json");
+        if (f.is_open()) {
+            Json::CharReaderBuilder rb;
+            std::string errs;
+            Json::parseFromStream(rb, f, &root, &errs);
+        }
+    }
+    auto resolve = [&](const std::string& path) -> std::string {
+        const Json::Value* n = &root;
+        size_t pos = 0;
+        while (true) {
+            size_t dot = path.find('.', pos);
+            std::string k = (dot == std::string::npos) ? path.substr(pos)
+                                                     : path.substr(pos, dot - pos);
+            if (!n->isObject() || !n->isMember(k)) return "";
+            n = &(*n)[k];
+            if (dot == std::string::npos) break;
+            pos = dot + 1;
+        }
+        if (n->isString())  return n->asString();
+        if (n->isBool())    return n->asBool() ? "true" : "false";
+        if (n->isNumeric()) return n->asString();
+        if (n->isArray()) {   // 短数组显示紧凑 JSON（如 trusted_proxies）
+            std::string s = Json::writeString(Json::StreamWriterBuilder(), *n);
+            while (!s.empty() && (s.back() == '\n' || s.back() == ' ')) s.pop_back();
+            return s.size() <= 120 ? s : "";
+        }
+        return "";  // 对象不在备注里显示
+    };
+    auto esc = [](std::string s) {  // SQL 单引号转义
+        for (size_t i = 0; (i = s.find('\'', i)) != std::string::npos; i += 2)
+            s.replace(i, 1, "''");
+        return s;
+    };
+
+    std::vector<std::string> out;
+    out.reserve(sizeof(items) / sizeof(items[0]));
+    for (const auto& it : items) {
+        std::string cur = resolve(it.path);
+        std::string remark = "覆盖 " + std::string(it.path) +
+            (cur.empty() ? "（当前: 未设置）" : "（当前: " + cur + "）") +
+            "，留空=跟随文件。" + it.hint;
+        out.push_back(
+            "INSERT INTO sys_config (config_id,config_name,config_key,config_value,config_type,create_by,create_time,remark)"
+            " VALUES (" + std::to_string(it.id) + ",'" + it.name + "','sys.cfg." + it.path +
+            "','','N','admin',NOW(),'" + esc(remark) + "')"
+            " ON CONFLICT (config_key) DO UPDATE SET remark=EXCLUDED.remark");
+    }
+    return out;
+}
+
 std::vector<std::string> DatabaseInit::getInitDataSqls() {
-    return {
+    std::vector<std::string> sqls = {
         // =====================================================================
         // 0. 清理旧版本遗留的重复字典数据（旧代码每次重启都会追加）
         // =====================================================================
@@ -1218,7 +1488,7 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
            VALUES (20,'子进程-KoboldCpp AI引擎','sys.subprocess.koboldcpp','false','N','admin',NOW(),'true=启动本地AI子进程，false=自动关闭（路径在config.json的koboldcpp节）')
            ON CONFLICT (config_key) DO NOTHING)",
         R"(INSERT INTO sys_config (config_id,config_name,config_key,config_value,config_type,create_by,create_time,remark)
-           VALUES (21,'子进程-Nginx反向代理','sys.subprocess.nginx','false','N','admin',NOW(),'true=启动Nginx子进程，false=自动关闭（路径在config.json的nginx节）')
+           VALUES (21,'子进程-外部Nginx反代','sys.subprocess.nginx','false','N','admin',NOW(),'外部nginx.exe/sbin子进程版（区别于嵌入式nginx_embedded.enabled）。true=启动，false=关闭（路径在config.json的nginx节）')
            ON CONFLICT (config_key) DO NOTHING)",
         R"(INSERT INTO sys_config (config_id,config_name,config_key,config_value,config_type,create_by,create_time,remark)
            VALUES (22,'子进程-DDNS-go动态域名','sys.subprocess.ddns','false','N','admin',NOW(),'true=启动DDNS-go子进程，false=自动关闭（路径在config.json的ddns节）')
@@ -1230,6 +1500,13 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         R"(INSERT INTO sys_config (config_id,config_name,config_key,config_value,config_type,create_by,create_time,remark)
            VALUES (24,'随机视频-API地址','sys.video.api','https://api.pearktrue.cn/api/video/','N','admin',NOW(),'随机视频外部API，需返回JSON含url/src/data字段')
            ON CONFLICT (config_key) DO NOTHING)",
+        R"(INSERT INTO sys_config (config_id,config_name,config_key,config_value,config_type,create_by,create_time,remark)
+           VALUES (25,'行为验证码-功能开关','sys.captcha.behavioral.enabled','','N','admin',NOW(),'true=启用滑块/旋转行为验证码（需captcha-server），false=强制关闭；留空=跟随config.json的captcha.behavioral.enabled')
+           ON CONFLICT (config_key) DO NOTHING)",
+        R"(INSERT INTO sys_config (config_id,config_name,config_key,config_value,config_type,create_by,create_time,remark)
+           VALUES (26,'行为验证码-类型','sys.captcha.behavioral.type','slide','N','admin',NOW(),'slide=滑块拼图，rotate=旋转角度；仅行为验证码启用时生效')
+           ON CONFLICT (config_key) DO NOTHING)",
+
 
         // =====================================================================
         // 11. 字典类型
@@ -1390,6 +1667,10 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         // data patch: 重命名子进程参数显示名称
         "UPDATE sys_config SET config_name='子进程-DDNS动态域名' WHERE config_key='sys.subprocess.ddns' AND config_name LIKE '%DDNS-go%'",
         "UPDATE sys_config SET config_name='子进程-AI引擎' WHERE config_key='sys.subprocess.koboldcpp' AND config_name LIKE '%KoboldCpp%'",
+        // data patch: 区分外部子进程 nginx 与嵌入式 nginx_embedded，避免前端混淆
+        "UPDATE sys_config SET config_name='子进程-外部Nginx反代', "
+        "remark='外部nginx.exe/sbin子进程版（区别于嵌入式nginx_embedded.enabled）。true=启动，false=关闭（路径在config.json的nginx节）' "
+        "WHERE config_key='sys.subprocess.nginx'",
 
         // =====================================================================
         // v1.1 新增：系统日志查看器（InnerLink，顶级菜单）
@@ -1417,6 +1698,13 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
            (132,'通知渠道',0,12,'http://localhost:3000/dev-api/system/notify/channel/page','InnerLink','','0','0','C','0','0','system:notify:list','message','admin',NOW(),'钉钉/飞书/企业微信 webhook 渠道配置') ON CONFLICT (menu_id) DO NOTHING)",
         R"(UPDATE sys_menu SET menu_name='通知渠道',parent_id=0,order_num=12,path='http://localhost:3000/dev-api/system/notify/channel/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='system:notify:list',icon='message' WHERE menu_id=132)",
 
+        // data patch: menu_id=119 曾被旧版"重启服务"InnerLink 占用（与运维面板冲突），
+        // 仅当仍是旧形态（重启服务+InnerLink）时恢复为运维面板，不覆盖用户自定义
+        R"(UPDATE sys_menu SET menu_name='运维面板',parent_id=2,order_num=7,path='ops',
+           component='monitor/ops/index',query='',is_frame='1',is_cache='0',menu_type='C',
+           visible='0',status='0',perms='monitor:ops:overview',icon='monitor'
+           WHERE menu_id=119 AND menu_name='重启服务' AND component='InnerLink')",
+
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
            (133,'License授权',0,13,'http://localhost:3000/dev-api/api/license/page','InnerLink','','0','0','C','0','0','system:license:list','validCode','admin',NOW(),'License 授权 HTTP 服务（签发 + 心跳 + 列表）') ON CONFLICT (menu_id) DO NOTHING)",
         R"(UPDATE sys_menu SET menu_name='License授权',parent_id=0,order_num=13,path='http://localhost:3000/dev-api/api/license/page',component='InnerLink',is_frame='0',menu_type='C',visible='0',status='0',perms='system:license:list',icon='validCode' WHERE menu_id=133)",
@@ -1433,6 +1721,10 @@ std::vector<std::string> DatabaseInit::getInitDataSqls() {
         R"(INSERT INTO sys_menu (menu_id,menu_name,parent_id,order_num,path,component,query,is_frame,is_cache,menu_type,visible,status,perms,icon,create_by,create_time,remark) VALUES
            (121,'两步验证',1,10,'totp','','','1','0','F','1','0','system:totp:bind','lock','admin',NOW(),'TOTP两步验证绑定') ON CONFLICT (menu_id) DO NOTHING)",
     };
+
+    // sys.cfg.* 覆盖层：动态读 config.json，备注带当前文件值
+    for (auto& s : cfgOverrideSqls()) sqls.push_back(std::move(s));
+    return sqls;
 }
 
 // ============================================================

@@ -30,7 +30,7 @@
  *   ```
  *   # HELP ruoyi_build_info Build information
  *   # TYPE ruoyi_build_info gauge
- *   ruoyi_build_info{version="1.3.2",build_time="2026-06-10"} 1
+ *   ruoyi_build_info{version="1.3.3",build_time="2026-09-26"} 1
  *   
  *   # HELP ruoyi_http_requests_total Total HTTP requests
  *   # TYPE ruoyi_http_requests_total counter

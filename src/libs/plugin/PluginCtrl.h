@@ -9,6 +9,7 @@ public:
         ADD_METHOD_TO(PluginCtrl::list,           "/plugin/list",                    drogon::Get,    "JwtAuthFilter");
         ADD_METHOD_TO(PluginCtrl::discover,       "/plugin/discover",                drogon::Get,    "JwtAuthFilter");
         ADD_METHOD_TO(PluginCtrl::registerPlugin, "/plugin/register/{name}",        drogon::Post,   "JwtAuthFilter");
+        ADD_METHOD_TO(PluginCtrl::reloadPlugin,   "/plugin/reload/{name}",          drogon::Post,   "JwtAuthFilter");
         ADD_METHOD_TO(PluginCtrl::unloadPlugin,   "/plugin/{name}",                 drogon::Delete, "JwtAuthFilter");
         ADD_METHOD_TO(PluginCtrl::getPlugin,      "/plugin/{name}",                 drogon::Get,    "JwtAuthFilter");
         ADD_METHOD_TO(PluginCtrl::serveFrontend,  "/plugin/{name}/frontend/{*path}", drogon::Get);
@@ -63,6 +64,34 @@ public:
             r->setStatusCode(drogon::k500InternalServerError);
             r->setContentTypeCode(drogon::CT_APPLICATION_JSON);
             r->setBody(err.dump());
+            cb(r);
+        }
+    }
+
+    /// POST /plugin/reload/{name} — 热更新：备份→卸载→加载，失败自动回滚
+    void reloadPlugin(const drogon::HttpRequestPtr&,
+                      std::function<void(const drogon::HttpResponsePtr&)>&& cb,
+                      const std::string& name) {
+        try {
+            const auto& desc = ruoyi::plugin::PluginManager::instance().reload(name);
+            nlohmann::json resp;
+            resp["code"] = 200;
+            resp["msg"] = "plugin reloaded: " + name;
+            resp["data"]["name"] = desc.name;
+            resp["data"]["version"] = desc.version;
+            auto r = drogon::HttpResponse::newHttpResponse();
+            r->setStatusCode(drogon::k200OK);
+            r->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+            r->setBody(resp.dump());
+            cb(r);
+        } catch (const std::exception& e) {
+            nlohmann::json resp;
+            resp["code"] = 500;
+            resp["msg"] = std::string("reload failed (rolled back): ") + e.what();
+            auto r = drogon::HttpResponse::newHttpResponse();
+            r->setStatusCode(drogon::k500InternalServerError);
+            r->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+            r->setBody(resp.dump());
             cb(r);
         }
     }

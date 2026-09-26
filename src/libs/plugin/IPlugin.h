@@ -66,6 +66,11 @@ struct AiResponse {
 #  define RUOYI_PLUGIN_API __attribute__((visibility("default")))
 #endif
 
+// 插件 ABI 版本：IPlugin 虚表/结构体布局变更时 +1
+// 插件可在 DLL 中导出 `extern "C" int pluginAbiVersion()` 声明编译期 ABI；
+// PluginManager 加载时校验，不匹配拒绝加载（防旧插件崩溃宿主）
+inline constexpr int RUOYI_PLUGIN_ABI_VERSION = 1;
+
 // 抽象插件基类
 class IPlugin {
 public:

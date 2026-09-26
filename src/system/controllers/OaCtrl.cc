@@ -1,6 +1,7 @@
 #include "OaCtrl.h"
 #include "../../common/WsBus.h"
 #include "../../common/NotifyService.h"
+#include "../../common/StringUtils.h"   // escapeLikeParam
 #include <sstream>
 
 namespace {
@@ -166,16 +167,6 @@ void sendMobilePush(long userId, const std::string& title, const std::string& co
         std::string msg = "[移动端推送][" + deviceType + "/" + channelType + "] " + title + " => " + token + " | " + content;
         LOG_INFO << msg;
     }
-}
-
-std::string escapeLikeParam(const std::string& keyword) {
-    std::string out;
-    out.reserve(keyword.size());
-    for (char c : keyword) {
-        if (c == '%' || c == '_' || c == '\\') out.push_back('\\');
-        out.push_back(c);
-    }
-    return out;
 }
 
 bool canReadKnowledge(const std::string& scope, long authorId, long userId) {

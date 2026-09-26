@@ -232,7 +232,10 @@ endif()
 
 # ── 源文件 ────────────────────────────────────────────────────
 file(GLOB_RECURSE SOURCES
-    src/main.cc
+    # src/main.cc            # 旧单文件入口（保留对照，勿与下行同时启用）
+    src/main/main.cc         # 拆分版入口（注意：必须在 main/main/*.cc 之外单独列出，
+                             # glob 只匹配子目录内文件，不含 src/main/main.cc 本身）
+    src/main/main/*.cc
     src/common/*.cc
     src/services/*.cc
     src/system/services/*.cc
@@ -247,7 +250,22 @@ file(GLOB_RECURSE SOURCES
     src/analytics/*.cc
     src/mysql/*.cc
     src/error_pages/*.cc
+    src/waf/*.cc
+    src/audit/*.cc
+    src/sso/*.cc
+    src/risk/*.cc
+    src/ds/*.cc
+    src/flow/*.cc
+    src/sms/*.cc
+    src/backup/*.cc
+    src/iot/*.cc
+    src/screen/*.cc
 )
+# 对照测试：GLOB_RECURSE "src/main.cc" 会递归匹配到 src/main/main.cc（拆分入口），
+# 与旧 src/main.cc 同时编译产生双 main + boot::* undefined——显式排除。
+# 切回拆分版时：恢复 src/main/main/*.cc glob、注释 src/main.cc、并删除本行。
+#list(FILTER SOURCES EXCLUDE REGEX "/main/main\\.cc$")
+
 
 # 添加 IM 集成文件（排除 src/im/111 中的 protobuf 文件）
 file(GLOB IM_SOURCES src/im/*.cc)
@@ -335,6 +353,78 @@ endif()
 if(RUOYI_USE_PG_DRIVER)
     target_link_libraries(${PROJECT_NAME} PRIVATE drogon_pg_driver)
     target_compile_definitions(${PROJECT_NAME} PRIVATE RUOYI_USE_PG_DRIVER=1)
+endif()
+
+# ── WAF 安全版（可选，生产环境 Linux 全量 / Windows 仅编译跳过）──────────
+# 开启后启用 src/waf/ 模块：规则引擎 + 风控存储 + nftables 内核封禁
+# Linux 可选增强依赖（缺失自动降级，不阻断编译）：
+#   - libre2-dev        → RUOYI_WAF_RE2     （防 ReDoS 正则引擎）
+#   - librocksdb-dev    → RUOYI_WAF_ROCKSDB （风控 KV 存储，默认 SQLite）
+# Windows：不查找任何依赖，WAF 走应用层 + SQLite 路径
+option(RUOYI_SECURITY_EDITION "安全版：WAF/风控/nftables封禁（仅 Linux 生效）" ON)
+if(RUOYI_SECURITY_EDITION)
+    if(UNIX AND NOT APPLE)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE RUOYI_WAF=1)
+        # RE2（可选）：防 ReDoS 正则
+        find_library(RE2_LIB NAMES re2)
+        find_path(RE2_INCLUDE_DIR NAMES re2/re2.h)
+        if(RE2_LIB AND RE2_INCLUDE_DIR)
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${RE2_LIB})
+            target_include_directories(${PROJECT_NAME} PRIVATE ${RE2_INCLUDE_DIR})
+            target_compile_definitions(${PROJECT_NAME} PRIVATE RUOYI_WAF_RE2=1)
+            message(STATUS "waf/re2:    ENABLED -> ${RE2_LIB}")
+        else()
+            message(STATUS "waf/re2:    not found, using std::regex (apt install libre2-dev to enable)")
+        endif()
+        # RocksDB（可选）：风控热数据 KV
+        find_library(ROCKSDB_LIB NAMES rocksdb)
+        find_path(ROCKSDB_INCLUDE_DIR NAMES rocksdb/db.h)
+        if(ROCKSDB_LIB AND ROCKSDB_INCLUDE_DIR)
+            target_link_libraries(${PROJECT_NAME} PRIVATE ${ROCKSDB_LIB})
+            target_include_directories(${PROJECT_NAME} PRIVATE ${ROCKSDB_INCLUDE_DIR})
+            target_compile_definitions(${PROJECT_NAME} PRIVATE RUOYI_WAF_ROCKSDB=1)
+            message(STATUS "waf/rocksdb: ENABLED -> ${ROCKSDB_LIB}")
+        else()
+            message(STATUS "waf/rocksdb: not found, using SQLite backend (apt install librocksdb-dev to enable)")
+        endif()
+        # nftables 封禁走 nft CLI（system 调用），无需链接 libmnl/libnftnl
+        message(STATUS "waf:        ENABLED (Linux full: app-layer + nftables CLI)")
+    else()
+        # Windows：WAF 功能完全跳过（仅编译通过，API 返回 501）
+        message(STATUS "waf:        SKIPPED (Linux-only feature, Windows compiles stubs)")
+    endif()
+else()
+    message(STATUS "waf:        DISABLED (set -DRUOYI_SECURITY_EDITION=ON to enable)")
+endif()
+
+# ── 行为验证码 gRPC 客户端（可选，Linux only）─────────────────────
+# go-captcha captcha-server 侧车：滑块/旋转验证码
+# 依赖：apt install libgrpc++-dev protobuf-compiler-grpc
+# 未安装 grpc 时自动降级：CaptchaClient 编译为 stub（isEnabled 恒 false）
+option(RUOYI_USE_GRPC_CAPTCHA "go-captcha gRPC 行为验证码客户端（仅 Linux）" ON)
+set(RUOYI_GRPC_CAPTCHA_ENABLED OFF)
+if(RUOYI_USE_GRPC_CAPTCHA AND UNIX AND NOT APPLE)
+    pkg_check_modules(GRPCPP QUIET grpc++ protobuf)
+    if(GRPCPP_FOUND)
+        file(GLOB CAPTCHA_PROTO_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/captcha/proto/*.cc")
+        # add_executable 已执行，必须用 target_sources 追加
+        target_sources(${PROJECT_NAME} PRIVATE ${CAPTCHA_PROTO_SOURCES})
+        set(RUOYI_GRPC_CAPTCHA_ENABLED ON)
+        message(STATUS "captcha/grpc: ENABLED -> ${GRPCPP_LIBRARIES}")
+    else()
+        message(WARNING "captcha/grpc: libgrpc++ not found, behavioral captcha disabled "
+                        "(apt install libgrpc++-dev protobuf-compiler-grpc)")
+    endif()
+else()
+    message(STATUS "captcha/grpc: SKIPPED (Linux-only feature)")
+endif()
+
+# ── 行为验证码 gRPC 链接（必须在探测块之后，变量才有值）──────────
+if(RUOYI_GRPC_CAPTCHA_ENABLED)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${GRPCPP_INCLUDE_DIRS})
+    target_link_directories(${PROJECT_NAME} PRIVATE ${GRPCPP_LIBRARY_DIRS})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${GRPCPP_LIBRARIES})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE RUOYI_USE_GRPC_CAPTCHA=1)
 endif()
 
 # ── 前端嵌入模式（可选，参考 wepay-cpp 设计）──────────────────
@@ -548,6 +638,25 @@ if(WIN32)
         VERBATIM
         COMMENT "复制运行时 DLL 到 $<TARGET_FILE_DIR:${PROJECT_NAME}>"
     )
+
+    # ── nginx 嵌入式配置同步（RUOYI_USE_NGINX=ON 时）────────────────────────
+    # 把 nginx/ 目录（conf/ logs/ html/）复制到 exe 同级目录，
+    # 避免运行时报 "nginx.conf not found"
+    if(RUOYI_USE_NGINX)
+        # 复制 nginx/ 目录结构到 build 目录（只复制 conf + logs + html，保持干净）
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/nginx/conf"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/nginx/logs"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/nginx/temp"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/nginx/conf/nginx.conf"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/nginx/conf/nginx.conf"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/nginx/conf/mime.types"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/nginx/conf/mime.types"
+            COMMENT "同步 nginx/conf 到 build 目录（nginx_embedded 运行时读取）"
+        )
+    endif()
 else()
     target_link_libraries(${PROJECT_NAME} PRIVATE
         ${DROGON_LIB}

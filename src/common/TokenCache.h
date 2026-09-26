@@ -50,6 +50,7 @@
 #include <fstream>
 #include <iostream>
 #include <atomic>
+#include <functional>
 #include <json/json.h>
 #include <drogon/drogon.h>
 #include <hiredis/hiredis.h>
@@ -478,6 +479,13 @@ private:
     std::mutex mutex_;
 };
 
+// 缓存失效广播钩子（避免循环依赖：TokenCache 不直接 include CacheSync）
+// main.cc 启动时由 CacheSync::start() 绑定
+namespace CacheSyncHook {
+    // fn(prefixedKey, isPrefix)：isPrefix=true 表示按前缀失效
+    inline std::function<void(const std::string&, bool)> fn;
+}
+
     // Token 缓存（内存）
 class MemCache {
 public:
@@ -534,12 +542,10 @@ public:
 
     void remove(const std::string &key) {
         auto pk = k(key);
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            store_.erase(pk);
-        }
+        removeLocal(pk);
         if (RedisConn::instance().available()) redisDel(pk);
-        VramCache::instance().remove(pk);
+        // 跨节点失效广播（CacheSync 订阅方只清本地，不再发广播 → 无回声循环）
+        if (CacheSyncHook::fn) { try { CacheSyncHook::fn(pk, false); } catch (...) {} }
     }
 
     void removeByPrefix(const std::string &prefix) {
@@ -550,6 +556,20 @@ public:
         } else if (VramCache::instance().available()) {
             VramCache::instance().removeByPrefix(pp);
         }
+        removeLocalByPrefix(pp);
+        if (CacheSyncHook::fn) { try { CacheSyncHook::fn(pp, true); } catch (...) {} }
+    }
+
+    /// 仅清本地缓存（store_ + VramCache），供 CacheSync 订阅端调用
+    void removeLocal(const std::string &pk) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            store_.erase(pk);
+        }
+        VramCache::instance().remove(pk);
+    }
+    void removeLocalByPrefix(const std::string &pp) {
+        VramCache::instance().removeByPrefix(pp);
         std::lock_guard<std::mutex> lock(mutex_);
         for (auto it = store_.begin(); it != store_.end(); ) {
             if (it->first.rfind(pp, 0) == 0)

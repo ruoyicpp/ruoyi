@@ -70,6 +70,7 @@
 #include "../../common/PageUtils.h"
 #include "../../common/OperLogUtils.h"
 #include "../../common/NotifyService.h"
+#include "../../common/StringUtils.h"
 #include "../../filters/PermFilter.h"
 #include "../../system/services/TokenService.h"
 
@@ -306,7 +307,7 @@ else load();
                           "FROM sys_notify_channel WHERE 1=1";
         std::vector<std::string> params;
         int idx = 1;
-        if (!name.empty()) { sql += " AND name LIKE $" + std::to_string(idx++); params.push_back("%" + name + "%"); }
+        if (!name.empty()) { sql += " AND name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(name) + "%"); }
         std::string countSql = "SELECT COUNT(*) FROM (" + sql + ") t";
         auto cntRes = params.empty() ? db.query(countSql) : db.queryParams(countSql, params);
         long total = (cntRes.ok() && cntRes.rows() > 0) ? cntRes.longVal(0, 0) : 0;

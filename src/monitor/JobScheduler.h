@@ -62,6 +62,7 @@
 #include <iostream>      ///< 输入输出
 #include <ctime>         ///< 时间函数
 #include "../common/CronUtils.h"           ///< Cron 表达式工具
+#include "../common/DistLock.h"            ///< 分布式任务锁（多节点防重复执行）
 #include "../common/NotifyService.h"       ///< 通知服务
 #include <trantor/utils/Logger.h>         ///< 日志库
 #include "../services/DatabaseService.h"  ///< 数据库服务
@@ -700,9 +701,21 @@ private:
                     
                     // 在后台线程中异步执行任务
                     std::thread([this, jid, tgt, nm, grp]{
+                        // 分布式任务锁：多节点部署时同一 jobId 只在一个节点执行
+                        // key=job:<id>，TTL 120s 覆盖触发分钟窗口；
+                        // Redis 不可用时降级为进程内互斥（单机仍防重）
+                        std::string lockKey = "job:" + std::to_string(jid);
+                        auto lockToken = DistLock::tryLock(lockKey, 120);
+                        if (!lockToken) {
+                            // 其他节点已抢到锁，本节点跳过
+                            std::lock_guard<std::mutex> lk2(mu_);
+                            if (jobs_.count(jid)) jobs_[jid].running = false;
+                            return;
+                        }
                         // 执行任务
                         executeJob(jid, tgt, nm, grp, "定时触发");
-                        
+                        DistLock::unlock(lockKey, *lockToken);
+
                         // 执行完成后，标记任务为非运行中
                         std::lock_guard<std::mutex> lk2(mu_);
                         if (jobs_.count(jid)) {

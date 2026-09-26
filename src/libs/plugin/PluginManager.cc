@@ -153,6 +153,46 @@ void PluginManager::registerManagedRoutes(const std::string& pluginName,
     }
 }
 
+// 加载前预检：plugin.json 的 abi_version + permissions 白名单
+void PluginManager::preFlightCheck(const std::string& name,
+                                   const nlohmann::json& cfg) const {
+    // 1. ABI 版本：plugin.json 声明的 abi_version 必须等于宿主版本
+    if (cfg.contains("abi_version")) {
+        int abi = cfg.value("abi_version", 0);
+        if (abi != RUOYI_PLUGIN_ABI_VERSION) {
+            throw std::runtime_error(
+                "plugin " + name + " ABI mismatch: declared=" +
+                std::to_string(abi) + " host=" +
+                std::to_string(RUOYI_PLUGIN_ABI_VERSION));
+        }
+    }
+    // 2. 权限隔离：config.json plugins.allowed_permissions 白名单
+    //    插件声明的 permissions 必须全部在白名单内（未配置白名单则放行+告警）
+    if (cfg.contains("permissions") && cfg["permissions"].is_array()) {
+        auto& appCfg = drogon::app().getCustomConfig();   // JsonCpp
+        if (appCfg.isMember("plugins") &&
+            appCfg["plugins"].isMember("allowed_permissions") &&
+            appCfg["plugins"]["allowed_permissions"].isArray()) {
+            std::set<std::string> allow;
+            for (auto& p : appCfg["plugins"]["allowed_permissions"])
+                if (p.isString()) allow.insert(p.asString());
+            for (auto& p : cfg["permissions"]) {          // nlohmann
+                if (!p.is_string()) continue;
+                const std::string perm = p.get<std::string>();
+                if (!allow.count(perm)) {
+                    throw std::runtime_error(
+                        "plugin " + name + " requests disallowed permission: " +
+                        perm);
+                }
+            }
+        } else {
+            LOG_WARN << "[Plugin] " << name
+                     << " declares permissions but no allowed_permissions "
+                        "whitelist configured — granted by default";
+        }
+    }
+}
+
 const PluginDescriptor& PluginManager::load(const std::string& name) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -167,9 +207,29 @@ const PluginDescriptor& PluginManager::load(const std::string& name) {
             + " (searched: plugins/" + name + "/{name}.dll|.so)");
     }
 
+    // 预检：先读 plugin.json 做 ABI/权限校验（不加载 DLL 就能拒绝）
+    fs::path pluginDir = fs::path("plugins") / name;
+    fs::path jsonPath = pluginDir / "plugin.json";
+    nlohmann::json cfg = nlohmann::json::object();
+    if (fs::exists(jsonPath)) {
+        std::ifstream f(jsonPath);
+        if (f.is_open()) f >> cfg;
+    }
+    preFlightCheck(name, cfg);
+
     void* handle = loadLib(dllPath);
     if (!handle) {
         throw std::runtime_error("failed to load " + dllPath + ": " + dlError());
+    }
+
+    // ABI 二次校验：插件导出的 pluginAbiVersion() 与宿主比对
+    auto abiFn = reinterpret_cast<int (*)()>(getSym(handle, "pluginAbiVersion"));
+    if (abiFn && abiFn() != RUOYI_PLUGIN_ABI_VERSION) {
+        freeLib(handle);
+        throw std::runtime_error(
+            "plugin " + name + " ABI mismatch: export=" +
+            std::to_string(abiFn()) + " host=" +
+            std::to_string(RUOYI_PLUGIN_ABI_VERSION));
     }
 
     auto create = reinterpret_cast<IPlugin* (*)()>(getSym(handle, "createPlugin"));
@@ -186,16 +246,11 @@ const PluginDescriptor& PluginManager::load(const std::string& name) {
         throw std::runtime_error("createPlugin() returned nullptr: " + dllPath);
     }
 
-    fs::path pluginDir = fs::path("plugins") / name;
-    fs::path jsonPath = pluginDir / "plugin.json";
-    nlohmann::json cfg = nlohmann::json::object();
-    if (fs::exists(jsonPath)) {
-        std::ifstream f(jsonPath);
-        if (f.is_open()) f >> cfg;
-    }
-
+    // onLoad 失败视为加载失败（热更新回滚依赖此语义）
     try { instance->onLoad(cfg); } catch (const std::exception& e) {
-        LOG_WARN << "[Plugin] onLoad exception in " << name << ": " << e.what();
+        if (destroy) destroy(instance); else delete instance;
+        freeLib(handle);
+        throw std::runtime_error("onLoad failed for " + name + ": " + e.what());
     }
 
     PluginDescriptor desc;
@@ -236,6 +291,38 @@ const PluginDescriptor& PluginManager::load(const std::string& name) {
              << " type=" << static_cast<int>(desc.type)
              << " from " << dllPath;
     return plugins_.at(name)->descriptor;
+}
+
+// 热更新：备份旧 DLL → 卸载 → 加载新版；失败自动回滚旧版
+const PluginDescriptor& PluginManager::reload(const std::string& name) {
+    auto dllPath = findDllPath(name);
+    if (dllPath.empty())
+        throw std::runtime_error("plugin not found: " + name);
+
+    // 备份当前 DLL（存在旧版才需要回滚）
+    std::string bakPath = dllPath + ".bak";
+    bool hadOld = fs::exists(dllPath);
+    std::error_code ec;
+    if (hadOld) fs::copy_file(dllPath, bakPath,
+                              fs::copy_options::overwrite_existing, ec);
+
+    unload(name);
+    try {
+        return load(name);
+    } catch (...) {
+        // 回滚：恢复旧 DLL 并重新加载
+        if (hadOld && fs::exists(bakPath)) {
+            fs::copy_file(bakPath, dllPath,
+                          fs::copy_options::overwrite_existing, ec);
+            try { load(name); }
+            catch (const std::exception& e2) {
+                LOG_ERROR << "[Plugin] rollback load failed for " << name
+                          << ": " << e2.what();
+            }
+            LOG_WARN << "[Plugin] rolled back to previous version: " << name;
+        }
+        throw;   // 原始异常继续抛出
+    }
 }
 
 std::vector<std::string> PluginManager::autoLoadFromConfig(const Json::Value& root) {

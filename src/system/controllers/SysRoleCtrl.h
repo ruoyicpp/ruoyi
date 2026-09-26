@@ -52,6 +52,7 @@
 #include "../../common/OperLogUtils.h"
 #include "../../common/DataScopeUtils.h"
 #include "../../common/CsvUtils.h"
+#include "../../common/StringUtils.h"
 #include <set>
 
 /**
@@ -105,7 +106,7 @@ public:
         auto status   = req->getParameter("status");
         std::vector<std::string> params;
         int idx = 1;
-        if (!roleName.empty()) { base += " AND r.role_name LIKE $" + std::to_string(idx++); params.push_back("%" + roleName + "%"); }
+        if (!roleName.empty()) { base += " AND r.role_name LIKE $" + std::to_string(idx++) + " ESCAPE '\\'"; params.push_back("%" + escapeLikeParam(roleName) + "%"); }
         if (!status.empty())   { base += " AND r.status=$" + std::to_string(idx++); params.push_back(status); }
 
         std::string distinctCols = "DISTINCT r.role_id,r.role_name,r.role_key,r.role_sort,r.data_scope,r.status,r.create_time,r.remark";
